@@ -16,7 +16,13 @@ export const weekBounds = (weekStart: string) => ({
  * non-cancelled shift from 17 weeks before the week to its end, plus right to work, DBS and training
  * records, and requested or approved leave. Runs inside withOrganisation.
  */
-export const loadComplianceContext = async (tx: Transaction, organisationId: string, weekStart: string): Promise<Context> => {
+export const loadComplianceContext = async (
+  tx: Transaction,
+  organisationId: string,
+  weekStart: string,
+  /** Check the week as if this shift were given to this person, e.g. before approving a swap. */
+  assume?: { shiftId: string; workerId: string },
+): Promise<Context> => {
   const { from } = weekBounds(addDays(weekStart, -7 * HISTORY_WEEKS));
   const { to } = weekBounds(weekStart);
 
@@ -45,7 +51,9 @@ export const loadComplianceContext = async (tx: Transaction, organisationId: str
         ),
       ),
   ]);
-  const assigned = shifts.filter((s) => s.workerId);
+  const assigned = shifts
+    .map((s) => (s.id === assume?.shiftId ? { ...s, workerId: assume.workerId } : s))
+    .filter((s) => s.workerId);
   const ids = assigned.map((s) => s.id);
   const [breaks, requirements] = ids.length
     ? await Promise.all([

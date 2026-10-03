@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { addShift, checkAndPublish, type FormState } from "./actions";
+import { addShift, checkAndPublish, decideClaim, type FormState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 const button = "rounded-lg bg-zinc-900 px-4 py-2 text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900";
@@ -44,7 +44,8 @@ export function AddShiftForm({
       <Message state={state} />
       <label className="flex flex-col gap-1">
         <span className="font-medium">Who is working</span>
-        <select name="workerId" required className={input}>
+        <select name="workerId" className={input}>
+          <option value="">Nobody yet: an open shift staff can pick up</option>
           {workers.map((w) => (
             <option key={w.id} value={w.id}>{w.name}</option>
           ))}
@@ -106,5 +107,40 @@ export function AddShiftForm({
         {pending ? "Adding…" : "Add shift"}
       </button>
     </form>
+  );
+}
+
+type Claim = { id: string; name: string; when: string; kind: "open" | "cover"; warnings: string[] };
+
+/** Requests from staff to pick up open shifts or cover colleagues, with one message area for the list. */
+export function ClaimList({ claims }: { claims: Claim[] }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(decideClaim, {});
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      <Message state={state} />
+      {claims.length === 0 ? (
+        <p>No requests waiting.</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {claims.map((c) => (
+            <li key={c.id} className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-amber-500 p-3">
+              <div>
+                <p className="font-medium">
+                  {c.name} would like {c.kind === "cover" ? "to cover" : "to pick up"} {c.when}
+                </p>
+                {c.warnings.map((w, i) => (
+                  <p key={i} className="text-sm">Check: {w}</p>
+                ))}
+              </div>
+              <form action={action} className="flex gap-2">
+                <input type="hidden" name="claimId" value={c.id} />
+                <button type="submit" name="decision" value="approve" disabled={pending} className="rounded-lg border border-zinc-400 px-3 py-1 text-sm">Approve</button>
+                <button type="submit" name="decision" value="decline" disabled={pending} className="rounded-lg border border-zinc-400 px-3 py-1 text-sm">Decline</button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

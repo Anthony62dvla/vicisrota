@@ -2,7 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDb, withOrganisation, type Database } from "../src/client";
 import { runMigrations } from "../src/migrate";
-import { auditEvent, client, tip, tipAllocation, tipShare, leaveRequest, timeEntry, organisation, qualification, shift, worker, workerCheck } from "../src/schema";
+import { auditEvent, client, shiftClaim, tip, tipAllocation, tipShare, leaveRequest, timeEntry, organisation, qualification, shift, worker, workerCheck } from "../src/schema";
 
 // Needs a disposable Postgres database, connected as a non-superuser (superusers bypass row-level security).
 // Example: TEST_DATABASE_URL=postgres://vicisrota:vicisrota@localhost:5433/vicisrota_test
@@ -120,6 +120,20 @@ describe.skipIf(!url)("database", () => {
     await expect(
       withOrganisation(db, cafe, (tx) => tx.insert(tip).values({ organisationId: cafe, receivedOn: "2026-10-03", amountPence: 0, source: "cash" })),
     ).rejects.toThrow();
+  });
+
+  it("allows one open request per person per shift, and keeps claims private", async () => {
+    const [amy] = await withOrganisation(db, cafe, (tx) => tx.select({ id: worker.id }).from(worker));
+    const [open] = await withOrganisation(db, cafe, (tx) =>
+      tx.insert(shift).values({ organisationId: cafe, startsAt: new Date("2026-10-06T09:00:00Z"), endsAt: new Date("2026-10-06T15:00:00Z") }).returning(),
+    );
+    const claim = { organisationId: cafe, shiftId: open!.id, workerId: amy!.id };
+    await withOrganisation(db, cafe, (tx) => tx.insert(shiftClaim).values(claim));
+    await expect(withOrganisation(db, cafe, (tx) => tx.insert(shiftClaim).values(claim))).rejects.toThrow();
+    // Once the first request is withdrawn, the person can ask again.
+    await withOrganisation(db, cafe, (tx) => tx.update(shiftClaim).set({ status: "withdrawn" }).where(eq(shiftClaim.shiftId, open!.id)));
+    await withOrganisation(db, cafe, (tx) => tx.insert(shiftClaim).values(claim));
+    expect(await withOrganisation(db, careHome, (tx) => tx.select().from(shiftClaim))).toEqual([]);
   });
 
   it("shows nothing when no business is set", async () => {

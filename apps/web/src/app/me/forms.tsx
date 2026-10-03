@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { requestTimeOff, type FormState } from "./actions";
+import { askToPickUp, requestTimeOff, type FormState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 
@@ -47,5 +47,30 @@ export function TimeOffForm({ unit, kinds }: { unit: "days" | "hours"; kinds: { 
         {pending ? "Sending…" : "Send request"}
       </button>
     </form>
+  );
+}
+
+/** Shifts this person could pick up, each checked against the law when they ask. */
+export function PickUpList({ shifts }: { shifts: { id: string; when: string; detail: string }[] }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(askToPickUp, {});
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      {state.error && <p role="alert" className="rounded-lg border border-red-400 p-3">{state.error}</p>}
+      {state.ok && <p role="status" className="rounded-lg border border-green-600 p-3">{state.ok}</p>}
+      <ul className="flex flex-col gap-2">
+        {shifts.map((s) => (
+          <li key={s.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-300 p-3 dark:border-zinc-700">
+            <div>
+              <p className="font-medium">{s.when}</p>
+              <p className="text-sm text-zinc-600 dark:text-zinc-400">{s.detail}</p>
+            </div>
+            <form action={action}>
+              <input type="hidden" name="shiftId" value={s.id} />
+              <button type="submit" disabled={pending} className="rounded-lg border border-zinc-400 px-3 py-1 text-sm">Ask to pick up</button>
+            </form>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

@@ -1,13 +1,13 @@
 import { addDays, londonDateTime, londonParts } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
-import { and, asc, desc, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, or } from "drizzle-orm";
 import { requireStaff } from "@/lib/business";
 import { db } from "@/lib/db";
 import { formatAmount, LEAVE_KINDS, LEAVE_LABEL, loadBalances } from "@/lib/leave";
 import { todayInUk } from "@/lib/rota";
 import { SignOutButton } from "../dashboard/sign-out";
-import { withdrawRequest } from "./actions";
-import { TimeOffForm } from "./forms";
+import { setCoverRequest, withdrawClaim, withdrawRequest } from "./actions";
+import { PickUpList, TimeOffForm } from "./forms";
 
 const MINUTE = 60_000;
 /** How far ahead staff can see published shifts. */
@@ -41,6 +41,23 @@ export default async function MyPage() {
           .from(schema.client)
           .where(inArray(schema.client.id, clientIds))
       : [];
+    const available = await tx
+      .select()
+      .from(schema.shift)
+      .where(
+        and(
+          eq(schema.shift.status, "published"),
+          gt(schema.shift.startsAt, new Date()),
+          lt(schema.shift.startsAt, to),
+          or(isNull(schema.shift.workerId), and(isNotNull(schema.shift.coverRequestedAt), ne(schema.shift.workerId, worker.id))),
+        ),
+      )
+      .orderBy(asc(schema.shift.startsAt));
+    const myClaims = await tx
+      .select({ claim: schema.shiftClaim, shift: schema.shift })
+      .from(schema.shiftClaim)
+      .innerJoin(schema.shift, eq(schema.shiftClaim.shiftId, schema.shift.id))
+      .where(and(eq(schema.shiftClaim.workerId, worker.id), eq(schema.shiftClaim.status, "requested")));
     const leave = await tx
       .select()
       .from(schema.leaveRequest)
@@ -59,7 +76,7 @@ export default async function MyPage() {
       .select({ policy: schema.organisation.tippingPolicy })
       .from(schema.organisation)
       .where(eq(schema.organisation.id, organisationId));
-    return { shifts, breaks, clients, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
+    return { now: new Date().getTime(), shifts, breaks, clients, available, myClaims, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
   });
 
   const days = new Map<string, typeof data.shifts>();
@@ -68,6 +85,14 @@ export default async function MyPage() {
     days.set(d, [...(days.get(d) ?? []), s]);
   }
   const { balance } = data;
+  const claimed = new Set(data.myClaims.map((c) => c.claim.shiftId));
+  const pickUp = data.available
+    .filter((s) => !claimed.has(s.id))
+    .map((s) => ({
+      id: s.id,
+      when: `${longDate(londonParts(s.startsAt.getTime()).date)}, ${timeFmt.format(s.startsAt)} to ${timeFmt.format(s.endsAt)}`,
+      detail: s.workerId ? "A colleague needs cover" : "Open shift",
+    }));
   const unit = worker.irregularHours ? "hours" : "days";
 
   return (
@@ -107,6 +132,14 @@ export default async function MyPage() {
                       {client?.postcode && <p className="text-sm">{client.postcode}</p>}
                       {s.travelMinutes > 0 && <p className="text-sm">Allow {s.travelMinutes} minutes to travel from your previous visit.</p>}
                       {client?.visitNotes && <p className="mt-1 rounded-md bg-zinc-100 p-2 text-sm dark:bg-zinc-900">{client.visitNotes}</p>}
+                      {s.startsAt.getTime() > data.now && (
+                        <form action={setCoverRequest} className="mt-1">
+                          <input type="hidden" name="shiftId" value={s.id} />
+                          <input type="hidden" name="wanted" value={String(!s.coverRequestedAt)} />
+                          {s.coverRequestedAt && <span className="text-sm">You have asked for cover. You keep this shift until your manager agrees a swap. </span>}
+                          <button type="submit" className="text-sm underline">{s.coverRequestedAt ? "Cancel cover request" : "Ask for someone to cover"}</button>
+                        </form>
+                      )}
                     </div>
                   );
                 })}
@@ -116,6 +149,29 @@ export default async function MyPage() {
         )}
         <a href="/me/calendar.ics" className="mt-3 inline-block underline">Add your shifts to your phone or computer calendar</a>
       </section>
+
+      {(pickUp.length > 0 || data.myClaims.length > 0) && (
+        <section className="mt-10" aria-labelledby="pickup-heading">
+          <h2 id="pickup-heading" className="text-lg font-semibold">Shifts you could pick up</h2>
+          {data.myClaims.length > 0 && (
+            <ul className="mt-2 flex flex-col gap-1">
+              {data.myClaims.map(({ claim, shift }) => (
+                <li key={claim.id} className="flex flex-wrap items-center gap-3">
+                  <span>
+                    You asked for {longDate(londonParts(shift.startsAt.getTime()).date)}, {timeFmt.format(shift.startsAt)} to {timeFmt.format(shift.endsAt)}. Waiting for your manager.
+                  </span>
+                  <form action={withdrawClaim}>
+                    <input type="hidden" name="id" value={claim.id} />
+                    <button type="submit" className="text-sm underline">Withdraw</button>
+                  </form>
+                </li>
+              ))}
+            </ul>
+          )}
+          {/* Kept mounted after the last shift is asked for, so the confirmation stays on screen. */}
+          <PickUpList shifts={pickUp} />
+        </section>
+      )}
 
       <section className="mt-10" aria-labelledby="holiday-heading">
         <h2 id="holiday-heading" className="text-lg font-semibold">Your holiday</h2>

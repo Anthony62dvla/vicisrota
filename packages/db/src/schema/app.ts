@@ -29,6 +29,7 @@ export const leaveKind = pgEnum("leave_kind", ["annual", "sick", "family", "unpa
 export const leaveStatus = pgEnum("leave_status", ["requested", "approved", "declined", "cancelled"]);
 export const tipSource = pgEnum("tip_source", ["card", "cash", "service_charge"]);
 export const tipMethod = pgEnum("tip_method", ["hours", "equal"]);
+export const claimStatus = pgEnum("claim_status", ["requested", "approved", "declined", "withdrawn"]);
 export const dbsLevel = pgEnum("dbs_level", ["basic", "standard", "enhanced", "enhanced_barred"]);
 
 const id = () => uuid("id").primaryKey().default(sql`gen_random_uuid()`);
@@ -129,6 +130,8 @@ export const shift = pgTable(
     clientId: uuid("client_id").references(() => client.id, { onDelete: "set null" }),
     /** Care: minutes travelling from the previous visit. */
     travelMinutes: integer("travel_minutes").notNull().default(0),
+    /** Set when the person on this shift has asked for someone to cover it. */
+    coverRequestedAt: timestamp("cover_requested_at", { withTimezone: true }),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
@@ -427,4 +430,30 @@ export const tipShare = pgTable(
     pence: integer("pence").notNull(),
   },
   (t) => [index("tip_share_worker_idx").on(t.workerId)],
+);
+
+/** A member of staff asking to take an open shift, or to cover a colleague's shift. A manager decides. */
+export const shiftClaim = pgTable(
+  "shift_claim",
+  {
+    id: id(),
+    organisationId: orgId(),
+    shiftId: uuid("shift_id")
+      .notNull()
+      .references(() => shift.id, { onDelete: "cascade" }),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    status: claimStatus("status").notNull().default("requested"),
+    /** Warnings from the compliance check when the claim was made, for the manager to see. */
+    warnings: jsonb("warnings").notNull().default([]),
+    decidedByUserId: text("decided_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("shift_claim_shift_idx").on(t.shiftId),
+    // One open claim per person per shift.
+    uniqueIndex("shift_claim_open_idx").on(t.shiftId, t.workerId).where(sql`${t.status} = 'requested'`),
+  ],
 );

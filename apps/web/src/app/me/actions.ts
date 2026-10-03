@@ -2,9 +2,10 @@
 
 import type { LeaveKind } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireStaff } from "@/lib/business";
+import { checkAssignment } from "@/lib/claims";
 import { db } from "@/lib/db";
 import { LEAVE_KINDS, LEAVE_LABEL } from "@/lib/leave";
 import { requestId } from "@/lib/request";
@@ -77,6 +78,86 @@ export async function withdrawRequest(form: FormData) {
       entity: "leave_request",
       entityId: id,
       data: { workerId: worker.id, selfService: true },
+    });
+  });
+  revalidatePath("/me");
+}
+
+/** Asks to pick up an open shift or cover a colleague. The legal checks run first, with reasons. */
+export async function askToPickUp(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId, worker } = await requireStaff();
+  const shiftId = String(form.get("shiftId") ?? "");
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
+    const [shift] = await tx
+      .select()
+      .from(schema.shift)
+      .where(and(eq(schema.shift.id, shiftId), eq(schema.shift.status, "published"), gt(schema.shift.startsAt, new Date())));
+    // Only open shifts and shifts someone has asked to have covered can be picked up.
+    if (!shift || shift.workerId === worker.id || (shift.workerId && !shift.coverRequestedAt)) return { error: "That shift is no longer available." };
+    const check = await checkAssignment(tx, organisationId, shiftId, worker.id);
+    if (!check) return { error: "That shift is no longer available." };
+    if (check.blocks.length) return { error: `You can't take this shift: ${check.blocks.map((f) => f.message).join(" ")}` };
+    const rows = await tx
+      .insert(schema.shiftClaim)
+      .values({ organisationId, shiftId, workerId: worker.id, warnings: check.warnings })
+      .onConflictDoNothing()
+      .returning({ id: schema.shiftClaim.id });
+    if (!rows.length) return { error: "You have already asked for this shift." };
+    await tx.insert(schema.auditEvent).values({
+      organisationId,
+      actorUserId: user.id,
+      requestId: await requestId(),
+      action: "create",
+      entity: "shift_claim",
+      entityId: rows[0]!.id,
+      data: { shiftId, workerId: worker.id, warnings: check.warnings.length },
+    });
+    return { ok: "Request sent. Your manager will confirm it, and the shift will then appear in your shifts." };
+  });
+  revalidatePath("/me");
+  return result;
+}
+
+export async function withdrawClaim(form: FormData) {
+  const { user, organisationId, worker } = await requireStaff();
+  const id = String(form.get("id") ?? "");
+  await withOrganisation(db, organisationId, async (tx) => {
+    const rows = await tx
+      .update(schema.shiftClaim)
+      .set({ status: "withdrawn", decidedByUserId: user.id, decidedAt: new Date() })
+      .where(and(eq(schema.shiftClaim.id, id), eq(schema.shiftClaim.workerId, worker.id), eq(schema.shiftClaim.status, "requested")))
+      .returning({ id: schema.shiftClaim.id });
+    if (!rows.length) return;
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "withdraw", entity: "shift_claim", entityId: id });
+  });
+  revalidatePath("/me");
+}
+
+/** Asks colleagues to cover one of your shifts, or takes the request back. You keep the shift until a manager approves cover. */
+export async function setCoverRequest(form: FormData) {
+  const { user, organisationId, worker } = await requireStaff();
+  const shiftId = String(form.get("shiftId") ?? "");
+  const wanted = form.get("wanted") === "true";
+  await withOrganisation(db, organisationId, async (tx) => {
+    const rows = await tx
+      .update(schema.shift)
+      .set({ coverRequestedAt: wanted ? new Date() : null })
+      .where(and(eq(schema.shift.id, shiftId), eq(schema.shift.workerId, worker.id), eq(schema.shift.status, "published"), gt(schema.shift.startsAt, new Date())))
+      .returning({ id: schema.shift.id });
+    if (!rows.length) return;
+    if (!wanted) {
+      await tx
+        .update(schema.shiftClaim)
+        .set({ status: "withdrawn", decidedByUserId: user.id, decidedAt: new Date() })
+        .where(and(eq(schema.shiftClaim.shiftId, shiftId), eq(schema.shiftClaim.status, "requested")));
+    }
+    await tx.insert(schema.auditEvent).values({
+      organisationId,
+      actorUserId: user.id,
+      requestId: await requestId(),
+      action: wanted ? "request_cover" : "cancel_cover",
+      entity: "shift",
+      entityId: shiftId,
     });
   });
   revalidatePath("/me");
