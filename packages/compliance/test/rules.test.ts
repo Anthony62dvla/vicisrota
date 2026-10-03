@@ -14,6 +14,9 @@ import {
   enhancedDbs,
   requiredTraining,
   rightToWork,
+  annualEntitlementDays,
+  leaveYear,
+  noShiftDuringLeave,
   type Context,
   type Shift,
   type Worker,
@@ -314,5 +317,52 @@ describe("training a shift needs", () => {
   it("passes when current", () => {
     const current = { ...adult, qualifications: [{ ...meds, expiresOn: "2027-09-30" }] };
     expect(requiredTraining.check(ctx([medsShift], { workers: [current] }))).toEqual([]);
+  });
+});
+
+describe("leave", () => {
+  const tuesday = shift("s", "amy", "2026-10-06T09:00:00+01:00", "2026-10-06T17:00:00+01:00");
+  const holiday = { workerId: "amy", kind: "annual" as const, startsOn: "2026-10-06", endsOn: "2026-10-09" };
+
+  it("blocks a shift during approved holiday", () => {
+    const [f] = noShiftDuringLeave.check(ctx([tuesday], { leave: [{ ...holiday, status: "approved" }] }));
+    expect(f).toMatchObject({ severity: "block", evidence: { date: "2026-10-06" } });
+    expect(f?.message).toContain("approved holiday");
+  });
+
+  it("warns about a shift during leave that has only been requested", () => {
+    const [f] = noShiftDuringLeave.check(ctx([tuesday], { leave: [{ ...holiday, status: "requested" }] }));
+    expect(f?.severity).toBe("warn");
+  });
+
+  it("catches an overnight shift that runs into the first day of leave", () => {
+    const night = shift("n", "amy", "2026-10-05T22:00:00+01:00", "2026-10-06T06:00:00+01:00");
+    expect(noShiftDuringLeave.check(ctx([night], { leave: [{ ...holiday, status: "approved" }] }))).toHaveLength(1);
+  });
+
+  it("allows a shift that ends at midnight before leave starts", () => {
+    const evening = shift("e", "amy", "2026-10-05T16:00:00+01:00", "2026-10-06T00:00:00+01:00");
+    expect(noShiftDuringLeave.check(ctx([evening], { leave: [{ ...holiday, status: "approved" }] }))).toEqual([]);
+  });
+
+  it("ignores other people's leave", () => {
+    expect(noShiftDuringLeave.check(ctx([tuesday], { leave: [{ ...holiday, workerId: "tom", status: "approved" }] }))).toEqual([]);
+  });
+});
+
+describe("holiday entitlement", () => {
+  it("finds the leave year for January and April starts", () => {
+    expect(leaveYear("2026-10-03")).toEqual({ start: "2026-01-01", end: "2026-12-31" });
+    expect(leaveYear("2026-02-10", 4)).toEqual({ start: "2025-04-01", end: "2026-03-31" });
+  });
+
+  it("gives a full year's leave to someone already employed", () => {
+    expect(annualEntitlementDays({ daysWorkedPerWeek: 5, year: leaveYear("2026-10-03"), employmentStart: "2024-03-01" })).toBe(28);
+    expect(annualEntitlementDays({ daysWorkedPerWeek: 3, year: leaveYear("2026-10-03") })).toBe(16.8);
+  });
+
+  it("pro-rates a part-year starter and rounds up to the next half day", () => {
+    // 1 July to 31 December is 184 of 365 days: 28 x 184 / 365 = 14.1, rounded up to 14.5.
+    expect(annualEntitlementDays({ daysWorkedPerWeek: 5, year: leaveYear("2026-10-03"), employmentStart: "2026-07-01" })).toBe(14.5);
   });
 });

@@ -29,6 +29,18 @@ export function AddWorkerForm() {
         <span className="font-medium">Rate starts on</span>
         <input name="rateFrom" type="date" required className={input} />
       </label>
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Start date (optional)</span>
+        <span className="text-sm text-zinc-600 dark:text-zinc-400">New starters get a share of the year&apos;s holiday.</span>
+        <input name="employmentStart" type="date" className={input} />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Usual days worked a week</span>
+        <input name="daysPerWeek" type="number" min={0.5} max={7} step={0.5} defaultValue={5} className={input} />
+      </label>
+      <label className="flex items-center gap-2">
+        <input name="irregularHours" type="checkbox" /> Works irregular hours (holiday counted in hours)
+      </label>
       <label className="flex items-center gap-2">
         <input name="optedOut" type="checkbox" /> Has signed an opt-out from the 48-hour week
       </label>

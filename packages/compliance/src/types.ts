@@ -77,6 +77,18 @@ export interface Finding {
   legalRef: string;
 }
 
+export type LeaveKind = "annual" | "sick" | "family" | "unpaid" | "compassionate" | "other";
+export type LeaveStatus = "requested" | "approved";
+
+/** Time off, whole days from startsOn to endsOn inclusive (UK dates). */
+export interface Leave {
+  workerId: string;
+  kind: LeaveKind;
+  status: LeaveStatus;
+  startsOn: LocalDate;
+  endsOn: LocalDate;
+}
+
 export interface Context {
   /** The date the rota is being checked on; selects which rule versions apply. */
   asOf: LocalDate;
@@ -84,6 +96,8 @@ export interface Context {
   /** All shifts for the period under check, plus enough history for averaging. */
   shifts: Shift[];
   payRates?: PayRate[];
+  /** Approved and requested leave. Declined and cancelled leave is left out. */
+  leave?: Leave[];
   settings?: {
     /** Care providers: every shift is regulated activity needing an enhanced DBS with barred list check. */
     requireEnhancedDbs?: boolean;

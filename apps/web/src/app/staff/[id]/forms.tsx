@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { addCheck, addTraining, type FormState } from "./actions";
+import { addCheck, addTraining, updateHolidaySettings, type FormState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 const button = "rounded-lg bg-zinc-900 px-4 py-2 text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900";
@@ -86,6 +86,41 @@ export function AddTrainingForm({ workerId, known }: { workerId: string; known: 
       </label>
       <button type="submit" disabled={pending} className={button}>
         {pending ? "Saving…" : "Save training"}
+      </button>
+    </form>
+  );
+}
+
+export function HolidaySettingsForm({
+  workerId,
+  employmentStart,
+  daysPerWeek,
+  irregularHours,
+}: {
+  workerId: string;
+  employmentStart: string | null;
+  daysPerWeek: number;
+  irregularHours: boolean;
+}) {
+  const [state, action, pending] = useActionState<FormState, FormData>(updateHolidaySettings, {});
+  return (
+    <form action={action} className="mt-4 flex max-w-md flex-col gap-4">
+      <h3 className="font-semibold">Holiday settings</h3>
+      <Message state={state} />
+      <input type="hidden" name="workerId" value={workerId} />
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Start date (optional)</span>
+        <input name="employmentStart" type="date" defaultValue={employmentStart ?? ""} className={input} />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Usual days worked a week</span>
+        <input name="daysPerWeek" type="number" min={0.5} max={7} step={0.5} defaultValue={daysPerWeek} className={input} />
+      </label>
+      <label className="flex items-center gap-2">
+        <input name="irregularHours" type="checkbox" defaultChecked={irregularHours} /> Works irregular hours (holiday counted in hours)
+      </label>
+      <button type="submit" disabled={pending} className={button}>
+        {pending ? "Saving…" : "Save holiday settings"}
       </button>
     </form>
   );

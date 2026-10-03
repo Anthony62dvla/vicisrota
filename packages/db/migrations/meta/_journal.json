@@ -29,6 +29,20 @@
       "when": 1791045466941,
       "tag": "0003_staff_checks_row_level_security",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791045953882,
+      "tag": "0004_leave",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791045954535,
+      "tag": "0005_leave_row_level_security",
+      "breakpoints": true
     }
   ]
 }

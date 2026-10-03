@@ -4,9 +4,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
+import { formatAmount, loadBalances } from "@/lib/leave";
 import { todayInUk } from "@/lib/rota";
 import { removeTraining } from "./actions";
-import { AddCheckForm, AddTrainingForm } from "./forms";
+import { AddCheckForm, AddTrainingForm, HolidaySettingsForm } from "./forms";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DBS_LABEL = { basic: "Basic", standard: "Standard", enhanced: "Enhanced", enhanced_barred: "Enhanced with barred list" };
@@ -30,11 +31,13 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
         .innerJoin(schema.qualification, eq(schema.workerQualification.qualificationId, schema.qualification.id))
         .where(eq(schema.workerQualification.workerId, id))
         .orderBy(asc(schema.qualification.name)),
+      holiday: await loadBalances(tx, organisationId, today),
       known: (await tx.select({ name: schema.qualification.name }).from(schema.qualification).orderBy(asc(schema.qualification.name))).map((q) => q.name),
     };
   });
   if (!data) notFound();
-  const { worker, checks, training, known } = data;
+  const { worker, checks, training, known, holiday } = data;
+  const balance = holiday.balances.get(worker.id)!;
   const rtw = checks.filter((c) => c.kind === "right_to_work");
   const dbs = checks.filter((c) => c.kind === "dbs");
   const hasValidRtw = rtw.some((c) => c.checkedOn <= today && (!c.expiresOn || c.expiresOn >= today));
@@ -103,6 +106,22 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
           </ul>
         )}
         <AddTrainingForm workerId={worker.id} known={known} />
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-lg font-semibold">Holiday</h2>
+        <p className="mt-2">
+          {formatAmount(balance.remaining, balance.unit)} left of {formatAmount(balance.entitlement, balance.unit)}
+          {balance.unit === "hours" ? " built up so far" : ""} this leave year ({ukDate(holiday.year.start)} to {ukDate(holiday.year.end)}).
+          {balance.requested > 0 && ` ${formatAmount(balance.requested, balance.unit)} waiting for a decision.`}{" "}
+          <Link href="/leave" className="underline">Book leave</Link>
+        </p>
+        <HolidaySettingsForm
+          workerId={worker.id}
+          employmentStart={worker.employmentStart}
+          daysPerWeek={worker.daysPerWeek}
+          irregularHours={worker.irregularHours}
+        />
       </section>
     </main>
   );

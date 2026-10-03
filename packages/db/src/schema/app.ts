@@ -9,9 +9,11 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   primaryKey,
+  smallint,
   text,
   timestamp,
   uuid,
@@ -22,6 +24,8 @@ export const sector = pgEnum("sector", ["care", "hospitality", "small_business"]
 export const role = pgEnum("role", ["owner", "manager", "worker"]);
 export const shiftStatus = pgEnum("shift_status", ["draft", "published", "cancelled"]);
 export const checkKind = pgEnum("check_kind", ["right_to_work", "dbs"]);
+export const leaveKind = pgEnum("leave_kind", ["annual", "sick", "family", "unpaid", "compassionate", "other"]);
+export const leaveStatus = pgEnum("leave_status", ["requested", "approved", "declined", "cancelled"]);
 export const dbsLevel = pgEnum("dbs_level", ["basic", "standard", "enhanced", "enhanced_barred"]);
 
 const id = () => uuid("id").primaryKey().default(sql`gen_random_uuid()`);
@@ -37,6 +41,8 @@ export const organisation = pgTable("organisation", {
   sector: sector("sector").notNull(),
   /** Care providers: every shift needs an enhanced DBS with barred list check. */
   requiresEnhancedDbs: boolean("requires_enhanced_dbs").notNull().default(false),
+  /** Month the holiday year starts, 1 = January. */
+  leaveYearStartMonth: smallint("leave_year_start_month").notNull().default(1),
   createdAt: createdAt(),
 });
 
@@ -73,6 +79,10 @@ export const worker = pgTable(
     employmentStart: date("employment_start"),
     optedOutOf48HourLimit: boolean("opted_out_of_48_hour_limit").notNull().default(false),
     apprenticeRateApplies: boolean("apprentice_rate_applies").notNull().default(false),
+    /** Usual working days a week, for statutory leave (5.6 weeks, capped at 28 days). */
+    daysPerWeek: numeric("days_per_week", { precision: 3, scale: 1, mode: "number" }).notNull().default(5),
+    /** Irregular hours or part-year: leave accrues at 12.07% of hours worked instead. */
+    irregularHours: boolean("irregular_hours").notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [index("worker_org_idx").on(t.organisationId)],
@@ -234,4 +244,33 @@ export const shiftRequirement = pgTable(
       .references(() => qualification.id, { onDelete: "cascade" }),
   },
   (t) => [primaryKey({ columns: [t.shiftId, t.qualificationId] })],
+);
+
+/** Holiday, sickness and other time off. Days are whole UK dates, startsOn to endsOn inclusive. */
+export const leaveRequest = pgTable(
+  "leave_request",
+  {
+    id: id(),
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    kind: leaveKind("kind").notNull(),
+    status: leaveStatus("status").notNull().default("requested"),
+    startsOn: date("starts_on").notNull(),
+    endsOn: date("ends_on").notNull(),
+    /** Working days taken from the holiday balance (annual leave, regular hours). */
+    days: numeric("days", { precision: 4, scale: 1, mode: "number" }),
+    /** Hours taken from the balance (annual leave, irregular hours). */
+    hours: numeric("hours", { precision: 5, scale: 2, mode: "number" }),
+    note: text("note"),
+    requestedByUserId: text("requested_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    decidedByUserId: text("decided_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("leave_request_worker_idx").on(t.workerId, t.startsOn),
+    check("leave_request_dates", sql`${t.endsOn} >= ${t.startsOn}`),
+  ],
 );

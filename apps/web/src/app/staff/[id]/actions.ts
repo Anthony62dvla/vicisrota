@@ -127,3 +127,34 @@ export async function removeTraining(form: FormData) {
   });
   revalidatePath(`/staff/${workerId}`);
 }
+
+export async function updateHolidaySettings(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  const employmentStart = optionalDate(form.get("employmentStart"));
+  const daysPerWeek = Number(form.get("daysPerWeek") ?? "");
+  const irregularHours = form.get("irregularHours") === "on";
+  if (!(daysPerWeek > 0 && daysPerWeek <= 7)) return { error: "Enter the usual days worked a week, between 0.5 and 7." };
+
+  const result = await withOrganisation(db, organisationId, async (tx) => {
+    const rows = await tx
+      .update(schema.worker)
+      .set({ employmentStart, daysPerWeek, irregularHours })
+      .where(eq(schema.worker.id, workerId))
+      .returning({ name: schema.worker.fullName });
+    if (!rows.length) return { error: "That person could not be found." };
+    await tx.insert(schema.auditEvent).values({
+      organisationId,
+      actorUserId: user.id,
+      requestId: await requestId(),
+      action: "update",
+      entity: "worker",
+      entityId: workerId,
+      data: { employmentStart, daysPerWeek, irregularHours },
+    });
+    return { ok: `Holiday settings saved for ${rows[0]!.name}.` };
+  });
+  revalidatePath(`/staff/${workerId}`);
+  revalidatePath("/leave");
+  return result;
+}

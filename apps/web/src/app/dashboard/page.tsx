@@ -28,6 +28,7 @@ export default async function Dashboard() {
         <nav className="mt-6 flex gap-4" aria-label="Main">
           <Link href="/rota" className="rounded-lg border border-zinc-400 px-4 py-2">Rota</Link>
           <Link href="/staff" className="rounded-lg border border-zinc-400 px-4 py-2">Staff</Link>
+          <Link href="/leave" className="rounded-lg border border-zinc-400 px-4 py-2">Leave</Link>
         </nav>
         <ul className="mt-6 space-y-3">
           {businesses.map((b) => (
