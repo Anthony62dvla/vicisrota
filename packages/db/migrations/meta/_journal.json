@@ -134,6 +134,20 @@
       "when": 1791064599560,
       "tag": "0018_lone_working_protection",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791066697511,
+      "tag": "0019_calm_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791066698442,
+      "tag": "0020_calm_mode_row_level_security",
+      "breakpoints": true
     }
   ]
 }

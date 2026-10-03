@@ -2,13 +2,15 @@ import { addDays, londonDateTime, londonParts } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, or } from "drizzle-orm";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { requireStaff } from "@/lib/business";
 import { db } from "@/lib/db";
 import { formatAmount, LEAVE_KINDS, LEAVE_LABEL, loadBalances } from "@/lib/leave";
 import { loadLoneShifts } from "@/lib/lone-working";
+import { SHORT_NOTICE_HOURS } from "@/lib/notices";
 import { todayInUk } from "@/lib/rota";
 import { SignOutButton } from "../dashboard/sign-out";
-import { setCoverRequest, withdrawClaim, withdrawRequest } from "./actions";
+import { markNoticesSeen, savePreferences, setCoverRequest, withdrawClaim, withdrawRequest } from "./actions";
 import { LoneCheckIn, PickUpList, TimeOffForm } from "./forms";
 
 const MINUTE = 60_000;
@@ -18,6 +20,17 @@ const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", ho
 const longDate = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" });
 const shortDate = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "long" });
 const STATUS = { requested: "Waiting for your manager", approved: "Approved", declined: "Not approved", cancelled: "Withdrawn" } as const;
+
+/** Calm mode keeps the essentials on screen and tucks everything else away until asked for. */
+function More({ calm, children }: { calm: boolean; children: ReactNode }) {
+  if (!calm) return <>{children}</>;
+  return (
+    <details className="mt-10 rounded-lg border border-zinc-300 p-4 dark:border-zinc-700">
+      <summary className="cursor-pointer font-medium">More: holiday, time off, tips and picking up shifts</summary>
+      {children}
+    </details>
+  );
+}
 
 export default async function MyPage() {
   const { user, organisationId, businessName, worker } = await requireStaff();
@@ -84,7 +97,12 @@ export default async function MyPage() {
     const lone = (await loadLoneShifts(tx, { from: new Date(now - 2 * 3_600_000), to: new Date(now + 30 * 60_000), now, workerId: worker.id })).filter(
       (l) => l.status.state !== "finished" || l.shift.endsAt.getTime() > now,
     );
-    return { now, lone, shifts, breaks, clients, available, myClaims, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
+    const notices = await tx
+      .select()
+      .from(schema.rotaNotice)
+      .where(and(eq(schema.rotaNotice.workerId, worker.id), isNull(schema.rotaNotice.seenAt)))
+      .orderBy(asc(schema.rotaNotice.startsAt));
+    return { now, lone, notices, shifts, breaks, clients, available, myClaims, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
   });
 
   const days = new Map<string, typeof data.shifts>();
@@ -102,9 +120,17 @@ export default async function MyPage() {
       detail: s.workerId ? "A colleague needs cover" : "Open shift",
     }));
   const unit = worker.irregularHours ? "hours" : "days";
+  const { calm = false, largeText = false } = worker.preferences;
+  const next = data.shifts.find((s) => s.endsAt.getTime() > data.now);
+  const NOTICE_TEXT = {
+    added: "New shift",
+    cancelled: "Cancelled",
+    given_to_you: "Now yours (you picked it up)",
+    taken_by_colleague: "A colleague is covering this",
+  } as const;
 
   return (
-    <main className="mx-auto w-full max-w-2xl px-4 py-12">
+    <main className={`mx-auto w-full max-w-2xl px-4 py-12 ${largeText ? "text-lg" : ""}`}>
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Hello, {user.name}</h1>
@@ -135,6 +161,38 @@ export default async function MyPage() {
           )}
         </section>
       ))}
+
+      {data.notices.length > 0 && (
+        <section className="mt-6 rounded-lg border-2 border-zinc-900 p-4 dark:border-zinc-100" aria-labelledby="changes-heading">
+          <h2 id="changes-heading" className="text-lg font-semibold">What has changed in your rota</h2>
+          <ul className="mt-2 flex flex-col gap-2">
+            {data.notices.map((n) => (
+              <li key={n.id}>
+                <strong>{NOTICE_TEXT[n.kind]}:</strong> {longDate(londonParts(n.startsAt.getTime()).date)}, {timeFmt.format(n.startsAt)} to{" "}
+                {timeFmt.format(n.endsAt)}.
+                {n.noticeHours < SHORT_NOTICE_HOURS && n.kind !== "given_to_you" && (
+                  <span className="block text-sm text-zinc-600 dark:text-zinc-400">
+                    Short notice: {n.kind === "added" ? "added" : "changed"} {n.noticeHours < 48 ? `${n.noticeHours} hours` : `${Math.floor(n.noticeHours / 24)} days`} before the
+                    shift. Speak to your manager if this causes you a problem.
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+          <form action={markNoticesSeen} className="mt-3">
+            <button type="submit" className="rounded-lg border border-zinc-400 px-4 py-2">Got it</button>
+          </form>
+        </section>
+      )}
+
+      {next && (
+        <p className="mt-6 rounded-lg bg-zinc-100 p-4 dark:bg-zinc-900">
+          <span className="block text-sm text-zinc-600 dark:text-zinc-400">{next.startsAt.getTime() <= data.now ? "Now" : "Your next shift"}</span>
+          <span className="text-xl font-semibold">
+            {longDate(londonParts(next.startsAt.getTime()).date)}, {timeFmt.format(next.startsAt)} to {timeFmt.format(next.endsAt)}
+          </span>
+        </p>
+      )}
 
       <section className="mt-8" aria-labelledby="shifts-heading">
         <h2 id="shifts-heading" className="text-lg font-semibold">Your shifts</h2>
@@ -181,6 +239,7 @@ export default async function MyPage() {
         <a href="/me/calendar.ics" className="mt-3 inline-block underline">Add your shifts to your phone or computer calendar</a>
       </section>
 
+      <More calm={calm}>
       {(pickUp.length > 0 || data.myClaims.length > 0) && (
         <section className="mt-10" aria-labelledby="pickup-heading">
           <h2 id="pickup-heading" className="text-lg font-semibold">Shifts you could pick up</h2>
@@ -270,6 +329,7 @@ export default async function MyPage() {
         <h2 id="ask-heading" className="text-lg font-semibold">Ask for time off</h2>
         <TimeOffForm unit={unit} kinds={LEAVE_KINDS.map((k) => ({ value: k, label: LEAVE_LABEL[k] }))} />
       </section>
+      </More>
 
       <section className="mt-10" aria-labelledby="concern-heading">
         <h2 id="concern-heading" className="text-lg font-semibold">Worried about something?</h2>
@@ -278,6 +338,23 @@ export default async function MyPage() {
           without your name.
         </p>
         <Link href="/me/concern" className="mt-2 inline-block rounded-lg border border-zinc-400 px-4 py-2">Raise a concern</Link>
+      </section>
+
+      <section className="mt-10" aria-labelledby="view-heading">
+        <h2 id="view-heading" className="text-lg font-semibold">How this page looks</h2>
+        <form action={savePreferences} className="mt-2 flex flex-col gap-3">
+          <label className="flex items-start gap-2">
+            <input type="checkbox" name="calm" defaultChecked={calm} className="mt-1" />
+            <span>
+              Calm mode
+              <span className="block text-sm text-zinc-600 dark:text-zinc-400">Shows your shifts and any changes first, and puts everything else under &ldquo;More&rdquo;.</span>
+            </span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" name="largeText" defaultChecked={largeText} /> Larger text
+          </label>
+          <button type="submit" className="self-start rounded-lg border border-zinc-400 px-4 py-2">Save</button>
+        </form>
       </section>
     </main>
   );

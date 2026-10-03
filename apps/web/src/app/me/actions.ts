@@ -2,7 +2,7 @@
 
 import type { LeaveKind } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireStaff } from "@/lib/business";
 import { checkAssignment } from "@/lib/claims";
@@ -193,4 +193,23 @@ export async function loneCheckIn(_: FormState, form: FormData): Promise<FormSta
   if (kind === "help" && !result.error) await log("warn", "lone worker asked for help", { organisationId, shiftId });
   revalidatePath("/me");
   return result;
+}
+
+/** "Got it": the person has read their rota changes. */
+export async function markNoticesSeen() {
+  const { organisationId, worker } = await requireStaff();
+  await withOrganisation(db, organisationId, (tx) =>
+    tx
+      .update(schema.rotaNotice)
+      .set({ seenAt: new Date() })
+      .where(and(eq(schema.rotaNotice.workerId, worker.id), isNull(schema.rotaNotice.seenAt))),
+  );
+  revalidatePath("/me");
+}
+
+export async function savePreferences(form: FormData) {
+  const { organisationId, worker } = await requireStaff();
+  const preferences = { calm: form.get("calm") === "on", largeText: form.get("largeText") === "on" };
+  await withOrganisation(db, organisationId, (tx) => tx.update(schema.worker).set({ preferences }).where(eq(schema.worker.id, worker.id)));
+  revalidatePath("/me");
 }

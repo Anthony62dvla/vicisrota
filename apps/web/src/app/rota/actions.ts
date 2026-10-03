@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
 import { log } from "@/lib/log";
+import { notify } from "@/lib/notices";
 import { requestId } from "@/lib/request";
 import { checkAssignment } from "@/lib/claims";
 import { loadComplianceContext, weekBounds } from "@/lib/rota";
@@ -93,7 +94,13 @@ export async function cancelShift(form: FormData) {
   const { user, organisationId } = await requireManager();
   const shiftId = String(form.get("shiftId") ?? "");
   await withOrganisation(db, organisationId, async (tx) => {
-    await tx.update(schema.shift).set({ status: "cancelled" }).where(eq(schema.shift.id, shiftId));
+    const [cancelled] = await tx
+      .update(schema.shift)
+      .set({ status: "cancelled" })
+      .where(eq(schema.shift.id, shiftId))
+      .returning({ workerId: schema.shift.workerId, startsAt: schema.shift.startsAt, endsAt: schema.shift.endsAt, publishedAt: schema.shift.publishedAt });
+    // Staff only knew about it if it had been published.
+    if (cancelled?.publishedAt) await notify(tx, organisationId, [{ ...cancelled, shiftId, kind: "cancelled" }]);
     await tx.insert(schema.auditEvent).values({
       organisationId,
       actorUserId: user.id,
@@ -139,8 +146,9 @@ export async function checkAndPublish(_: FormState, form: FormData): Promise<For
         .update(schema.shift)
         .set({ status: "published", publishedAt: new Date() })
         .where(and(eq(schema.shift.status, "draft"), gte(schema.shift.startsAt, from), lt(schema.shift.startsAt, to)))
-        .returning({ id: schema.shift.id });
+        .returning({ id: schema.shift.id, workerId: schema.shift.workerId, startsAt: schema.shift.startsAt, endsAt: schema.shift.endsAt });
       published = rows.length;
+      await notify(tx, organisationId, rows.map((r) => ({ ...r, shiftId: r.id, kind: "added" as const })));
       await tx.insert(schema.auditEvent).values({
         organisationId,
         actorUserId: user.id,
@@ -203,6 +211,11 @@ export async function decideClaim(_: FormState, form: FormData): Promise<FormSta
       .update(schema.shiftClaim)
       .set({ status: "declined", decidedByUserId: user.id, decidedAt: new Date() })
       .where(and(eq(schema.shiftClaim.shiftId, shiftId), eq(schema.shiftClaim.status, "requested")));
+    const times = { shiftId, startsAt: check.shift.startsAt, endsAt: check.shift.endsAt };
+    await notify(tx, organisationId, [
+      { ...times, workerId, kind: "given_to_you" },
+      { ...times, workerId: previous, kind: "taken_by_colleague" },
+    ]);
     await audit("approve", { previousWorkerId: previous });
     return { ok: `${claim.name} now has this shift.` };
   });

@@ -34,6 +34,7 @@ export const concernCategory = pgEnum("concern_category", ["abuse_or_neglect", "
 export const concernStatus = pgEnum("concern_status", ["open", "in_progress", "referred", "closed"]);
 export const concernActionKind = pgEnum("concern_action_kind", ["note", "referral", "status"]);
 export const loneCheckKind = pgEnum("lone_check_kind", ["start", "ok", "finished", "help", "resolved"]);
+export const noticeKind = pgEnum("notice_kind", ["added", "cancelled", "given_to_you", "taken_by_colleague"]);
 export const dbsLevel = pgEnum("dbs_level", ["basic", "standard", "enhanced", "enhanced_barred"]);
 
 const id = () => uuid("id").primaryKey().default(sql`gen_random_uuid()`);
@@ -95,6 +96,8 @@ export const worker = pgTable(
     daysPerWeek: numeric("days_per_week", { precision: 3, scale: 1, mode: "number" }).notNull().default(5),
     /** Irregular hours or part-year: leave accrues at 12.07% of hours worked instead. */
     irregularHours: boolean("irregular_hours").notNull().default(false),
+    /** How the person likes their own pages shown: calm mode (fewer things at once) and larger text. */
+    preferences: jsonb("preferences").$type<{ calm?: boolean; largeText?: boolean }>().notNull().default({}),
     createdAt: createdAt(),
   },
   (t) => [
@@ -530,4 +533,29 @@ export const loneWorkCheck = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("lone_work_check_shift_idx").on(t.shiftId, t.createdAt)],
+);
+
+/**
+ * Tells a person each time their published rota changes, so nothing moves without them knowing.
+ * notice_hours is how much warning they got: the time from the change to the start of the shift.
+ */
+export const rotaNotice = pgTable(
+  "rota_notice",
+  {
+    id: id(),
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    shiftId: uuid("shift_id")
+      .notNull()
+      .references(() => shift.id, { onDelete: "cascade" }),
+    kind: noticeKind("kind").notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    noticeHours: integer("notice_hours").notNull(),
+    seenAt: timestamp("seen_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("rota_notice_worker_idx").on(t.workerId, t.createdAt)],
 );
