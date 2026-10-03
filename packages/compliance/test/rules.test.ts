@@ -11,13 +11,17 @@ import {
   weeklyRest,
   youngWorkerHours,
   youngWorkerNight,
+  enhancedDbs,
+  requiredTraining,
+  rightToWork,
   type Context,
   type Shift,
   type Worker,
 } from "../src/index";
 
-const adult: Worker = { id: "amy", name: "Amy", dateOfBirth: "1990-05-01" };
-const teen: Worker = { id: "tom", name: "Tom", dateOfBirth: "2009-06-15" }; // 17 in October 2026
+const rtw = [{ kind: "right_to_work" as const, checkedOn: "2026-01-05" }];
+const adult: Worker = { id: "amy", name: "Amy", dateOfBirth: "1990-05-01", checks: rtw };
+const teen: Worker = { id: "tom", name: "Tom", dateOfBirth: "2009-06-15", checks: rtw }; // 17 in October 2026
 
 const shift = (id: string, workerId: string, start: string, end: string, breaks: Shift["breaks"] = []): Shift => ({
   id,
@@ -241,5 +245,74 @@ describe("UK time helpers", () => {
   it("rejects an impossible time", async () => {
     const { londonDateTime } = await import("../src/index");
     expect(() => londonDateTime("2026-07-01", "25:00")).toThrow();
+  });
+});
+
+describe("right to work", () => {
+  const monday = shift("s", "amy", "2026-10-05T09:00:00+01:00", "2026-10-05T13:00:00+01:00");
+
+  it("blocks a shift with no check on file", () => {
+    const [f] = rightToWork.check(ctx([monday], { workers: [{ ...adult, checks: [] }] }));
+    expect(f?.severity).toBe("block");
+  });
+
+  it("blocks a check done after the shift date", () => {
+    const late = { ...adult, checks: [{ kind: "right_to_work" as const, checkedOn: "2026-10-06" }] };
+    expect(rightToWork.check(ctx([monday], { workers: [late] }))[0]?.severity).toBe("block");
+  });
+
+  it("blocks once time-limited permission has ended", () => {
+    const expired = { ...adult, checks: [{ kind: "right_to_work" as const, checkedOn: "2025-01-01", expiresOn: "2026-10-01" }] };
+    expect(rightToWork.check(ctx([monday], { workers: [expired] }))[0]?.severity).toBe("block");
+  });
+
+  it("warns when a follow-up check is due within 28 days", () => {
+    const soon = { ...adult, checks: [{ kind: "right_to_work" as const, checkedOn: "2025-01-01", expiresOn: "2026-10-20" }] };
+    const [f] = rightToWork.check(ctx([monday], { workers: [soon] }));
+    expect(f).toMatchObject({ severity: "warn", evidence: { expiresOn: "2026-10-20" } });
+  });
+
+  it("passes an open-ended check", () => {
+    expect(rightToWork.check(ctx([monday]))).toEqual([]);
+  });
+});
+
+describe("enhanced DBS for care", () => {
+  const monday = shift("s", "amy", "2026-10-05T09:00:00+01:00", "2026-10-05T13:00:00+01:00");
+  const care = { settings: { requireEnhancedDbs: true } };
+
+  it("is not required outside care", () => {
+    expect(enhancedDbs.check(ctx([monday]))).toEqual([]);
+  });
+
+  it("blocks without an enhanced check with barred list", () => {
+    const basic = { ...adult, checks: [...rtw, { kind: "dbs" as const, checkedOn: "2026-01-01", dbsLevel: "enhanced" as const }] };
+    expect(enhancedDbs.check(ctx([monday], { ...care, workers: [basic] }))[0]?.severity).toBe("block");
+  });
+
+  it("passes with an enhanced check with barred list", () => {
+    const ok = { ...adult, checks: [...rtw, { kind: "dbs" as const, checkedOn: "2026-01-01", dbsLevel: "enhanced_barred" as const }] };
+    expect(enhancedDbs.check(ctx([monday], { ...care, workers: [ok] }))).toEqual([]);
+  });
+});
+
+describe("training a shift needs", () => {
+  const meds = { id: "q-meds", name: "medication competency" };
+  const medsShift = { ...shift("s", "amy", "2026-10-05T09:00:00+01:00", "2026-10-05T13:00:00+01:00"), requiredQualifications: [meds] };
+
+  it("blocks when the person does not hold it", () => {
+    const [f] = requiredTraining.check(ctx([medsShift]));
+    expect(f?.message).toBe("Amy does not have medication competency, which this shift needs.");
+  });
+
+  it("blocks when it has expired", () => {
+    const lapsed = { ...adult, qualifications: [{ ...meds, expiresOn: "2026-09-30" }] };
+    const [f] = requiredTraining.check(ctx([medsShift], { workers: [lapsed] }));
+    expect(f?.message).toBe("Amy's medication competency expired on 2026-09-30, and this shift needs it.");
+  });
+
+  it("passes when current", () => {
+    const current = { ...adult, qualifications: [{ ...meds, expiresOn: "2027-09-30" }] };
+    expect(requiredTraining.check(ctx([medsShift], { workers: [current] }))).toEqual([]);
   });
 });

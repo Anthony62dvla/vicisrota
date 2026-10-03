@@ -25,7 +25,15 @@ export function PublishForm({ weekStart }: { weekStart: string }) {
   );
 }
 
-export function AddShiftForm({ workers, days }: { workers: { id: string; name: string }[]; days: string[] }) {
+export function AddShiftForm({
+  workers,
+  days,
+  training,
+}: {
+  workers: { id: string; name: string }[];
+  days: string[];
+  training: { id: string; name: string }[];
+}) {
   const [state, action, pending] = useActionState<FormState, FormData>(addShift, {});
   return (
     <form action={action} className="mt-10 flex max-w-md flex-col gap-4">
@@ -63,6 +71,16 @@ export function AddShiftForm({ workers, days }: { workers: { id: string; name: s
         <span className="font-medium">Unpaid break (minutes)</span>
         <input name="breakMinutes" type="number" min={0} max={240} defaultValue={0} className={input} />
       </label>
+      {training.length > 0 && (
+        <fieldset className="flex flex-col gap-2">
+          <legend className="font-medium">Training this shift needs</legend>
+          {training.map((t) => (
+            <label key={t.id} className="flex items-center gap-2">
+              <input type="checkbox" name="requires" value={t.id} /> {t.name}
+            </label>
+          ))}
+        </fieldset>
+      )}
       <button type="submit" disabled={pending} className={button}>
         {pending ? "Adding…" : "Add shift"}
       </button>

@@ -20,8 +20,9 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(week, i));
   const { from, to } = weekBounds(week);
 
-  const { workers, shifts, decision } = await withOrganisation(db, organisationId, async (tx) => ({
+  const { workers, training, shifts, decision } = await withOrganisation(db, organisationId, async (tx) => ({
     workers: await tx.select().from(schema.worker).orderBy(asc(schema.worker.fullName)),
+    training: await tx.select({ id: schema.qualification.id, name: schema.qualification.name }).from(schema.qualification).orderBy(asc(schema.qualification.name)),
     shifts: await tx
       .select()
       .from(schema.shift)
@@ -105,7 +106,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
         <h2 id="check-heading" className="text-lg font-semibold">Check and publish</h2>
         <p className="mt-1">
           {drafts === 0 ? "No draft shifts this week." : `${drafts} draft shift${drafts === 1 ? "" : "s"} waiting to be published.`} Every
-          shift is checked against UK working time, under-18 and minimum wage rules before it is published.
+          shift is checked against UK working time, under-18 and minimum wage rules, right to work, DBS and required training before it is published.
         </p>
         <PublishForm weekStart={week} />
         {decision && (
@@ -130,7 +131,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
         )}
       </section>
 
-      {workers.length > 0 && <AddShiftForm workers={workers.map((w) => ({ id: w.id, name: w.fullName }))} days={days} />}
+      {workers.length > 0 && <AddShiftForm workers={workers.map((w) => ({ id: w.id, name: w.fullName }))} days={days} training={training} />}
     </main>
   );
 }

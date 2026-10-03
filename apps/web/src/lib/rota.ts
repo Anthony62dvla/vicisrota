@@ -1,6 +1,6 @@
 import { addDays, londonDateTime, londonParts, type Context } from "@vicisrota/compliance";
 import { schema, type Transaction } from "@vicisrota/db";
-import { and, gte, inArray, lt, ne } from "drizzle-orm";
+import { and, eq, gte, inArray, lt, ne } from "drizzle-orm";
 
 /** The 48-hour rule averages over 17 weeks, so checks load that much history before the week. */
 const HISTORY_WEEKS = 17;
@@ -13,34 +13,59 @@ export const weekBounds = (weekStart: string) => ({
 
 /**
  * Loads everything the compliance engine needs to check one week: staff, pay rates, and every
- * non-cancelled shift from 17 weeks before the week to its end. Runs inside withOrganisation.
+ * non-cancelled shift from 17 weeks before the week to its end, plus right to work, DBS and training
+ * records. Runs inside withOrganisation.
  */
-export const loadComplianceContext = async (tx: Transaction, weekStart: string): Promise<Context> => {
+export const loadComplianceContext = async (tx: Transaction, organisationId: string, weekStart: string): Promise<Context> => {
   const { from } = weekBounds(addDays(weekStart, -7 * HISTORY_WEEKS));
   const { to } = weekBounds(weekStart);
 
-  const [workers, rates, shifts] = await Promise.all([
+  const [[organisation], workers, rates, shifts, checks, qualifications, held] = await Promise.all([
+    tx
+      .select({ requiresEnhancedDbs: schema.organisation.requiresEnhancedDbs })
+      .from(schema.organisation)
+      .where(eq(schema.organisation.id, organisationId)),
     tx.select().from(schema.worker),
     tx.select().from(schema.payRate),
     tx
       .select()
       .from(schema.shift)
       .where(and(gte(schema.shift.startsAt, from), lt(schema.shift.startsAt, to), ne(schema.shift.status, "cancelled"))),
+    tx.select().from(schema.workerCheck),
+    tx.select().from(schema.qualification),
+    tx.select().from(schema.workerQualification),
   ]);
   const assigned = shifts.filter((s) => s.workerId);
-  const breaks = assigned.length
-    ? await tx.select().from(schema.shiftBreak).where(inArray(schema.shiftBreak.shiftId, assigned.map((s) => s.id)))
-    : [];
+  const ids = assigned.map((s) => s.id);
+  const [breaks, requirements] = ids.length
+    ? await Promise.all([
+        tx.select().from(schema.shiftBreak).where(inArray(schema.shiftBreak.shiftId, ids)),
+        tx.select().from(schema.shiftRequirement).where(inArray(schema.shiftRequirement.shiftId, ids)),
+      ])
+    : [[], []];
+  const qualificationName = new Map(qualifications.map((q) => [q.id, q.name]));
 
   return {
     // The last day of the week, so 17-week averages end with the week being checked.
     asOf: addDays(weekStart, 6),
+    settings: { requireEnhancedDbs: organisation?.requiresEnhancedDbs ?? false },
     workers: workers.map((w) => ({
       id: w.id,
       name: w.fullName,
       dateOfBirth: w.dateOfBirth,
       optedOutOf48HourLimit: w.optedOutOf48HourLimit,
       apprenticeRateApplies: w.apprenticeRateApplies,
+      checks: checks
+        .filter((c) => c.workerId === w.id)
+        .map((c) => ({ kind: c.kind, checkedOn: c.checkedOn, expiresOn: c.expiresOn ?? undefined, dbsLevel: c.dbsLevel ?? undefined })),
+      qualifications: held
+        .filter((h) => h.workerId === w.id)
+        .map((h) => ({
+          id: h.qualificationId,
+          name: qualificationName.get(h.qualificationId) ?? "Training",
+          achievedOn: h.achievedOn ?? undefined,
+          expiresOn: h.expiresOn ?? undefined,
+        })),
     })),
     payRates: rates.map((r) => ({ workerId: r.workerId, hourlyPence: r.hourlyPence, effectiveFrom: r.effectiveFrom })),
     shifts: assigned.map((s) => ({
@@ -51,6 +76,9 @@ export const loadComplianceContext = async (tx: Transaction, weekStart: string):
       breaks: breaks
         .filter((b) => b.shiftId === s.id)
         .map((b) => ({ start: b.startsAt.toISOString(), end: b.endsAt.toISOString() })),
+      requiredQualifications: requirements
+        .filter((r) => r.shiftId === s.id)
+        .map((r) => ({ id: r.qualificationId, name: qualificationName.get(r.qualificationId) ?? "Training" })),
     })),
   };
 };

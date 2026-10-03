@@ -21,6 +21,8 @@ import { user } from "./auth";
 export const sector = pgEnum("sector", ["care", "hospitality", "small_business"]);
 export const role = pgEnum("role", ["owner", "manager", "worker"]);
 export const shiftStatus = pgEnum("shift_status", ["draft", "published", "cancelled"]);
+export const checkKind = pgEnum("check_kind", ["right_to_work", "dbs"]);
+export const dbsLevel = pgEnum("dbs_level", ["basic", "standard", "enhanced", "enhanced_barred"]);
 
 const id = () => uuid("id").primaryKey().default(sql`gen_random_uuid()`);
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
@@ -33,6 +35,8 @@ export const organisation = pgTable("organisation", {
   id: id(),
   name: text("name").notNull(),
   sector: sector("sector").notNull(),
+  /** Care providers: every shift needs an enhanced DBS with barred list check. */
+  requiresEnhancedDbs: boolean("requires_enhanced_dbs").notNull().default(false),
   createdAt: createdAt(),
 });
 
@@ -168,4 +172,66 @@ export const auditEvent = pgTable(
     data: jsonb("data"),
   },
   (t) => [index("audit_event_org_idx").on(t.organisationId, t.at)],
+);
+
+/** Right to work and DBS checks. The documents themselves are kept elsewhere; this is the record. */
+export const workerCheck = pgTable(
+  "worker_check",
+  {
+    id: id(),
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    kind: checkKind("kind").notNull(),
+    checkedOn: date("checked_on").notNull(),
+    /** Time-limited permission to work: when a follow-up check is due. */
+    expiresOn: date("expires_on"),
+    dbsLevel: dbsLevel("dbs_level"),
+    /** Share code, DBS certificate number or similar. */
+    reference: text("reference"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("worker_check_worker_idx").on(t.workerId)],
+);
+
+/** Training and qualifications a business tracks, e.g. "Medication competency". */
+export const qualification = pgTable("qualification", {
+  id: id(),
+  organisationId: orgId(),
+  name: text("name").notNull(),
+  createdAt: createdAt(),
+});
+
+export const workerQualification = pgTable(
+  "worker_qualification",
+  {
+    id: id(),
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    qualificationId: uuid("qualification_id")
+      .notNull()
+      .references(() => qualification.id, { onDelete: "cascade" }),
+    achievedOn: date("achieved_on"),
+    expiresOn: date("expires_on"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("worker_qualification_worker_idx").on(t.workerId)],
+);
+
+/** Training the person working a shift must hold. */
+export const shiftRequirement = pgTable(
+  "shift_requirement",
+  {
+    organisationId: orgId(),
+    shiftId: uuid("shift_id")
+      .notNull()
+      .references(() => shift.id, { onDelete: "cascade" }),
+    qualificationId: uuid("qualification_id")
+      .notNull()
+      .references(() => qualification.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.shiftId, t.qualificationId] })],
 );

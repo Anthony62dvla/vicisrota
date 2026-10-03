@@ -20,7 +20,7 @@ export async function createBusiness(formData: FormData) {
   const reference = await requestId();
   // One transaction, so a failure never leaves a business without an owner or an audit record.
   const organisationId = await db.transaction(async (tx) => {
-    const [org] = await tx.insert(schema.organisation).values({ name, sector }).returning({ id: schema.organisation.id });
+    const [org] = await tx.insert(schema.organisation).values({ name, sector, requiresEnhancedDbs: sector === "care" }).returning({ id: schema.organisation.id });
     const id = org!.id;
     await tx.insert(schema.membership).values({ organisationId: id, userId: user.id, role: "owner" });
     await tx.execute(sql`select set_config('app.organisation_id', ${id}, true)`);

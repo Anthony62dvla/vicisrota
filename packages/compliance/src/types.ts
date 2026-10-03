@@ -11,6 +11,29 @@ export interface Worker {
   optedOutOf48HourLimit?: boolean;
   /** Apprentice in the first year, or under 19 (NMW apprentice rate). */
   apprenticeRateApplies?: boolean;
+  /** Right to work and DBS checks on file. */
+  checks?: Check[];
+  /** Training and qualifications held. */
+  qualifications?: Qualification[];
+}
+
+export type CheckKind = "right_to_work" | "dbs";
+/** enhanced_barred = enhanced DBS with a children's and/or adults' barred list check. */
+export type DbsLevel = "basic" | "standard" | "enhanced" | "enhanced_barred";
+
+export interface Check {
+  kind: CheckKind;
+  checkedOn: LocalDate;
+  /** For time-limited permission to work, the date a follow-up check is due. */
+  expiresOn?: LocalDate;
+  dbsLevel?: DbsLevel;
+}
+
+export interface Qualification {
+  id: string;
+  name: string;
+  achievedOn?: LocalDate;
+  expiresOn?: LocalDate;
 }
 
 export interface Break {
@@ -24,6 +47,8 @@ export interface Shift {
   start: Instant;
   end: Instant;
   breaks?: Break[];
+  /** Training the person on this shift must hold, e.g. medication competency. */
+  requiredQualifications?: { id: string; name: string }[];
 }
 
 export interface PayRate {
@@ -59,6 +84,10 @@ export interface Context {
   /** All shifts for the period under check, plus enough history for averaging. */
   shifts: Shift[];
   payRates?: PayRate[];
+  settings?: {
+    /** Care providers: every shift is regulated activity needing an enhanced DBS with barred list check. */
+    requireEnhancedDbs?: boolean;
+  };
 }
 
 export interface Rule {

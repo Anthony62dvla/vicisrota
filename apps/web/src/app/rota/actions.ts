@@ -2,7 +2,7 @@
 
 import { addDays, evaluate, londonDateTime, type Finding } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
-import { and, eq, gte, lt } from "drizzle-orm";
+import { and, eq, gte, inArray, lt } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
@@ -23,6 +23,7 @@ export async function addShift(_: FormState, form: FormData): Promise<FormState>
   const start = String(form.get("start") ?? "");
   const end = String(form.get("end") ?? "");
   const breakMinutes = Number(form.get("breakMinutes") ?? 0);
+  const requires = [...new Set(form.getAll("requires").map(String))];
   if (!workerId) return { error: "Choose who is working." };
   if (!DATE.test(date)) return { error: "Choose the day." };
   if (!TIME.test(start) || !TIME.test(end)) return { error: "Enter a start and finish time." };
@@ -34,7 +35,14 @@ export async function addShift(_: FormState, form: FormData): Promise<FormState>
   if (endsAt <= startsAt) endsAt = londonDateTime(addDays(date, 1), end);
   if (breakMinutes * MINUTE >= endsAt - startsAt) return { error: "The break is longer than the shift." };
 
-  await withOrganisation(db, organisationId, async (tx) => {
+  const error = await withOrganisation(db, organisationId, async (tx) => {
+    // Foreign keys skip row-level security, so confirm the person and training belong to this business.
+    const [worker] = await tx.select({ id: schema.worker.id }).from(schema.worker).where(eq(schema.worker.id, workerId));
+    if (!worker) return "That person could not be found.";
+    if (requires.length) {
+      const known = await tx.select({ id: schema.qualification.id }).from(schema.qualification).where(inArray(schema.qualification.id, requires));
+      if (known.length !== requires.length) return "Some of the training chosen could not be found.";
+    }
     const [shift] = await tx
       .insert(schema.shift)
       .values({ organisationId, workerId, startsAt: new Date(startsAt), endsAt: new Date(endsAt) })
@@ -49,6 +57,9 @@ export async function addShift(_: FormState, form: FormData): Promise<FormState>
         endsAt: new Date(breakStart + breakMinutes * MINUTE),
       });
     }
+    if (requires.length) {
+      await tx.insert(schema.shiftRequirement).values(requires.map((qualificationId) => ({ organisationId, shiftId: shift!.id, qualificationId })));
+    }
     await tx.insert(schema.auditEvent).values({
       organisationId,
       actorUserId: user.id,
@@ -56,9 +67,10 @@ export async function addShift(_: FormState, form: FormData): Promise<FormState>
       action: "create",
       entity: "shift",
       entityId: shift!.id,
-      data: { workerId, date, start, end, breakMinutes },
+      data: { workerId, date, start, end, breakMinutes, requires },
     });
   });
+  if (error) return { error };
   revalidatePath("/rota");
   return { ok: "Shift added as a draft." };
 }
@@ -88,7 +100,7 @@ export async function checkAndPublish(_: FormState, form: FormData): Promise<For
   const { from, to } = weekBounds(weekStart);
 
   const result = await withOrganisation(db, organisationId, async (tx) => {
-    const context = await loadComplianceContext(tx, weekStart);
+    const context = await loadComplianceContext(tx, organisationId, weekStart);
     const evaluation = evaluate(context);
     // Only findings touching this week's shifts decide whether this week can be published.
     const thisWeek = new Set(

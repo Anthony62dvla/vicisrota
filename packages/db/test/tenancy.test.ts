@@ -2,7 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDb, withOrganisation, type Database } from "../src/client";
 import { runMigrations } from "../src/migrate";
-import { auditEvent, organisation, shift, worker } from "../src/schema";
+import { auditEvent, organisation, qualification, shift, worker, workerCheck } from "../src/schema";
 
 // Needs a disposable Postgres database, connected as a non-superuser (superusers bypass row-level security).
 // Example: TEST_DATABASE_URL=postgres://vicisrota:vicisrota@localhost:5433/vicisrota_test
@@ -49,6 +49,17 @@ describe.skipIf(!url)("database", () => {
         tx.insert(worker).values({ organisationId: careHome, fullName: "Intruder", dateOfBirth: "1990-01-01" }),
       ),
     ).rejects.toThrow();
+  });
+
+  it("keeps staff checks and training private to each business", async () => {
+    const [amy] = await withOrganisation(db, cafe, (tx) => tx.select({ id: worker.id }).from(worker));
+    await withOrganisation(db, cafe, async (tx) => {
+      await tx.insert(workerCheck).values({ organisationId: cafe, workerId: amy!.id, kind: "right_to_work", checkedOn: "2026-01-05" });
+      await tx.insert(qualification).values({ organisationId: cafe, name: "Food hygiene level 2" });
+    });
+    expect(await withOrganisation(db, careHome, (tx) => tx.select().from(workerCheck))).toEqual([]);
+    expect(await withOrganisation(db, careHome, (tx) => tx.select().from(qualification))).toEqual([]);
+    expect(await withOrganisation(db, cafe, (tx) => tx.select().from(workerCheck))).toHaveLength(1);
   });
 
   it("shows nothing when no business is set", async () => {
