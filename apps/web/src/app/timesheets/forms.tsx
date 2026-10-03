@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { confirmAsRostered, saveActualHours, undoConfirmation, type FormState } from "./actions";
+import { confirmAsRostered, confirmClockedHours, saveActualHours, undoConfirmation, type FormState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 const small = "rounded-lg border border-zinc-400 px-3 py-1 text-sm disabled:opacity-60";
@@ -21,17 +21,21 @@ export type Row = {
   /** Set once hours are confirmed. */
   confirmed?: { entryId: string; times: string; breakMinutes: number; hours: string; differs: boolean; start: string; end: string; note: string | null };
   defaults: { start: string; end: string; breakMinutes: number };
+  /** What the person clocked, when they used clock-in. */
+  clocked?: { text: string; flags: string[]; complete: boolean };
 };
 
 /** One message area for the whole list, so feedback stays visible after a row changes. */
 export function TimesheetList({ rows }: { rows: Row[] }) {
   const [confirmState, confirm, confirming] = useActionState<FormState, FormData>(confirmAsRostered, {});
   const [saveState, save, saving] = useActionState<FormState, FormData>(saveActualHours, {});
+  const [clockState, useClocked, usingClocked] = useActionState<FormState, FormData>(confirmClockedHours, {});
   const waiting = rows.filter((r) => !r.confirmed);
   return (
     <div className="mt-3 flex flex-col gap-3">
       <Message state={confirmState} />
       <Message state={saveState} />
+      <Message state={clockState} />
       {waiting.length > 1 && (
         <form action={confirm}>
           {waiting.map((r) => (
@@ -54,6 +58,12 @@ export function TimesheetList({ rows }: { rows: Row[] }) {
                 <p className="text-sm">
                   Rostered {r.rostered}{r.rosteredBreak ? `, ${r.rosteredBreak} min break` : ""}
                 </p>
+                {r.clocked && (
+                  <p className="text-sm">
+                    {r.clocked.text}
+                    {r.clocked.flags.length > 0 && <span className="font-semibold"> · {r.clocked.flags.join(", ")}</span>}
+                  </p>
+                )}
                 {r.confirmed ? (
                   <p className="text-sm">
                     <span className="font-semibold">Confirmed:</span> {r.confirmed.times}
@@ -72,10 +82,18 @@ export function TimesheetList({ rows }: { rows: Row[] }) {
                     <button type="submit" className={small}>Undo</button>
                   </form>
                 ) : (
-                  <form action={confirm}>
-                    <input type="hidden" name="shiftId" value={r.shiftId} />
-                    <button type="submit" disabled={confirming} className={small}>Confirm as rostered</button>
-                  </form>
+                  <>
+                    {r.clocked?.complete && (
+                      <form action={useClocked}>
+                        <input type="hidden" name="shiftId" value={r.shiftId} />
+                        <button type="submit" disabled={usingClocked} className={small}>Confirm clocked hours</button>
+                      </form>
+                    )}
+                    <form action={confirm}>
+                      <input type="hidden" name="shiftId" value={r.shiftId} />
+                      <button type="submit" disabled={confirming} className={small}>Confirm as rostered</button>
+                    </form>
+                  </>
                 )}
               </div>
             </div>

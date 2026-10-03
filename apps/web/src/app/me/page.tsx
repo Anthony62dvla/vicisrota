@@ -1,4 +1,4 @@
-import { addDays, londonDateTime, londonParts } from "@vicisrota/compliance";
+import { addDays, londonDateTime, londonParts, nextClockActions } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, or } from "drizzle-orm";
 import Link from "next/link";
@@ -6,12 +6,13 @@ import type { ReactNode } from "react";
 import { requireStaff } from "@/lib/business";
 import { db } from "@/lib/db";
 import { formatAmount, LEAVE_KINDS, LEAVE_LABEL, loadBalances } from "@/lib/leave";
+import { clockableShifts } from "@/lib/clock";
 import { loadLoneShifts } from "@/lib/lone-working";
 import { SHORT_NOTICE_HOURS } from "@/lib/notices";
 import { todayInUk } from "@/lib/rota";
 import { SignOutButton } from "../dashboard/sign-out";
 import { markNoticesSeen, savePreferences, setCoverRequest, withdrawClaim, withdrawRequest } from "./actions";
-import { LoneCheckIn, PickUpList, TimeOffForm } from "./forms";
+import { ClockButtons, LoneCheckIn, PickUpList, TimeOffForm } from "./forms";
 
 const MINUTE = 60_000;
 /** How far ahead staff can see published shifts. */
@@ -102,7 +103,8 @@ export default async function MyPage() {
       .from(schema.rotaNotice)
       .where(and(eq(schema.rotaNotice.workerId, worker.id), isNull(schema.rotaNotice.seenAt)))
       .orderBy(asc(schema.rotaNotice.startsAt));
-    return { now, lone, notices, shifts, breaks, clients, available, myClaims, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
+    const clockable = await clockableShifts(tx, worker.id, now);
+    return { now, lone, notices, clockable, shifts, breaks, clients, available, myClaims, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
   });
 
   const days = new Map<string, typeof data.shifts>();
@@ -138,6 +140,21 @@ export default async function MyPage() {
         </div>
         <SignOutButton />
       </div>
+
+      {data.clockable.map(({ shift, summary }) => (
+        <section key={`clock-${shift.id}`} aria-label="Clock in and out" className="mt-6 rounded-lg border-2 border-zinc-900 p-4 dark:border-zinc-100">
+          <h2 className="text-lg font-semibold">
+            {summary.state === "not_in" ? "Your shift" : summary.state === "out" ? "Shift finished" : summary.state === "on_break" ? "On a break" : "Clocked in"}
+          </h2>
+          <p className="mt-1">
+            {longDate(londonParts(shift.startsAt.getTime()).date)}, {timeFmt.format(shift.startsAt)} to {timeFmt.format(shift.endsAt)}.
+            {summary.clockedIn !== null && ` You clocked in at ${timeFmt.format(new Date(summary.clockedIn))}.`}
+            {summary.breakMinutes > 0 && ` Break so far: ${summary.breakMinutes} minute${summary.breakMinutes === 1 ? "" : "s"}.`}
+            {summary.clockedOut !== null && ` You clocked out at ${timeFmt.format(new Date(summary.clockedOut))}.`}
+          </p>
+          <ClockButtons shiftId={shift.id} actions={nextClockActions(summary.state)} />
+        </section>
+      ))}
 
       {data.lone.map(({ shift, status, clientName, checks }) => (
         <section key={shift.id} aria-label="Working alone" className={`mt-6 rounded-lg border-2 p-4 ${status.state === "help" ? "border-red-600" : "border-zinc-900 dark:border-zinc-100"}`}>

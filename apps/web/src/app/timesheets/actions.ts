@@ -6,6 +6,7 @@ import { and, eq, inArray, lt } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
+import { clockSummaries } from "@/lib/clock";
 import { requestId } from "@/lib/request";
 
 const TIME = /^\d{2}:\d{2}$/;
@@ -128,4 +129,43 @@ export async function undoConfirmation(form: FormData) {
     });
   });
   revalidatePath("/timesheets");
+}
+
+/** Confirms the hours exactly as clocked: from clock-in to clock-out, less time on breaks. */
+export async function confirmClockedHours(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const shiftId = String(form.get("shiftId") ?? "");
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
+    const [shift] = await tx.select().from(schema.shift).where(and(eq(schema.shift.id, shiftId), eq(schema.shift.status, "published")));
+    if (!shift?.workerId) return { error: "That shift could not be found." };
+    const [clocked] = await clockSummaries(tx, [shift], new Date().getTime());
+    const { clockedIn, clockedOut, breakMinutes } = clocked!.summary;
+    if (clockedIn === null || clockedOut === null) return { error: "This shift has not been clocked in and out yet." };
+    if (breakMinutes * MINUTE >= clockedOut - clockedIn) return { error: "The clocked break is longer than the time worked. Enter the hours by hand." };
+    const values = {
+      startsAt: new Date(clockedIn),
+      endsAt: new Date(clockedOut),
+      breakMinutes,
+      note: "From clock-in",
+      approvedByUserId: user.id,
+      approvedAt: new Date(),
+    };
+    const [row] = await tx
+      .insert(schema.timeEntry)
+      .values({ organisationId, workerId: shift.workerId, shiftId, ...values })
+      .onConflictDoUpdate({ target: schema.timeEntry.shiftId, set: values })
+      .returning({ id: schema.timeEntry.id });
+    await tx.insert(schema.auditEvent).values({
+      organisationId,
+      actorUserId: user.id,
+      requestId: await requestId(),
+      action: "approve",
+      entity: "time_entry",
+      entityId: row!.id,
+      data: { shiftId, source: "clock", clockedIn: values.startsAt.toISOString(), clockedOut: values.endsAt.toISOString(), breakMinutes },
+    });
+    return { ok: "Clocked hours confirmed." };
+  });
+  revalidatePath("/timesheets");
+  return result;
 }

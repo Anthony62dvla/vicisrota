@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  clockSummary,
+  nextClockActions,
+  type ClockKind,
   loneWorkStatus,
   type LoneCheckKind,
   dailyRest,
@@ -576,5 +579,43 @@ describe("lone working check-ins", () => {
     // Saying "I'm OK" afterwards does not close it: someone must check.
     expect(loneWorkStatus({ ...base, checks: [...help, at("ok", 10 * H + 40 * M)], now: 11 * H }).state).toBe("help");
     expect(loneWorkStatus({ ...base, checks: [...help, at("resolved", 10 * H + 45 * M)], now: 11 * H }).state).toBe("ok");
+  });
+});
+
+describe("clocking in and out", () => {
+  const H = 3_600_000;
+  const M = 60_000;
+  const shift = { start: 9 * H, end: 17 * H };
+  const e = (kind: ClockKind, at: number) => ({ kind, at });
+
+  it("follows a normal day with a break", () => {
+    const events = [e("in", 9 * H - 3 * M), e("break_start", 12 * H), e("break_end", 12 * H + 30 * M), e("out", 17 * H + 10 * M)];
+    expect(clockSummary(events, shift, 18 * H)).toEqual({
+      state: "out",
+      clockedIn: 9 * H - 3 * M,
+      clockedOut: 17 * H + 10 * M,
+      breakMinutes: 30,
+      lateMinutes: 0,
+      leftEarlyMinutes: 0,
+      stayedLateMinutes: 10,
+    });
+  });
+
+  it("shows lateness, leaving early, and a break still running", () => {
+    expect(clockSummary([e("in", 9 * H + 7 * M)], shift, 10 * H)).toMatchObject({ state: "in", lateMinutes: 7 });
+    expect(clockSummary([e("in", 9 * H), e("break_start", 12 * H)], shift, 12 * H + 20 * M)).toMatchObject({ state: "on_break", breakMinutes: 20 });
+    expect(clockSummary([e("in", 9 * H), e("out", 16 * H + 30 * M)], shift, 17 * H)).toMatchObject({ leftEarlyMinutes: 30, stayedLateMinutes: 0 });
+  });
+
+  it("ignores taps that make no sense, such as a double clock-in", () => {
+    const events = [e("in", 9 * H), e("in", 9 * H + 5 * M), e("break_end", 10 * H), e("out", 17 * H), e("in", 17 * H + 1 * M)];
+    expect(clockSummary(events, shift, 18 * H)).toMatchObject({ state: "out", clockedIn: 9 * H, clockedOut: 17 * H, breakMinutes: 0 });
+  });
+
+  it("offers only the buttons that make sense", () => {
+    expect(nextClockActions("not_in")).toEqual(["in"]);
+    expect(nextClockActions("in")).toEqual(["break_start", "out"]);
+    expect(nextClockActions("on_break")).toEqual(["break_end"]);
+    expect(nextClockActions("out")).toEqual([]);
   });
 });

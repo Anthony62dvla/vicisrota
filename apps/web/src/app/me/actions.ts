@@ -1,11 +1,12 @@
 "use server";
 
-import type { LeaveKind } from "@vicisrota/compliance";
+import { nextClockActions, type LeaveKind } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireStaff } from "@/lib/business";
 import { checkAssignment } from "@/lib/claims";
+import { clockableShifts } from "@/lib/clock";
 import { db } from "@/lib/db";
 import { helpAlert } from "@vicisrota/messaging";
 import { LEAVE_KINDS, LEAVE_LABEL } from "@/lib/leave";
@@ -244,4 +245,28 @@ export async function savePreferences(form: FormData) {
   const preferences = { calm: form.get("calm") === "on", largeText: form.get("largeText") === "on" };
   await withOrganisation(db, organisationId, (tx) => tx.update(schema.worker).set({ preferences }).where(eq(schema.worker.id, worker.id)));
   revalidatePath("/me");
+}
+
+const CLOCK_KINDS = ["in", "break_start", "break_end", "out"] as const;
+
+/** Clock in, start or end a break, or clock out, on one of the person's own shifts happening now. */
+export async function clock(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId, worker } = await requireStaff();
+  const shiftId = String(form.get("shiftId") ?? "");
+  const kind = String(form.get("kind") ?? "") as (typeof CLOCK_KINDS)[number];
+  if (!CLOCK_KINDS.includes(kind)) return { error: "Something went wrong. Please try again." };
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
+    const now = new Date().getTime();
+    const current = (await clockableShifts(tx, worker.id, now)).find((c) => c.shift.id === shiftId);
+    if (!current) return { error: "You can only clock in from an hour before your shift until four hours after it ends." };
+    if (!nextClockActions(current.summary.state).includes(kind)) {
+      return { error: { in: "You are already clocked in.", break_start: "You are not clocked in.", break_end: "You are not on a break.", out: "You are not clocked in." }[kind] };
+    }
+    const [event] = await tx.insert(schema.clockEvent).values({ organisationId, workerId: worker.id, shiftId, kind }).returning({ at: schema.clockEvent.at });
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: `clock_${kind}`, entity: "shift", entityId: shiftId });
+    const at = ukTime(event!.at);
+    return { ok: { in: `Clocked in at ${at}.`, break_start: `Break started at ${at}.`, break_end: `Break ended at ${at}.`, out: `Clocked out at ${at}. Thank you.` }[kind] };
+  });
+  revalidatePath("/me");
+  return result;
 }

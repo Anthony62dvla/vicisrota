@@ -4,6 +4,7 @@ import { and, asc, desc, eq, gte, inArray, lt } from "drizzle-orm";
 import Link from "next/link";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
+import { clockSummaries } from "@/lib/clock";
 import { loadPayroll, periodBounds } from "@/lib/payroll";
 import { todayInUk } from "@/lib/rota";
 import { TimesheetList, type Row } from "./forms";
@@ -40,6 +41,7 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
       : [[], []];
     return {
       shifts,
+      clocks: await clockSummaries(tx, shifts.map((s) => s.shift), new Date().getTime()),
       entries,
       breaks,
       payroll: await loadPayroll(tx, organisationId, from, to),
@@ -52,6 +54,7 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
       data.breaks.filter((b) => b.shiftId === shift.id).reduce((s, b) => s + (b.endsAt.getTime() - b.startsAt.getTime()), 0) / MINUTE,
     );
     const entry = data.entries.find((e) => e.shiftId === shift.id);
+    const clock = data.clocks.find((c) => c.shift.id === shift.id)!.summary;
     const worked = entry ? (entry.endsAt.getTime() - entry.startsAt.getTime()) / 3_600_000 - entry.breakMinutes / 60 : 0;
     return {
       shiftId: shift.id,
@@ -60,6 +63,21 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
       rostered: `${timeFmt.format(shift.startsAt)}–${timeFmt.format(shift.endsAt)}`,
       rosteredBreak,
       defaults: { start: timeFmt.format(shift.startsAt), end: timeFmt.format(shift.endsAt), breakMinutes: rosteredBreak },
+      clocked:
+        clock.clockedIn === null
+          ? undefined
+          : {
+              text:
+                clock.clockedOut === null
+                  ? `Clocked in ${timeFmt.format(new Date(clock.clockedIn))}, not clocked out yet`
+                  : `Clocked ${timeFmt.format(new Date(clock.clockedIn))}–${timeFmt.format(new Date(clock.clockedOut))}${clock.breakMinutes ? `, ${clock.breakMinutes} min break` : ""}`,
+              flags: [
+                clock.lateMinutes > 5 && `${clock.lateMinutes} min late`,
+                clock.leftEarlyMinutes > 5 && `left ${clock.leftEarlyMinutes} min early`,
+                clock.stayedLateMinutes > 5 && `stayed ${clock.stayedLateMinutes} min late`,
+              ].filter((f): f is string => !!f),
+              complete: clock.clockedOut !== null,
+            },
       confirmed: entry && {
         entryId: entry.id,
         times: `${timeFmt.format(entry.startsAt)}–${timeFmt.format(entry.endsAt)}`,
@@ -85,7 +103,10 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
         <Link href="/leave" className="underline">Leave</Link>
       </p>
       <h1 className="mt-2 text-2xl font-semibold">Timesheets and pay</h1>
-      <p className="mt-1">Confirm the hours people actually worked. Pay is worked out from confirmed hours, not the rota.</p>
+      <p className="mt-1">
+        Confirm the hours people actually worked. Pay is worked out from confirmed hours, not the rota. Clock times are never rounded, so
+        nobody loses pay for minutes they worked.
+      </p>
 
       <form className="mt-6 flex flex-wrap items-end gap-3" aria-label="Pay period">
         <label className="flex flex-col gap-1">

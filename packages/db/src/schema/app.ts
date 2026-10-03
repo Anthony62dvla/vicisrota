@@ -35,6 +35,7 @@ export const concernStatus = pgEnum("concern_status", ["open", "in_progress", "r
 export const concernActionKind = pgEnum("concern_action_kind", ["note", "referral", "status"]);
 export const loneCheckKind = pgEnum("lone_check_kind", ["start", "ok", "finished", "help", "resolved"]);
 export const noticeKind = pgEnum("notice_kind", ["added", "cancelled", "given_to_you", "taken_by_colleague"]);
+export const clockKind = pgEnum("clock_kind", ["in", "break_start", "break_end", "out"]);
 export const dbsLevel = pgEnum("dbs_level", ["basic", "standard", "enhanced", "enhanced_barred"]);
 
 const id = () => uuid("id").primaryKey().default(sql`gen_random_uuid()`);
@@ -591,4 +592,22 @@ export const smsMessage = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("sms_message_dedupe_idx").on(t.organisationId, t.dedupeKey, t.to)],
+);
+
+/** Clock-ins, breaks and clock-outs, at the time the server received them. Append-only. */
+export const clockEvent = pgTable(
+  "clock_event",
+  {
+    id: id(),
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    shiftId: uuid("shift_id")
+      .notNull()
+      .references(() => shift.id),
+    kind: clockKind("kind").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("clock_event_shift_idx").on(t.shiftId, t.at)],
 );

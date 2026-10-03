@@ -10,3 +10,4 @@ export * from "./payroll";
 export * from "./rules/travelTime";
 export * from "./tips";
 export * from "./loneWorking";
+export * from "./clock";

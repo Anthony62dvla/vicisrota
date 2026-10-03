@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { askToPickUp, loneCheckIn, requestTimeOff, type FormState } from "./actions";
+import { askToPickUp, clock, loneCheckIn, requestTimeOff, type FormState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 
@@ -110,6 +110,36 @@ export function LoneCheckIn({ shiftId, started }: { shiftId: string; started: bo
             <button type="submit" name="kind" value="help" disabled={pending} className={`${button} bg-red-700 text-white`}>Alert my manager</button>
             <button type="button" onClick={() => setAskingHelp(false)} className={`${button} border border-zinc-400`}>Cancel</button>
           </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+const CLOCK_LABEL = { in: "Clock in", break_start: "Start break", break_end: "End break", out: "Clock out" } as const;
+
+/** Only the buttons that make sense right now, large enough to tap easily. */
+export function ClockButtons({ shiftId, actions }: { shiftId: string; actions: (keyof typeof CLOCK_LABEL)[] }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(clock, {});
+  return (
+    <div className="mt-3 flex flex-col gap-3">
+      {state.error && <p role="alert" className="rounded-lg border border-red-400 p-3">{state.error}</p>}
+      {state.ok && <p role="status" className="rounded-lg border border-green-600 p-3">{state.ok}</p>}
+      {actions.length > 0 && (
+        <form action={action} className="flex flex-wrap gap-3">
+          <input type="hidden" name="shiftId" value={shiftId} />
+          {actions.map((k, i) => (
+            <button
+              key={k}
+              type="submit"
+              name="kind"
+              value={k}
+              disabled={pending}
+              className={`rounded-lg px-5 py-3 text-base font-medium disabled:opacity-60 ${i === 0 ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900" : "border border-zinc-400"}`}
+            >
+              {CLOCK_LABEL[k]}
+            </button>
+          ))}
         </form>
       )}
     </div>
