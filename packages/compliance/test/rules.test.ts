@@ -230,3 +230,16 @@ describe("engine", () => {
     expect(result).toMatchObject({ publishable: true, findings: [] });
   });
 });
+
+describe("UK time helpers", () => {
+  it("reads rota times as UK local time in summer and winter", async () => {
+    const { londonDateTime } = await import("../src/index");
+    expect(new Date(londonDateTime("2026-07-01", "09:30")).toISOString()).toBe("2026-07-01T08:30:00.000Z");
+    expect(new Date(londonDateTime("2026-12-01", "09:30")).toISOString()).toBe("2026-12-01T09:30:00.000Z");
+  });
+
+  it("rejects an impossible time", async () => {
+    const { londonDateTime } = await import("../src/index");
+    expect(() => londonDateTime("2026-07-01", "25:00")).toThrow();
+  });
+});

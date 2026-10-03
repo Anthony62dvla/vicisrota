@@ -1,5 +1,6 @@
 import { schema } from "@vicisrota/db";
 import { eq } from "drizzle-orm";
+import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createBusiness } from "../actions";
@@ -23,6 +24,11 @@ export default async function Dashboard() {
       </div>
 
       {businesses.length > 0 ? (
+        <>
+        <nav className="mt-6 flex gap-4" aria-label="Main">
+          <Link href="/rota" className="rounded-lg border border-zinc-400 px-4 py-2">Rota</Link>
+          <Link href="/staff" className="rounded-lg border border-zinc-400 px-4 py-2">Staff</Link>
+        </nav>
         <ul className="mt-6 space-y-3">
           {businesses.map((b) => (
             <li key={b.id} className="rounded-lg border border-zinc-300 p-4 dark:border-zinc-700">
@@ -33,6 +39,7 @@ export default async function Dashboard() {
             </li>
           ))}
         </ul>
+        </>
       ) : (
         <form action={createBusiness} className="mt-6 flex flex-col gap-4">
           <h2 className="text-lg font-semibold">Set up your business</h2>
