@@ -7,9 +7,11 @@ import { revalidatePath } from "next/cache";
 import { requireStaff } from "@/lib/business";
 import { checkAssignment } from "@/lib/claims";
 import { db } from "@/lib/db";
+import { helpAlert } from "@vicisrota/messaging";
 import { LEAVE_KINDS, LEAVE_LABEL } from "@/lib/leave";
 import { log } from "@/lib/log";
 import { requestId } from "@/lib/request";
+import { appUrl, textAlertContacts } from "@/lib/sms";
 import { todayInUk } from "@/lib/rota";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -166,20 +168,27 @@ export async function setCoverRequest(form: FormData) {
 
 const LONE_KINDS = ["start", "ok", "finished", "help"] as const;
 
+const ukTime = (d: Date) => new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
+
 /** A lone working check-in on the person's own shift: started, OK, finished safely, or a call for help. */
 export async function loneCheckIn(_: FormState, form: FormData): Promise<FormState> {
-  const { user, organisationId, worker } = await requireStaff();
+  const { user, organisationId, businessName, worker } = await requireStaff();
   const shiftId = String(form.get("shiftId") ?? "");
   const kind = String(form.get("kind") ?? "") as (typeof LONE_KINDS)[number];
   const note = String(form.get("note") ?? "").trim().slice(0, 1000) || null;
   if (!LONE_KINDS.includes(kind)) return { error: "Something went wrong. Please try again." };
+  let helpCheck: { id: string; at: Date } | undefined;
   const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
     const [shift] = await tx
       .select({ id: schema.shift.id })
       .from(schema.shift)
       .where(and(eq(schema.shift.id, shiftId), eq(schema.shift.workerId, worker.id), eq(schema.shift.loneWorking, true), eq(schema.shift.status, "published")));
     if (!shift) return { error: "That shift could not be found." };
-    await tx.insert(schema.loneWorkCheck).values({ organisationId, shiftId, actorUserId: user.id, actorName: worker.fullName, kind, note });
+    const [check] = await tx
+      .insert(schema.loneWorkCheck)
+      .values({ organisationId, shiftId, actorUserId: user.id, actorName: worker.fullName, kind, note })
+      .returning({ id: schema.loneWorkCheck.id, at: schema.loneWorkCheck.createdAt });
+    helpCheck = check;
     await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: `lone_${kind}`, entity: "shift", entityId: shiftId });
     return {
       ok: {
@@ -190,7 +199,30 @@ export async function loneCheckIn(_: FormState, form: FormData): Promise<FormSta
       }[kind],
     };
   });
-  if (kind === "help" && !result.error) await log("warn", "lone worker asked for help", { organisationId, shiftId });
+  if (kind === "help" && helpCheck) {
+    await log("warn", "lone worker asked for help", { organisationId, shiftId });
+    // Text the people on the alert list straight away.
+    const [where] = await withOrganisation(db, organisationId, (tx) =>
+      tx
+        .select({ client: schema.client.name, postcode: schema.client.postcode })
+        .from(schema.shift)
+        .leftJoin(schema.client, eq(schema.shift.clientId, schema.client.id))
+        .where(eq(schema.shift.id, shiftId)),
+    );
+    await textAlertContacts(
+      organisationId,
+      "lone_help",
+      helpAlert({
+        business: businessName,
+        person: worker.fullName,
+        at: ukTime(helpCheck.at),
+        where: [where?.client, where?.postcode].filter(Boolean).join(", ") || null,
+        note,
+        link: appUrl("/lone-working"),
+      }),
+      `help:${helpCheck.id}`,
+    );
+  }
   revalidatePath("/me");
   return result;
 }

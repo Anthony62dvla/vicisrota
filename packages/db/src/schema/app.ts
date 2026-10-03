@@ -559,3 +559,36 @@ export const rotaNotice = pgTable(
   },
   (t) => [index("rota_notice_worker_idx").on(t.workerId, t.createdAt)],
 );
+
+/** People texted when someone working alone asks for help or misses a check-in. They must agree to receive these texts. */
+export const alertContact = pgTable("alert_contact", {
+  id: id(),
+  organisationId: orgId(),
+  name: text("name").notNull(),
+  /** UK mobile in E.164 form, for example +447700900123. */
+  phone: text("phone").notNull(),
+  active: boolean("active").notNull().default(true),
+  createdAt: createdAt(),
+});
+
+/**
+ * Every text sent or attempted, so a missing alert can be traced. dedupe_key stops the same alert
+ * being sent twice (for example "overdue:<shift>:<due time>").
+ */
+export const smsMessage = pgTable(
+  "sms_message",
+  {
+    id: id(),
+    organisationId: orgId(),
+    to: text("to").notNull(),
+    purpose: text("purpose").notNull(),
+    body: text("body").notNull(),
+    provider: text("provider").notNull(),
+    ok: boolean("ok").notNull(),
+    providerRef: text("provider_ref"),
+    error: text("error"),
+    dedupeKey: text("dedupe_key"),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("sms_message_dedupe_idx").on(t.organisationId, t.dedupeKey, t.to)],
+);

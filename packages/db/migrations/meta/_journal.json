@@ -148,6 +148,20 @@
       "when": 1791066698442,
       "tag": "0020_calm_mode_row_level_security",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791067388552,
+      "tag": "0021_sms_alerts",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1791067389442,
+      "tag": "0022_sms_alerts_row_level_security",
+      "breakpoints": true
     }
   ]
 }

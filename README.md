@@ -7,6 +7,7 @@ UK staff scheduling with employment law built in, for small businesses, care pro
 | Path | What it is |
 | --- | --- |
 | `packages/compliance` | The UK compliance engine: versioned, dated rules with worked test cases |
+| `packages/messaging` | Text messages: UK mobile numbers, a provider-neutral SMS sender and alert wording |
 | `packages/db` | Postgres schema, migrations and row-level security (Drizzle) |
 | `apps/web` | Manager web app (Next.js, Better Auth sign-in, Sentry error tracking) |
 | `docs/RUNBOOK.md` | How to find and fix a reported fault |
