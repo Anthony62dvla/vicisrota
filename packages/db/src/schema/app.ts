@@ -30,6 +30,9 @@ export const leaveStatus = pgEnum("leave_status", ["requested", "approved", "dec
 export const tipSource = pgEnum("tip_source", ["card", "cash", "service_charge"]);
 export const tipMethod = pgEnum("tip_method", ["hours", "equal"]);
 export const claimStatus = pgEnum("claim_status", ["requested", "approved", "declined", "withdrawn"]);
+export const concernCategory = pgEnum("concern_category", ["abuse_or_neglect", "self_harm", "colleague_conduct", "health_and_safety", "other"]);
+export const concernStatus = pgEnum("concern_status", ["open", "in_progress", "referred", "closed"]);
+export const concernActionKind = pgEnum("concern_action_kind", ["note", "referral", "status"]);
 export const dbsLevel = pgEnum("dbs_level", ["basic", "standard", "enhanced", "enhanced_barred"]);
 
 const id = () => uuid("id").primaryKey().default(sql`gen_random_uuid()`);
@@ -456,4 +459,52 @@ export const shiftClaim = pgTable(
     // One open claim per person per shift.
     uniqueIndex("shift_claim_open_idx").on(t.shiftId, t.workerId).where(sql`${t.status} = 'requested'`),
   ],
+);
+
+/**
+ * A safeguarding or whistleblowing concern. What was reported cannot be edited afterwards (a trigger
+ * allows only the status to change), and everything done about it goes in safeguarding_action.
+ * When raised anonymously, nothing identifying the person who raised it is stored.
+ */
+export const safeguardingConcern = pgTable(
+  "safeguarding_concern",
+  {
+    id: id(),
+    organisationId: orgId(),
+    raisedByUserId: text("raised_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    raisedByName: text("raised_by_name"),
+    category: concernCategory("category").notNull(),
+    clientId: uuid("client_id").references(() => client.id, { onDelete: "set null" }),
+    /** Who the concern is about, when it is not one of the business's clients. */
+    aboutPerson: text("about_person"),
+    happenedOn: date("happened_on"),
+    details: text("details").notNull(),
+    immediateDanger: boolean("immediate_danger").notNull().default(false),
+    status: concernStatus("status").notNull().default("open"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("safeguarding_concern_status_idx").on(t.organisationId, t.status),
+    check("safeguarding_concern_details_present", sql`length(trim(${t.details})) > 0`),
+  ],
+);
+
+/** Append-only record of what was done about a concern: notes, referrals and status changes. */
+export const safeguardingAction = pgTable(
+  "safeguarding_action",
+  {
+    id: id(),
+    organisationId: orgId(),
+    concernId: uuid("concern_id")
+      .notNull()
+      .references(() => safeguardingConcern.id),
+    actorUserId: text("actor_user_id").references(() => user.id, { onDelete: "set null" }),
+    actorName: text("actor_name"),
+    kind: concernActionKind("kind").notNull(),
+    /** For a referral: who it went to, such as the local authority safeguarding team or CQC. */
+    referredTo: text("referred_to"),
+    note: text("note").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("safeguarding_action_concern_idx").on(t.concernId)],
 );

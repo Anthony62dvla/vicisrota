@@ -2,7 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDb, withOrganisation, type Database } from "../src/client";
 import { runMigrations } from "../src/migrate";
-import { auditEvent, client, shiftClaim, tip, tipAllocation, tipShare, leaveRequest, timeEntry, organisation, qualification, shift, worker, workerCheck } from "../src/schema";
+import { auditEvent, client, safeguardingAction, safeguardingConcern, shiftClaim, tip, tipAllocation, tipShare, leaveRequest, timeEntry, organisation, qualification, shift, worker, workerCheck } from "../src/schema";
 
 // Needs a disposable Postgres database, connected as a non-superuser (superusers bypass row-level security).
 // Example: TEST_DATABASE_URL=postgres://vicisrota:vicisrota@localhost:5433/vicisrota_test
@@ -134,6 +134,24 @@ describe.skipIf(!url)("database", () => {
     await withOrganisation(db, cafe, (tx) => tx.update(shiftClaim).set({ status: "withdrawn" }).where(eq(shiftClaim.shiftId, open!.id)));
     await withOrganisation(db, cafe, (tx) => tx.insert(shiftClaim).values(claim));
     expect(await withOrganisation(db, careHome, (tx) => tx.select().from(shiftClaim))).toEqual([]);
+  });
+
+  it("keeps safeguarding concerns as written, private, and their actions permanent", async () => {
+    const [concern] = await withOrganisation(db, careHome, (tx) =>
+      tx.insert(safeguardingConcern).values({ organisationId: careHome, category: "abuse_or_neglect", details: "Bruising on arm" }).returning(),
+    );
+    expect(await withOrganisation(db, cafe, (tx) => tx.select().from(safeguardingConcern))).toEqual([]);
+    await withOrganisation(db, careHome, (tx) => tx.update(safeguardingConcern).set({ status: "referred" }).where(eq(safeguardingConcern.id, concern!.id)));
+    await expect(
+      withOrganisation(db, careHome, (tx) => tx.update(safeguardingConcern).set({ details: "Nothing" }).where(eq(safeguardingConcern.id, concern!.id))),
+    ).rejects.toThrow();
+    await expect(withOrganisation(db, careHome, (tx) => tx.delete(safeguardingConcern).where(eq(safeguardingConcern.id, concern!.id)))).rejects.toThrow();
+    const [action] = await withOrganisation(db, careHome, (tx) =>
+      tx.insert(safeguardingAction).values({ organisationId: careHome, concernId: concern!.id, kind: "note", note: "Spoke to family" }).returning(),
+    );
+    await expect(
+      withOrganisation(db, careHome, (tx) => tx.update(safeguardingAction).set({ note: "x" }).where(eq(safeguardingAction.id, action!.id))),
+    ).rejects.toThrow();
   });
 
   it("shows nothing when no business is set", async () => {

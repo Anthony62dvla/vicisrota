@@ -28,7 +28,7 @@ export default async function Dashboard() {
 
       {businesses.length > 0 ? (
         <>
-        <nav className="mt-6 flex gap-4" aria-label="Main">
+        <nav className="mt-6 flex flex-wrap gap-4" aria-label="Main">
           <Link href="/rota" className="rounded-lg border border-zinc-400 px-4 py-2">Rota</Link>
           <Link href="/staff" className="rounded-lg border border-zinc-400 px-4 py-2">Staff</Link>
           <Link href="/leave" className="rounded-lg border border-zinc-400 px-4 py-2">Leave</Link>
@@ -39,6 +39,7 @@ export default async function Dashboard() {
           {businesses.some((b) => b.sector === "care") && (
             <Link href="/clients" className="rounded-lg border border-zinc-400 px-4 py-2">Clients</Link>
           )}
+          <Link href="/safeguarding" className="rounded-lg border border-zinc-400 px-4 py-2">Safeguarding</Link>
         </nav>
         <ul className="mt-6 space-y-3">
           {businesses.map((b) => (

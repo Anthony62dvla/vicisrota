@@ -1,6 +1,7 @@
 import { addDays, londonDateTime, londonParts } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, or } from "drizzle-orm";
+import Link from "next/link";
 import { requireStaff } from "@/lib/business";
 import { db } from "@/lib/db";
 import { formatAmount, LEAVE_KINDS, LEAVE_LABEL, loadBalances } from "@/lib/leave";
@@ -238,6 +239,15 @@ export default async function MyPage() {
       <section className="mt-10" aria-labelledby="ask-heading">
         <h2 id="ask-heading" className="text-lg font-semibold">Ask for time off</h2>
         <TimeOffForm unit={unit} kinds={LEAVE_KINDS.map((k) => ({ value: k, label: LEAVE_LABEL[k] }))} />
+      </section>
+
+      <section className="mt-10" aria-labelledby="concern-heading">
+        <h2 id="concern-heading" className="text-lg font-semibold">Worried about something?</h2>
+        <p className="mt-1">
+          If you are worried about someone&apos;s safety or how things are done at work, you can tell a manager privately, with or
+          without your name.
+        </p>
+        <Link href="/me/concern" className="mt-2 inline-block rounded-lg border border-zinc-400 px-4 py-2">Raise a concern</Link>
       </section>
     </main>
   );
