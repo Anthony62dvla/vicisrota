@@ -2,7 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDb, withOrganisation, type Database } from "../src/client";
 import { runMigrations } from "../src/migrate";
-import { auditEvent, leaveRequest, organisation, qualification, shift, worker, workerCheck } from "../src/schema";
+import { auditEvent, leaveRequest, timeEntry, organisation, qualification, shift, worker, workerCheck } from "../src/schema";
 
 // Needs a disposable Postgres database, connected as a non-superuser (superusers bypass row-level security).
 // Example: TEST_DATABASE_URL=postgres://vicisrota:vicisrota@localhost:5433/vicisrota_test
@@ -75,6 +75,18 @@ describe.skipIf(!url)("database", () => {
         tx.insert(leaveRequest).values({ organisationId: cafe, workerId: amy!.id, kind: "sick", startsOn: "2026-10-09", endsOn: "2026-10-06" }),
       ),
     ).rejects.toThrow();
+  });
+
+  it("keeps confirmed hours private and refuses impossible times", async () => {
+    const [amy] = await withOrganisation(db, cafe, (tx) => tx.select({ id: worker.id }).from(worker));
+    const entry = (startsAt: string, endsAt: string, breakMinutes = 0) =>
+      withOrganisation(db, cafe, (tx) =>
+        tx.insert(timeEntry).values({ organisationId: cafe, workerId: amy!.id, startsAt: new Date(startsAt), endsAt: new Date(endsAt), breakMinutes }),
+      );
+    await entry("2026-10-05T08:00:00Z", "2026-10-05T16:00:00Z", 30);
+    expect(await withOrganisation(db, careHome, (tx) => tx.select().from(timeEntry))).toEqual([]);
+    await expect(entry("2026-10-05T16:00:00Z", "2026-10-05T08:00:00Z")).rejects.toThrow();
+    await expect(entry("2026-10-05T08:00:00Z", "2026-10-05T09:00:00Z", 60)).rejects.toThrow();
   });
 
   it("shows nothing when no business is set", async () => {

@@ -56,7 +56,8 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
     <main className="mx-auto w-full max-w-6xl px-4 py-12">
       <p>
         <Link href="/dashboard" className="underline">{businessName}</Link> · <Link href="/staff" className="underline">Staff</Link> ·{" "}
-        <Link href="/leave" className="underline">Leave</Link>
+        <Link href="/leave" className="underline">Leave</Link> ·{" "}
+        <Link href="/timesheets" className="underline">Timesheets</Link>
       </p>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold">Rota for the week of {dayFmt.format(new Date(`${week}T12:00:00Z`))}</h1>

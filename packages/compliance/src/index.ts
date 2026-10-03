@@ -6,3 +6,4 @@ export * from "./rules/workingTime";
 export { addDays, londonDateTime, londonParts, weekStart } from "./time";
 export * from "./rules/checks";
 export * from "./rules/leave";
+export * from "./payroll";

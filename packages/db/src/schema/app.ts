@@ -274,3 +274,46 @@ export const leaveRequest = pgTable(
     check("leave_request_dates", sql`${t.endsOn} >= ${t.startsOn}`),
   ],
 );
+
+/** Hours actually worked, confirmed by a manager. Pay is calculated from these, not the rota. */
+export const timeEntry = pgTable(
+  "time_entry",
+  {
+    id: id(),
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    /** The rota shift this confirms, if any. One confirmation per shift. */
+    shiftId: uuid("shift_id")
+      .unique()
+      .references(() => shift.id, { onDelete: "set null" }),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    breakMinutes: integer("break_minutes").notNull().default(0),
+    note: text("note"),
+    approvedByUserId: text("approved_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("time_entry_worker_idx").on(t.workerId, t.startsAt),
+    check("time_entry_times", sql`${t.endsAt} > ${t.startsAt}`),
+    check("time_entry_break", sql`${t.breakMinutes} >= 0 and ${t.breakMinutes} * interval '1 minute' < ${t.endsAt} - ${t.startsAt}`),
+  ],
+);
+
+/** A record of each payroll export, so a period sent to payroll is visible and traceable. */
+export const payrollExport = pgTable("payroll_export", {
+  id: id(),
+  organisationId: orgId(),
+  periodFrom: date("period_from").notNull(),
+  periodTo: date("period_to").notNull(),
+  lineCount: integer("line_count").notNull(),
+  totalPence: integer("total_pence").notNull(),
+  /** People flagged below minimum wage when exported. */
+  flaggedCount: integer("flagged_count").notNull(),
+  requestId: text("request_id"),
+  createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+});

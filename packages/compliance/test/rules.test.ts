@@ -17,6 +17,9 @@ import {
   annualEntitlementDays,
   leaveYear,
   noShiftDuringLeave,
+  payrollSummary,
+  toCsv,
+  csvCell,
   type Context,
   type Shift,
   type Worker,
@@ -364,5 +367,61 @@ describe("holiday entitlement", () => {
   it("pro-rates a part-year starter and rounds up to the next half day", () => {
     // 1 July to 31 December is 184 of 365 days: 28 x 184 / 365 = 14.1, rounded up to 14.5.
     expect(annualEntitlementDays({ daysWorkedPerWeek: 5, year: leaveYear("2026-10-03"), employmentStart: "2026-07-01" })).toBe(14.5);
+  });
+});
+
+describe("payroll", () => {
+  const rates = [
+    { workerId: "amy", hourlyPence: 1300, effectiveFrom: "2026-04-01" },
+    { workerId: "amy", hourlyPence: 1400, effectiveFrom: "2026-10-07" },
+  ];
+  const entries = [
+    shift("a", "amy", "2026-10-05T09:00:00+01:00", "2026-10-05T17:00:00+01:00", [
+      { start: "2026-10-05T12:00:00+01:00", end: "2026-10-05T12:30:00+01:00" },
+    ]),
+    shift("b", "amy", "2026-10-07T09:00:00+01:00", "2026-10-07T13:00:00+01:00"),
+  ];
+
+  it("pays each piece of work at the rate in force that day", () => {
+    const [amy] = payrollSummary({ from: "2026-10-05", to: "2026-10-11", workers: [adult], entries, payRates: rates });
+    // 7.5h at £13 + 4h at £14 = £97.50 + £56 = £153.50
+    expect(amy).toMatchObject({ hours: 11.5, grossPence: 15350, ratesPence: [1300, 1400], holidayHoursAccrued: null, findings: [] });
+  });
+
+  it("builds up holiday hours for irregular-hours workers", () => {
+    const [amy] = payrollSummary({ from: "2026-10-05", to: "2026-10-11", workers: [{ ...adult, irregularHours: true }], entries, payRates: rates });
+    expect(amy?.holidayHoursAccrued).toBe(1.39); // 11.5 x 12.07%
+  });
+
+  it("flags pay below the minimum wage", () => {
+    const low = [{ workerId: "amy", hourlyPence: 1100, effectiveFrom: "2026-04-01" }];
+    const [amy] = payrollSummary({ from: "2026-10-05", to: "2026-10-11", workers: [adult], entries, payRates: low });
+    expect(amy?.findings[0]?.ruleId).toBe("nmw.hourly-rate");
+  });
+
+  it("counts leave in the period", () => {
+    const [amy] = payrollSummary({
+      from: "2026-10-05",
+      to: "2026-10-11",
+      workers: [adult],
+      entries: [],
+      payRates: rates,
+      leave: [
+        { workerId: "amy", kind: "annual", status: "approved", startsOn: "2026-10-08", endsOn: "2026-10-09", days: 2 },
+        { workerId: "amy", kind: "sick", status: "approved", startsOn: "2026-10-01", endsOn: "2026-10-06" },
+        { workerId: "amy", kind: "annual", status: "requested", startsOn: "2026-10-10", endsOn: "2026-10-10", days: 1 },
+      ],
+    });
+    expect(amy).toMatchObject({ holidayDays: 2, sickDays: 2, otherLeaveDays: 0 });
+  });
+});
+
+describe("CSV export", () => {
+  it("quotes commas and stops spreadsheet formulas", () => {
+    expect(toCsv([["Smith, Jo", "=HYPERLINK(\"x\")", 12.5, null]])).toBe('"Smith, Jo","\'=HYPERLINK(""x"")",12.5,\r\n');
+  });
+
+  it("keeps negative numbers as numbers", () => {
+    expect(csvCell(-2)).toBe("-2");
   });
 });

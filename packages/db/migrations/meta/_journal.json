@@ -43,6 +43,20 @@
       "when": 1791045954535,
       "tag": "0005_leave_row_level_security",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791061560247,
+      "tag": "0006_timesheets",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791061561065,
+      "tag": "0007_timesheets_row_level_security",
+      "breakpoints": true
     }
   ]
 }
