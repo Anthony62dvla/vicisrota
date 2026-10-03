@@ -6,6 +6,7 @@ import {
   boolean,
   check,
   date,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -36,6 +37,9 @@ export const concernActionKind = pgEnum("concern_action_kind", ["note", "referra
 export const loneCheckKind = pgEnum("lone_check_kind", ["start", "ok", "finished", "help", "resolved"]);
 export const noticeKind = pgEnum("notice_kind", ["added", "cancelled", "given_to_you", "taken_by_colleague"]);
 export const clockKind = pgEnum("clock_kind", ["in", "break_start", "break_end", "out"]);
+export const clockLocationRule = pgEnum("clock_location_rule", ["off", "record", "require"]);
+export const clockSource = pgEnum("clock_source", ["phone", "kiosk"]);
+export const clockPlace = pgEnum("clock_place", ["at_work", "away", "unknown"]);
 export const dbsLevel = pgEnum("dbs_level", ["basic", "standard", "enhanced", "enhanced_barred"]);
 
 const id = () => uuid("id").primaryKey().default(sql`gen_random_uuid()`);
@@ -57,6 +61,8 @@ export const organisation = pgTable("organisation", {
   paysTravelTime: boolean("pays_travel_time").notNull().default(false),
   /** Written tipping policy that staff can read (Employment (Allocation of Tips) Act 2023). */
   tippingPolicy: text("tipping_policy"),
+  /** Whether phone clock-ins check the person is at a workplace: not at all, noted for the manager, or required. */
+  clockLocationRule: clockLocationRule("clock_location_rule").notNull().default("off"),
   createdAt: createdAt(),
 });
 
@@ -79,6 +85,10 @@ export const location = pgTable("location", {
   organisationId: orgId(),
   name: text("name").notNull(),
   address: text("address"),
+  /** Where the workplace is, for checking that phone clock-ins happen at work. */
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
+  radiusMetres: integer("radius_metres").notNull().default(150),
   createdAt: createdAt(),
 });
 
@@ -98,6 +108,10 @@ export const worker = pgTable(
     /** Irregular hours or part-year: leave accrues at 12.07% of hours worked instead. */
     irregularHours: boolean("irregular_hours").notNull().default(false),
     /** How the person likes their own pages shown: calm mode (fewer things at once) and larger text. */
+    /** Hashed PIN for clocking in on an in-store tablet. */
+    pinHash: text("pin_hash"),
+    pinFailures: smallint("pin_failures").notNull().default(0),
+    pinLockedUntil: timestamp("pin_locked_until", { withTimezone: true }),
     preferences: jsonb("preferences").$type<{ calm?: boolean; largeText?: boolean }>().notNull().default({}),
     createdAt: createdAt(),
   },
@@ -608,6 +622,30 @@ export const clockEvent = pgTable(
       .references(() => shift.id),
     kind: clockKind("kind").notNull(),
     at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    source: clockSource("source").notNull().default("phone"),
+    /** Only the result of a location check is kept: which workplace was nearest and how far away, never the coordinates. */
+    locationId: uuid("location_id").references(() => location.id, { onDelete: "set null" }),
+    place: clockPlace("place"),
+    distanceMetres: integer("distance_metres"),
   },
   (t) => [index("clock_event_shift_idx").on(t.shiftId, t.at)],
 );
+
+/**
+ * A tablet or computer set up at a workplace for staff to clock in with their PIN. Found by its
+ * token (stored hashed) before the business is known, so like invitations it has no row-level security.
+ */
+export const kioskDevice = pgTable("kiosk_device", {
+  id: id(),
+  organisationId: uuid("organisation_id")
+    .notNull()
+    .references(() => organisation.id, { onDelete: "cascade" }),
+  locationId: uuid("location_id")
+    .notNull()
+    .references(() => location.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdAt: createdAt(),
+});

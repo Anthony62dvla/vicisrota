@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import { askToPickUp, clock, loneCheckIn, requestTimeOff, type FormState } from "./actions";
+import { useActionState, useState, useTransition } from "react";
+import { askToPickUp, clock, loneCheckIn, requestTimeOff, setClockPin, type FormState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 
@@ -118,15 +118,41 @@ export function LoneCheckIn({ shiftId, started }: { shiftId: string; started: bo
 
 const CLOCK_LABEL = { in: "Clock in", break_start: "Start break", break_end: "End break", out: "Clock out" } as const;
 
+/** The phone's position, or null if the person says no or it cannot be found within 10 seconds. */
+const currentPosition = () =>
+  new Promise<GeolocationPosition | null>((resolve) => {
+    if (!("geolocation" in navigator)) return resolve(null);
+    navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 });
+  });
+
 /** Only the buttons that make sense right now, large enough to tap easily. */
-export function ClockButtons({ shiftId, actions }: { shiftId: string; actions: (keyof typeof CLOCK_LABEL)[] }) {
+export function ClockButtons({ shiftId, actions, askLocation }: { shiftId: string; actions: (keyof typeof CLOCK_LABEL)[]; askLocation: boolean }) {
   const [state, action, pending] = useActionState<FormState, FormData>(clock, {});
+  const [locating, setLocating] = useState(false);
+  const [, startTransition] = useTransition();
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const data = new FormData(e.currentTarget, (e.nativeEvent as SubmitEvent).submitter);
+    if (askLocation) {
+      setLocating(true);
+      const position = await currentPosition();
+      setLocating(false);
+      if (position) {
+        data.set("latitude", String(position.coords.latitude));
+        data.set("longitude", String(position.coords.longitude));
+        data.set("accuracy", String(position.coords.accuracy));
+      }
+    }
+    startTransition(() => action(data));
+  };
+  const busy = pending || locating;
   return (
     <div className="mt-3 flex flex-col gap-3">
       {state.error && <p role="alert" className="rounded-lg border border-red-400 p-3">{state.error}</p>}
       {state.ok && <p role="status" className="rounded-lg border border-green-600 p-3">{state.ok}</p>}
+      {locating && <p role="status">Checking you are at work…</p>}
       {actions.length > 0 && (
-        <form action={action} className="flex flex-wrap gap-3">
+        <form onSubmit={onSubmit} className="flex flex-wrap gap-3">
           <input type="hidden" name="shiftId" value={shiftId} />
           {actions.map((k, i) => (
             <button
@@ -134,7 +160,7 @@ export function ClockButtons({ shiftId, actions }: { shiftId: string; actions: (
               type="submit"
               name="kind"
               value={k}
-              disabled={pending}
+              disabled={busy}
               className={`rounded-lg px-5 py-3 text-base font-medium disabled:opacity-60 ${i === 0 ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900" : "border border-zinc-400"}`}
             >
               {CLOCK_LABEL[k]}
@@ -143,5 +169,28 @@ export function ClockButtons({ shiftId, actions }: { shiftId: string; actions: (
         </form>
       )}
     </div>
+  );
+}
+
+export function PinForm({ hasPin }: { hasPin: boolean }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(setClockPin, {});
+  const field = "w-32 rounded-lg border border-zinc-400 px-3 py-2 text-base tracking-widest";
+  return (
+    <form action={action} className="mt-2 flex flex-col gap-3">
+      {state.error && <p role="alert" className="rounded-lg border border-red-400 p-3">{state.error}</p>}
+      {state.ok && <p role="status" className="rounded-lg border border-green-600 p-3">{state.ok}</p>}
+      <p>{hasPin ? "You have a PIN. You can change it here." : "Choose 4 to 6 numbers that only you know."}</p>
+      <div className="flex flex-wrap gap-4">
+        <label className="flex flex-col gap-1">
+          <span className="font-medium">{hasPin ? "New PIN" : "PIN"}</span>
+          <input name="pin" type="password" inputMode="numeric" autoComplete="new-password" maxLength={6} required className={field} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="font-medium">Type it again</span>
+          <input name="confirm" type="password" inputMode="numeric" autoComplete="new-password" maxLength={6} required className={field} />
+        </label>
+      </div>
+      <button type="submit" disabled={pending} className="self-start rounded-lg border border-zinc-400 px-4 py-2 disabled:opacity-60">Save PIN</button>
+    </form>
   );
 }

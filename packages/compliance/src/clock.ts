@@ -60,3 +60,42 @@ export const clockSummary = (events: ClockEvent[], shift: { start: number; end: 
     stayedLateMinutes: clockedOut === null ? 0 : mins(clockedOut - shift.end),
   };
 };
+
+export interface Workplace {
+  id: string;
+  latitude: number;
+  longitude: number;
+  /** How close counts as "at work", in metres. */
+  radiusMetres: number;
+}
+
+/** Straight-line distance between two points on the Earth, in metres (haversine). */
+export const distanceMetres = (a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) => {
+  const R = 6_371_000;
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(b.latitude - a.latitude);
+  const dLon = rad(b.longitude - a.longitude);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.latitude)) * Math.cos(rad(b.latitude)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+};
+
+/** Phone locations can be off by tens of metres indoors, so up to this much of the reported accuracy is allowed for. */
+export const MAX_ACCURACY_ALLOWANCE_METRES = 100;
+
+/**
+ * Where a phone was when someone clocked in, relative to the nearest workplace. Only the distance is
+ * kept, not the coordinates, so the business learns "at work or not" and nothing more about where
+ * the person was.
+ */
+export const placeCheck = (position: { latitude: number; longitude: number; accuracyMetres: number }, workplaces: Workplace[]) => {
+  if (!workplaces.length) return null;
+  const nearest = workplaces
+    .map((w) => ({ workplace: w, distance: distanceMetres(position, w) }))
+    .sort((a, b) => a.distance - b.distance)[0]!;
+  const allowance = Math.min(Math.max(position.accuracyMetres, 0), MAX_ACCURACY_ALLOWANCE_METRES);
+  return {
+    workplaceId: nearest.workplace.id,
+    distanceMetres: Math.round(nearest.distance),
+    within: nearest.distance <= nearest.workplace.radiusMetres + allowance,
+  };
+};

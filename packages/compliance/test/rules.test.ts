@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  distanceMetres,
+  placeCheck,
   clockSummary,
   nextClockActions,
   type ClockKind,
@@ -617,5 +619,30 @@ describe("clocking in and out", () => {
     expect(nextClockActions("in")).toEqual(["break_start", "out"]);
     expect(nextClockActions("on_break")).toEqual(["break_end"]);
     expect(nextClockActions("out")).toEqual([]);
+  });
+});
+
+describe("clocking in at work", () => {
+  // Two points in central Manchester about 1.1 km apart.
+  const shop = { id: "shop", latitude: 53.4808, longitude: -2.2426, radiusMetres: 150 };
+  const station = { latitude: 53.4774, longitude: -2.2309 };
+
+  it("measures distance", () => {
+    expect(distanceMetres(shop, shop)).toBe(0);
+    expect(Math.round(distanceMetres(shop, station) / 100)).toBe(9);
+  });
+
+  it("allows for some phone inaccuracy, but not much", () => {
+    const near = { latitude: 53.4808, longitude: -2.2426 + 0.003, accuracyMetres: 10 }; // about 200 m east
+    expect(placeCheck(near, [shop])).toMatchObject({ workplaceId: "shop", within: false });
+    expect(placeCheck({ ...near, accuracyMetres: 80 }, [shop])).toMatchObject({ within: true });
+    // A wildly inaccurate fix cannot stretch the radius without limit.
+    expect(placeCheck({ ...station, accuracyMetres: 5000 }, [shop])).toMatchObject({ within: false });
+  });
+
+  it("picks the nearest workplace and has nothing to check without one", () => {
+    const other = { id: "depot", latitude: 53.4775, longitude: -2.231, radiusMetres: 100 };
+    expect(placeCheck({ ...station, accuracyMetres: 5 }, [shop, other])).toMatchObject({ workplaceId: "depot", within: true });
+    expect(placeCheck({ ...station, accuracyMetres: 5 }, [])).toBeNull();
   });
 });

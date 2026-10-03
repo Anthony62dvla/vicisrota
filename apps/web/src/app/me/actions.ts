@@ -1,12 +1,13 @@
 "use server";
 
-import { nextClockActions, type LeaveKind } from "@vicisrota/compliance";
+import type { LeaveKind } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireStaff } from "@/lib/business";
 import { checkAssignment } from "@/lib/claims";
-import { clockableShifts } from "@/lib/clock";
+import { recordClock } from "@/lib/clock";
+import { hashPin, pinProblem } from "@/lib/pin";
 import { db } from "@/lib/db";
 import { helpAlert } from "@vicisrota/messaging";
 import { LEAVE_KINDS, LEAVE_LABEL } from "@/lib/leave";
@@ -255,18 +256,33 @@ export async function clock(_: FormState, form: FormData): Promise<FormState> {
   const shiftId = String(form.get("shiftId") ?? "");
   const kind = String(form.get("kind") ?? "") as (typeof CLOCK_KINDS)[number];
   if (!CLOCK_KINDS.includes(kind)) return { error: "Something went wrong. Please try again." };
-  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
-    const now = new Date().getTime();
-    const current = (await clockableShifts(tx, worker.id, now)).find((c) => c.shift.id === shiftId);
-    if (!current) return { error: "You can only clock in from an hour before your shift until four hours after it ends." };
-    if (!nextClockActions(current.summary.state).includes(kind)) {
-      return { error: { in: "You are already clocked in.", break_start: "You are not clocked in.", break_end: "You are not on a break.", out: "You are not clocked in." }[kind] };
-    }
-    const [event] = await tx.insert(schema.clockEvent).values({ organisationId, workerId: worker.id, shiftId, kind }).returning({ at: schema.clockEvent.at });
-    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: `clock_${kind}`, entity: "shift", entityId: shiftId });
-    const at = ukTime(event!.at);
-    return { ok: { in: `Clocked in at ${at}.`, break_start: `Break started at ${at}.`, break_end: `Break ended at ${at}.`, out: `Clocked out at ${at}. Thank you.` }[kind] };
-  });
+  const latitude = Number(form.get("latitude"));
+  const longitude = Number(form.get("longitude"));
+  const accuracyMetres = Number(form.get("accuracy"));
+  const position =
+    form.get("latitude") && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180 && Number.isFinite(accuracyMetres)
+      ? { latitude, longitude, accuracyMetres }
+      : null;
+  const reference = await requestId();
+  const result = await withOrganisation(db, organisationId, (tx) =>
+    recordClock(tx, { organisationId, workerId: worker.id, actorUserId: user.id, shiftId, kind, requestId: reference, source: "phone", position }),
+  );
   revalidatePath("/me");
   return result;
+}
+
+/** Sets the PIN used on the in-store clock-in tablet. Only a hash is stored. */
+export async function setClockPin(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId, worker } = await requireStaff();
+  const pin = String(form.get("pin") ?? "");
+  if (pin !== String(form.get("confirm") ?? "")) return { error: "The two PINs do not match." };
+  const problem = pinProblem(pin);
+  if (problem) return { error: problem };
+  const pinHash = await hashPin(pin);
+  await withOrganisation(db, organisationId, async (tx) => {
+    await tx.update(schema.worker).set({ pinHash, pinFailures: 0, pinLockedUntil: null }).where(eq(schema.worker.id, worker.id));
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "set_pin", entity: "worker", entityId: worker.id });
+  });
+  revalidatePath("/me");
+  return { ok: "PIN saved. Use it on the clock-in tablet at work." };
 }

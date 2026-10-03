@@ -54,7 +54,11 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
       data.breaks.filter((b) => b.shiftId === shift.id).reduce((s, b) => s + (b.endsAt.getTime() - b.startsAt.getTime()), 0) / MINUTE,
     );
     const entry = data.entries.find((e) => e.shiftId === shift.id);
-    const clock = data.clocks.find((c) => c.shift.id === shift.id)!.summary;
+    const clocked = data.clocks.find((c) => c.shift.id === shift.id)!;
+    const clock = clocked.summary;
+    const awayEvent = clocked.events.find((e) => e.place === "away");
+    const unknownIn = clocked.events.find((e) => e.kind === "in" && e.place === "unknown");
+    const how = clocked.events.some((e) => e.source === "kiosk") ? " on the in-store tablet" : "";
     const worked = entry ? (entry.endsAt.getTime() - entry.startsAt.getTime()) / 3_600_000 - entry.breakMinutes / 60 : 0;
     return {
       shiftId: shift.id,
@@ -70,11 +74,13 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
               text:
                 clock.clockedOut === null
                   ? `Clocked in ${timeFmt.format(new Date(clock.clockedIn))}, not clocked out yet`
-                  : `Clocked ${timeFmt.format(new Date(clock.clockedIn))}–${timeFmt.format(new Date(clock.clockedOut))}${clock.breakMinutes ? `, ${clock.breakMinutes} min break` : ""}`,
+                  : `Clocked ${timeFmt.format(new Date(clock.clockedIn))}–${timeFmt.format(new Date(clock.clockedOut))}${clock.breakMinutes ? `, ${clock.breakMinutes} min break` : ""}${how}`,
               flags: [
                 clock.lateMinutes > 5 && `${clock.lateMinutes} min late`,
                 clock.leftEarlyMinutes > 5 && `left ${clock.leftEarlyMinutes} min early`,
                 clock.stayedLateMinutes > 5 && `stayed ${clock.stayedLateMinutes} min late`,
+                awayEvent && `phone was ${awayEvent.distanceMetres! < 1000 ? `${awayEvent.distanceMetres} m` : `${(awayEvent.distanceMetres! / 1000).toFixed(1)} km`} from work at ${awayEvent.kind === "in" ? "clock-in" : awayEvent.kind === "out" ? "clock-out" : "a break"}`,
+                unknownIn && "location not shared at clock-in",
               ].filter((f): f is string => !!f),
               complete: clock.clockedOut !== null,
             },

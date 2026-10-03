@@ -12,7 +12,7 @@ import { SHORT_NOTICE_HOURS } from "@/lib/notices";
 import { todayInUk } from "@/lib/rota";
 import { SignOutButton } from "../dashboard/sign-out";
 import { markNoticesSeen, savePreferences, setCoverRequest, withdrawClaim, withdrawRequest } from "./actions";
-import { ClockButtons, LoneCheckIn, PickUpList, TimeOffForm } from "./forms";
+import { ClockButtons, LoneCheckIn, PickUpList, PinForm, TimeOffForm } from "./forms";
 
 const MINUTE = 60_000;
 /** How far ahead staff can see published shifts. */
@@ -104,7 +104,11 @@ export default async function MyPage() {
       .where(and(eq(schema.rotaNotice.workerId, worker.id), isNull(schema.rotaNotice.seenAt)))
       .orderBy(asc(schema.rotaNotice.startsAt));
     const clockable = await clockableShifts(tx, worker.id, now);
-    return { now, lone, notices, clockable, shifts, breaks, clients, available, myClaims, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
+    const [locationRule] = await tx.select({ rule: schema.organisation.clockLocationRule }).from(schema.organisation).where(eq(schema.organisation.id, organisationId));
+    const mappedWorkplaces = await tx.select({ id: schema.location.id }).from(schema.location).where(isNotNull(schema.location.latitude));
+    const checksLocation = locationRule?.rule !== "off" && mappedWorkplaces.length > 0;
+    const hasKiosk = (await tx.select({ id: schema.kioskDevice.id }).from(schema.kioskDevice).where(and(eq(schema.kioskDevice.organisationId, organisationId), isNull(schema.kioskDevice.revokedAt))).limit(1)).length > 0;
+    return { now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
   });
 
   const days = new Map<string, typeof data.shifts>();
@@ -152,7 +156,13 @@ export default async function MyPage() {
             {summary.breakMinutes > 0 && ` Break so far: ${summary.breakMinutes} minute${summary.breakMinutes === 1 ? "" : "s"}.`}
             {summary.clockedOut !== null && ` You clocked out at ${timeFmt.format(new Date(summary.clockedOut))}.`}
           </p>
-          <ClockButtons shiftId={shift.id} actions={nextClockActions(summary.state)} />
+          <ClockButtons shiftId={shift.id} actions={nextClockActions(summary.state)} askLocation={data.checksLocation} />
+          {data.checksLocation && summary.state !== "out" && (
+            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+              Your phone&apos;s location is checked only at the moment you tap, to confirm you are at work. Only the distance from work is
+              saved, never where you were.
+            </p>
+          )}
         </section>
       ))}
 
@@ -356,6 +366,13 @@ export default async function MyPage() {
         </p>
         <Link href="/me/concern" className="mt-2 inline-block rounded-lg border border-zinc-400 px-4 py-2">Raise a concern</Link>
       </section>
+
+      {data.hasKiosk && (
+        <section className="mt-10" aria-labelledby="pin-heading">
+          <h2 id="pin-heading" className="text-lg font-semibold">Clock-in PIN</h2>
+          <PinForm hasPin={!!worker.pinHash} />
+        </section>
+      )}
 
       <section className="mt-10" aria-labelledby="view-heading">
         <h2 id="view-heading" className="text-lg font-semibold">How this page looks</h2>

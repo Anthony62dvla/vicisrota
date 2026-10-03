@@ -39,6 +39,7 @@ export default async function Dashboard() {
           {businesses.some((b) => b.sector === "care") && (
             <Link href="/clients" className="rounded-lg border border-zinc-400 px-4 py-2">Clients</Link>
           )}
+          <Link href="/workplaces" className="rounded-lg border border-zinc-400 px-4 py-2">Workplaces</Link>
           <Link href="/lone-working" className="rounded-lg border border-zinc-400 px-4 py-2">Lone working</Link>
           <Link href="/safeguarding" className="rounded-lg border border-zinc-400 px-4 py-2">Safeguarding</Link>
         </nav>
