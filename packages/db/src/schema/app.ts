@@ -44,6 +44,8 @@ export const organisation = pgTable("organisation", {
   requiresEnhancedDbs: boolean("requires_enhanced_dbs").notNull().default(false),
   /** Month the holiday year starts, 1 = January. */
   leaveYearStartMonth: smallint("leave_year_start_month").notNull().default(1),
+  /** Care: travel between visits is paid at the hourly rate. */
+  paysTravelTime: boolean("pays_travel_time").notNull().default(false),
   createdAt: createdAt(),
 });
 
@@ -119,11 +121,16 @@ export const shift = pgTable(
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
     status: shiftStatus("status").notNull().default("draft"),
+    /** Care: the person this visit is for. */
+    clientId: uuid("client_id").references(() => client.id, { onDelete: "set null" }),
+    /** Care: minutes travelling from the previous visit. */
+    travelMinutes: integer("travel_minutes").notNull().default(0),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [
     check("shift_ends_after_start", sql`${t.endsAt} > ${t.startsAt}`),
+    check("shift_travel_minutes", sql`${t.travelMinutes} between 0 and 240`),
     index("shift_org_start_idx").on(t.organisationId, t.startsAt), index("shift_worker_idx").on(t.workerId, t.startsAt),
   ],
 );
@@ -348,3 +355,18 @@ export const invitation = pgTable(
   },
   (t) => [index("invitation_worker_idx").on(t.workerId)],
 );
+
+/**
+ * Care: a person who receives visits. Kept deliberately minimal: what carers need to find them and
+ * provide safe care. Detailed care plans belong in the care planning system, not the rota.
+ */
+export const client = pgTable("client", {
+  id: id(),
+  organisationId: orgId(),
+  name: text("name").notNull(),
+  postcode: text("postcode"),
+  /** Key safe, parking, preferred name: shown only to carers visiting this person. */
+  visitNotes: text("visit_notes"),
+  active: boolean("active").notNull().default(true),
+  createdAt: createdAt(),
+});

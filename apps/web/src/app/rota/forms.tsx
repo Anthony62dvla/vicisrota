@@ -29,10 +29,13 @@ export function AddShiftForm({
   workers,
   days,
   training,
+  clients,
 }: {
   workers: { id: string; name: string }[];
   days: string[];
   training: { id: string; name: string }[];
+  /** Care providers only: clients a shift can be a visit to. */
+  clients?: { id: string; name: string }[];
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(addShift, {});
   return (
@@ -71,6 +74,24 @@ export function AddShiftForm({
         <span className="font-medium">Unpaid break (minutes)</span>
         <input name="breakMinutes" type="number" min={0} max={240} defaultValue={0} className={input} />
       </label>
+      {clients && (
+        <>
+          <label className="flex flex-col gap-1">
+            <span className="font-medium">Visit to (optional)</span>
+            <select name="clientId" defaultValue="" className={input}>
+              <option value="">Not a visit</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="font-medium">Travel time from the previous visit (minutes)</span>
+            <span className="text-sm text-zinc-600 dark:text-zinc-400">Travel between visits counts as working time for the minimum wage.</span>
+            <input name="travelMinutes" type="number" min={0} max={240} defaultValue={0} className={input} />
+          </label>
+        </>
+      )}
       {training.length > 0 && (
         <fieldset className="flex flex-col gap-2">
           <legend className="font-medium">Training this shift needs</legend>

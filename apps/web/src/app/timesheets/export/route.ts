@@ -19,7 +19,7 @@ export async function GET(request: Request) {
   const reference = await requestId();
 
   const { lines, unconfirmed } = await withOrganisation(db, organisationId, async (tx) => {
-    const payroll = await loadPayroll(tx, from, to);
+    const payroll = await loadPayroll(tx, organisationId, from, to);
     const totalPence = payroll.lines.reduce((s, l) => s + l.grossPence, 0);
     const flagged = payroll.lines.filter((l) => l.findings.length).length;
     await tx.insert(schema.payrollExport).values({
@@ -51,6 +51,7 @@ export async function GET(request: Request) {
       "Period start",
       "Period end",
       "Hours worked",
+      "Travel hours",
       "Hourly rate (£)",
       "Gross pay (£)",
       "Holiday hours built up",
@@ -65,6 +66,7 @@ export async function GET(request: Request) {
       from,
       to,
       l.hours,
+      l.travelHours,
       l.ratesPence.map(pounds).join(" / "),
       pounds(l.grossPence),
       l.holidayHoursAccrued,

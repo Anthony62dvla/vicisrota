@@ -49,6 +49,8 @@ export interface Shift {
   breaks?: Break[];
   /** Training the person on this shift must hold, e.g. medication competency. */
   requiredQualifications?: { id: string; name: string }[];
+  /** Care visits: minutes travelling from the previous visit. Travel between visits is working time for the minimum wage. */
+  travelMinutesBefore?: number;
 }
 
 export interface PayRate {
@@ -101,6 +103,8 @@ export interface Context {
   settings?: {
     /** Care providers: every shift is regulated activity needing an enhanced DBS with barred list check. */
     requireEnhancedDbs?: boolean;
+    /** Travel between care visits is paid at the hourly rate, so it cannot pull pay below the minimum. */
+    paysTravelTime?: boolean;
   };
 }
 

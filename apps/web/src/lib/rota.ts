@@ -22,7 +22,7 @@ export const loadComplianceContext = async (tx: Transaction, organisationId: str
 
   const [[organisation], workers, rates, shifts, checks, qualifications, held, leave] = await Promise.all([
     tx
-      .select({ requiresEnhancedDbs: schema.organisation.requiresEnhancedDbs })
+      .select({ requiresEnhancedDbs: schema.organisation.requiresEnhancedDbs, paysTravelTime: schema.organisation.paysTravelTime })
       .from(schema.organisation)
       .where(eq(schema.organisation.id, organisationId)),
     tx.select().from(schema.worker),
@@ -65,7 +65,7 @@ export const loadComplianceContext = async (tx: Transaction, organisationId: str
       startsOn: l.startsOn,
       endsOn: l.endsOn,
     })),
-    settings: { requireEnhancedDbs: organisation?.requiresEnhancedDbs ?? false },
+    settings: { requireEnhancedDbs: organisation?.requiresEnhancedDbs ?? false, paysTravelTime: organisation?.paysTravelTime ?? false },
     workers: workers.map((w) => ({
       id: w.id,
       name: w.fullName,
@@ -93,6 +93,7 @@ export const loadComplianceContext = async (tx: Transaction, organisationId: str
       breaks: breaks
         .filter((b) => b.shiftId === s.id)
         .map((b) => ({ start: b.startsAt.toISOString(), end: b.endsAt.toISOString() })),
+      travelMinutesBefore: s.travelMinutes,
       requiredQualifications: requirements
         .filter((r) => r.shiftId === s.id)
         .map((r) => ({ id: r.qualificationId, name: qualificationName.get(r.qualificationId) ?? "Training" })),

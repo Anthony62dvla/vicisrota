@@ -14,15 +14,22 @@ const dayFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "sho
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
-  const { organisationId, businessName } = await requireManager();
+  const { organisationId, businessName, sector } = await requireManager();
   const requested = (await searchParams).week;
   const today = todayInUk();
   const week = mondayOf(typeof requested === "string" && DATE.test(requested) ? requested : today);
   const days = Array.from({ length: 7 }, (_, i) => addDays(week, i));
   const { from, to } = weekBounds(week);
 
-  const { workers, training, shifts, leave, decision } = await withOrganisation(db, organisationId, async (tx) => ({
+  const { workers, training, clients, shifts, leave, decision } = await withOrganisation(db, organisationId, async (tx) => ({
     workers: await tx.select().from(schema.worker).orderBy(asc(schema.worker.fullName)),
+    clients:
+      sector === "care"
+        ? await tx
+            .select({ id: schema.client.id, name: schema.client.name, active: schema.client.active })
+            .from(schema.client)
+            .orderBy(asc(schema.client.name))
+        : [],
     training: await tx.select({ id: schema.qualification.id, name: schema.qualification.name }).from(schema.qualification).orderBy(asc(schema.qualification.name)),
     shifts: await tx
       .select()
@@ -50,6 +57,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
   }));
   const findings = (decision?.findings ?? []) as Finding[];
   const flagged = new Set(findings.flatMap((f) => f.shiftIds));
+  const clientName = new Map(clients.map((c) => [c.id, c.name]));
   const drafts = shifts.filter((s) => s.status === "draft").length;
 
   return (
@@ -107,6 +115,8 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
                             className={`mb-1 rounded-md border p-1 ${flagged.has(s.id) ? "border-red-500" : "border-zinc-300 dark:border-zinc-700"}`}
                           >
                             <p>{timeFmt.format(s.startsAt)}–{timeFmt.format(s.endsAt)}</p>
+                            {s.clientId && <p className="text-xs font-medium">{clientName.get(s.clientId) ?? "Visit"}</p>}
+                            {s.travelMinutes > 0 && <p className="text-xs text-zinc-600 dark:text-zinc-400">{s.travelMinutes} min travel before</p>}
                             <p className="text-xs text-zinc-600 dark:text-zinc-400">
                               {s.status === "published" ? "Published" : "Draft"}
                               {flagged.has(s.id) && " · needs attention"}
@@ -158,7 +168,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
         )}
       </section>
 
-      {workers.length > 0 && <AddShiftForm workers={workers.map((w) => ({ id: w.id, name: w.fullName }))} days={days} training={training} />}
+      {workers.length > 0 && <AddShiftForm workers={workers.map((w) => ({ id: w.id, name: w.fullName }))} days={days} training={training} clients={sector === "care" ? clients.filter((c) => c.active) : undefined} />}
     </main>
   );
 }

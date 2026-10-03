@@ -33,6 +33,9 @@ export default async function Dashboard() {
           <Link href="/staff" className="rounded-lg border border-zinc-400 px-4 py-2">Staff</Link>
           <Link href="/leave" className="rounded-lg border border-zinc-400 px-4 py-2">Leave</Link>
           <Link href="/timesheets" className="rounded-lg border border-zinc-400 px-4 py-2">Timesheets</Link>
+          {businesses.some((b) => b.sector === "care") && (
+            <Link href="/clients" className="rounded-lg border border-zinc-400 px-4 py-2">Clients</Link>
+          )}
         </nav>
         <ul className="mt-6 space-y-3">
           {businesses.map((b) => (

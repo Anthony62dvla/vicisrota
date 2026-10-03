@@ -32,13 +32,21 @@ export default async function MyPage() {
     const breaks = shifts.length
       ? await tx.select().from(schema.shiftBreak).where(inArray(schema.shiftBreak.shiftId, shifts.map((s) => s.id)))
       : [];
+    // Only the clients this person is visiting, and only what a visiting carer needs.
+    const clientIds = [...new Set(shifts.map((s) => s.clientId).filter((id): id is string => Boolean(id)))];
+    const clients = clientIds.length
+      ? await tx
+          .select({ id: schema.client.id, name: schema.client.name, postcode: schema.client.postcode, visitNotes: schema.client.visitNotes })
+          .from(schema.client)
+          .where(inArray(schema.client.id, clientIds))
+      : [];
     const leave = await tx
       .select()
       .from(schema.leaveRequest)
       .where(and(eq(schema.leaveRequest.workerId, worker.id), gte(schema.leaveRequest.endsOn, addDays(today, -60))))
       .orderBy(desc(schema.leaveRequest.startsOn));
     const { balances, year } = await loadBalances(tx, organisationId, today);
-    return { shifts, breaks, leave, balance: balances.get(worker.id)!, year };
+    return { shifts, breaks, clients, leave, balance: balances.get(worker.id)!, year };
   });
 
   const days = new Map<string, typeof data.shifts>();
@@ -72,14 +80,21 @@ export default async function MyPage() {
                 {shifts.map((s) => {
                   const unpaid = data.breaks.filter((b) => b.shiftId === s.id).reduce((sum, b) => sum + (b.endsAt.getTime() - b.startsAt.getTime()), 0);
                   const paidHours = (s.endsAt.getTime() - s.startsAt.getTime() - unpaid) / 3_600_000;
+                  const client = data.clients.find((c) => c.id === s.clientId);
                   return (
-                    <p key={s.id} className="mt-1">
-                      {timeFmt.format(s.startsAt)} to {timeFmt.format(s.endsAt)}
-                      <span className="text-zinc-600 dark:text-zinc-400">
-                        {" "}· {Number.isInteger(paidHours) ? paidHours : paidHours.toFixed(2).replace(/0$/, "")} hours paid
-                        {unpaid > 0 && `, ${Math.round(unpaid / MINUTE)} minute break`}
-                      </span>
-                    </p>
+                    <div key={s.id} className="mt-1">
+                      <p>
+                        {timeFmt.format(s.startsAt)} to {timeFmt.format(s.endsAt)}
+                        {client && <strong>{` · Visit to ${client.name}`}</strong>}
+                        <span className="text-zinc-600 dark:text-zinc-400">
+                          {" "}· {Number.isInteger(paidHours) ? paidHours : paidHours.toFixed(2).replace(/0$/, "")} {paidHours === 1 ? "hour" : "hours"}
+                          {unpaid > 0 && `, ${Math.round(unpaid / MINUTE)} minute break`}
+                        </span>
+                      </p>
+                      {client?.postcode && <p className="text-sm">{client.postcode}</p>}
+                      {s.travelMinutes > 0 && <p className="text-sm">Allow {s.travelMinutes} minutes to travel from your previous visit.</p>}
+                      {client?.visitNotes && <p className="mt-1 rounded-md bg-zinc-100 p-2 text-sm dark:bg-zinc-900">{client.visitNotes}</p>}
+                    </div>
                   );
                 })}
               </li>

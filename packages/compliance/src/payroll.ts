@@ -1,5 +1,6 @@
 import { irregularHoursAccrual } from "./holiday";
 import { minimumWage } from "./rules/minimumWage";
+import { travelTimeMinimumWage } from "./rules/travelTime";
 import { addDays, HOUR, londonParts, ms, workedMillis } from "./time";
 import type { Finding, Leave, LocalDate, PayRate, Shift, Worker } from "./types";
 
@@ -19,6 +20,8 @@ export interface PayrollLine {
   name: string;
   /** Confirmed hours worked, after unpaid breaks. */
   hours: number;
+  /** Care: hours travelling between visits. Paid at the hourly rate when the business pays travel time. */
+  travelHours: number;
   grossPence: number;
   /** Hourly rates used in the period, in pence. More than one if pay changed mid-period. */
   ratesPence: number[];
@@ -60,34 +63,42 @@ export const payrollSummary = (input: {
   entries: Shift[];
   payRates: PayRate[];
   leave?: PayrollLeave[];
+  paysTravelTime?: boolean;
 }): PayrollLine[] => {
   const { from, to } = input;
-  const nmw = minimumWage.check({ asOf: to, workers: input.workers, shifts: input.entries, payRates: input.payRates });
+  const ctx = { asOf: to, workers: input.workers, shifts: input.entries, payRates: input.payRates, settings: { paysTravelTime: input.paysTravelTime ?? false } };
+  const nmw = [...minimumWage.check(ctx), ...travelTimeMinimumWage.check(ctx)];
   return input.workers.map((worker) => {
     const entries = input.entries.filter((e) => e.workerId === worker.id);
     const rates = input.payRates.filter((r) => r.workerId === worker.id);
     let millis = 0;
+    let travelMinutes = 0;
     let pence = 0;
     const used = new Set<number>();
     for (const e of entries) {
       const worked = workedMillis(e);
       millis += worked;
       const rate = latestOnOrBefore(rates, londonParts(ms(e.start)).date);
+      travelMinutes += e.travelMinutesBefore ?? 0;
       if (rate) {
-        pence += (worked / HOUR) * rate.hourlyPence;
+        const paidTravel = input.paysTravelTime ? (e.travelMinutesBefore ?? 0) / 60 : 0;
+        pence += (worked / HOUR + paidTravel) * rate.hourlyPence;
         used.add(rate.hourlyPence);
       }
     }
     const hours = round2(millis / HOUR);
+    const travelHours = round2(travelMinutes / 60);
     const leave = (input.leave ?? []).filter((l) => l.workerId === worker.id && l.status === "approved");
     const annual = leave.filter((l) => l.kind === "annual" && l.startsOn >= from && l.startsOn <= to);
     return {
       workerId: worker.id,
       name: worker.name,
       hours,
+      travelHours,
       grossPence: Math.round(pence),
       ratesPence: [...used].sort((a, b) => a - b),
-      holidayHoursAccrued: worker.irregularHours ? irregularHoursAccrual(hours) : null,
+      // Travel between visits is working time, so it counts towards holiday built up.
+      holidayHoursAccrued: worker.irregularHours ? irregularHoursAccrual(hours + travelHours) : null,
       holidayDays: annual.reduce((s, l) => s + (l.days ?? 0), 0),
       holidayHours: round2(annual.reduce((s, l) => s + (l.hours ?? 0), 0)),
       sickDays: leave.filter((l) => l.kind === "sick").reduce((s, l) => s + daysInside(l.startsOn, l.endsOn, from, to), 0),

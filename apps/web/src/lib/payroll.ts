@@ -11,12 +11,17 @@ export const periodBounds = (from: string, to: string) => ({
 });
 
 /** Confirmed hours, pay and leave for a pay period. Runs inside withOrganisation. */
-export const loadPayroll = async (tx: Transaction, from: string, to: string) => {
+export const loadPayroll = async (tx: Transaction, organisationId: string, from: string, to: string) => {
   const { start, end } = periodBounds(from, to);
-  const [workers, rates, entries, leave, unconfirmed] = await Promise.all([
+  const [[organisation], workers, rates, entries, leave, unconfirmed] = await Promise.all([
+    tx.select({ paysTravelTime: schema.organisation.paysTravelTime }).from(schema.organisation).where(eq(schema.organisation.id, organisationId)),
     tx.select().from(schema.worker),
     tx.select().from(schema.payRate),
-    tx.select().from(schema.timeEntry).where(and(gte(schema.timeEntry.startsAt, start), lt(schema.timeEntry.startsAt, end))),
+    tx
+      .select({ entry: schema.timeEntry, travelMinutes: schema.shift.travelMinutes })
+      .from(schema.timeEntry)
+      .leftJoin(schema.shift, eq(schema.timeEntry.shiftId, schema.shift.id))
+      .where(and(gte(schema.timeEntry.startsAt, start), lt(schema.timeEntry.startsAt, end))),
     tx
       .select()
       .from(schema.leaveRequest)
@@ -47,7 +52,8 @@ export const loadPayroll = async (tx: Transaction, from: string, to: string) => 
       apprenticeRateApplies: w.apprenticeRateApplies,
       irregularHours: w.irregularHours,
     })),
-    entries: entries.map((e) => ({
+    entries: entries.map(({ entry: e, travelMinutes }) => ({
+      travelMinutesBefore: travelMinutes ?? 0,
       id: e.id,
       workerId: e.workerId,
       start: e.startsAt.toISOString(),
@@ -58,7 +64,8 @@ export const loadPayroll = async (tx: Transaction, from: string, to: string) => 
     })),
     payRates: rates.map((r) => ({ workerId: r.workerId, hourlyPence: r.hourlyPence, effectiveFrom: r.effectiveFrom })),
     leave: leave.map((l) => ({ ...l, status: "approved" as const })),
-  }).filter((l) => l.hours > 0 || l.holidayDays > 0 || l.holidayHours > 0 || l.sickDays > 0 || l.otherLeaveDays > 0);
+    paysTravelTime: organisation?.paysTravelTime ?? false,
+  }).filter((l) => l.hours > 0 || l.travelHours > 0 || l.holidayDays > 0 || l.holidayHours > 0 || l.sickDays > 0 || l.otherLeaveDays > 0);
 
   return { lines, unconfirmed: unconfirmed.length };
 };

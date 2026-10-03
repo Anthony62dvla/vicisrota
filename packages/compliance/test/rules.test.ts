@@ -18,6 +18,7 @@ import {
   leaveYear,
   noShiftDuringLeave,
   payrollSummary,
+  travelTimeMinimumWage,
   toCsv,
   csvCell,
   type Context,
@@ -101,6 +102,30 @@ describe("daily rest (WTR reg 10)", () => {
       ]),
     );
     expect(f?.evidence).toMatchObject({ restHours: 11.5, requiredHours: 12 });
+  });
+
+  it("allows split shifts and runs of visits when the day still has 11 hours' rest", () => {
+    const findings = dailyRest.check(
+      ctx([
+        shift("v1", "amy", "2026-10-05T08:00:00+01:00", "2026-10-05T09:00:00+01:00"),
+        shift("v2", "amy", "2026-10-05T09:20:00+01:00", "2026-10-05T10:20:00+01:00"),
+        shift("v3", "amy", "2026-10-05T17:00:00+01:00", "2026-10-05T21:00:00+01:00"),
+        shift("v4", "amy", "2026-10-06T08:00:00+01:00", "2026-10-06T09:00:00+01:00"),
+      ]),
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it("blocks a split shift that leaves less than 11 hours' rest before the next morning", () => {
+    const findings = dailyRest.check(
+      ctx([
+        shift("lunch", "amy", "2026-10-05T11:00:00+01:00", "2026-10-05T15:00:00+01:00"),
+        shift("dinner", "amy", "2026-10-05T18:00:00+01:00", "2026-10-05T23:00:00+01:00"),
+        shift("breakfast", "amy", "2026-10-06T07:00:00+01:00", "2026-10-06T11:00:00+01:00"),
+      ]),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ shiftIds: ["dinner", "breakfast"], evidence: { restHours: 8 } });
   });
 });
 
@@ -385,7 +410,7 @@ describe("payroll", () => {
   it("pays each piece of work at the rate in force that day", () => {
     const [amy] = payrollSummary({ from: "2026-10-05", to: "2026-10-11", workers: [adult], entries, payRates: rates });
     // 7.5h at £13 + 4h at £14 = £97.50 + £56 = £153.50
-    expect(amy).toMatchObject({ hours: 11.5, grossPence: 15350, ratesPence: [1300, 1400], holidayHoursAccrued: null, findings: [] });
+    expect(amy).toMatchObject({ hours: 11.5, travelHours: 0, grossPence: 15350, ratesPence: [1300, 1400], holidayHoursAccrued: null, findings: [] });
   });
 
   it("builds up holiday hours for irregular-hours workers", () => {
@@ -423,5 +448,54 @@ describe("CSV export", () => {
 
   it("keeps negative numbers as numbers", () => {
     expect(csvCell(-2)).toBe("-2");
+  });
+});
+
+describe("travel between care visits", () => {
+  // Three 1-hour visits on Monday with 20 minutes' travel before the second and third.
+  const visits = (travel: number): Shift[] => [
+    { ...shift("v1", "amy", "2026-10-05T08:00:00+01:00", "2026-10-05T09:00:00+01:00") },
+    { ...shift("v2", "amy", "2026-10-05T09:20:00+01:00", "2026-10-05T10:20:00+01:00"), travelMinutesBefore: travel },
+    { ...shift("v3", "amy", "2026-10-05T10:40:00+01:00", "2026-10-05T11:40:00+01:00"), travelMinutesBefore: travel },
+  ];
+  const rate = (pence: number) => [{ workerId: "amy", hourlyPence: pence, effectiveFrom: "2026-04-01" }];
+
+  it("blocks when unpaid travel pulls pay below the minimum", () => {
+    // £13.00 x 3h = £39.00 for 3h 40m of work: £10.64 an hour, below £12.71.
+    const [f] = travelTimeMinimumWage.check(ctx(visits(20), { payRates: rate(1300) }));
+    expect(f).toMatchObject({ severity: "block", evidence: { travelMinutes: 40, paidPence: 3900, effectiveRatePence: 1064 } });
+    expect(f?.shiftIds).toEqual(["v1", "v2", "v3"]);
+  });
+
+  it("passes when the hourly rate covers the travel", () => {
+    // £15.60 x 3h = £46.80 for 3h 40m: £12.76 an hour.
+    expect(travelTimeMinimumWage.check(ctx(visits(20), { payRates: rate(1560) }))).toEqual([]);
+  });
+
+  it("passes when the business pays travel time", () => {
+    expect(travelTimeMinimumWage.check(ctx(visits(20), { payRates: rate(1300), settings: { paysTravelTime: true } }))).toEqual([]);
+  });
+
+  it("ignores shifts with no travel", () => {
+    expect(travelTimeMinimumWage.check(ctx(visits(0), { payRates: rate(1300) }))).toEqual([]);
+  });
+});
+
+describe("payroll with travel between visits", () => {
+  const visits: Shift[] = [
+    shift("v1", "amy", "2026-10-05T08:00:00+01:00", "2026-10-05T09:00:00+01:00"),
+    { ...shift("v2", "amy", "2026-10-05T09:30:00+01:00", "2026-10-05T10:30:00+01:00"), travelMinutesBefore: 30 },
+  ];
+  const payRates = [{ workerId: "amy", hourlyPence: 1300, effectiveFrom: "2026-04-01" }];
+
+  it("pays travel at the hourly rate when the business pays travel time", () => {
+    const [amy] = payrollSummary({ from: "2026-10-05", to: "2026-10-11", workers: [adult], entries: visits, payRates, paysTravelTime: true });
+    expect(amy).toMatchObject({ hours: 2, travelHours: 0.5, grossPence: 3250, findings: [] });
+  });
+
+  it("flags unpaid travel that pulls pay below the minimum", () => {
+    const [amy] = payrollSummary({ from: "2026-10-05", to: "2026-10-11", workers: [adult], entries: visits, payRates });
+    expect(amy?.grossPence).toBe(2600);
+    expect(amy?.findings.map((f) => f.ruleId)).toEqual(["nmw.travel-between-visits"]);
   });
 });

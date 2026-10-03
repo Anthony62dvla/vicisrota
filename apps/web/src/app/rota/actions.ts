@@ -24,10 +24,14 @@ export async function addShift(_: FormState, form: FormData): Promise<FormState>
   const end = String(form.get("end") ?? "");
   const breakMinutes = Number(form.get("breakMinutes") ?? 0);
   const requires = [...new Set(form.getAll("requires").map(String))];
+  const clientId = String(form.get("clientId") ?? "") || null;
+  const travelMinutes = Number(form.get("travelMinutes") ?? 0);
   if (!workerId) return { error: "Choose who is working." };
   if (!DATE.test(date)) return { error: "Choose the day." };
   if (!TIME.test(start) || !TIME.test(end)) return { error: "Enter a start and finish time." };
   if (!(breakMinutes >= 0 && breakMinutes <= 240)) return { error: "Enter a break between 0 and 240 minutes." };
+  if (!(Number.isInteger(travelMinutes) && travelMinutes >= 0 && travelMinutes <= 240))
+    return { error: "Enter travel time between 0 and 240 minutes." };
 
   const startsAt = londonDateTime(date, start);
   // A finish time at or before the start means the shift ends the next morning.
@@ -39,13 +43,17 @@ export async function addShift(_: FormState, form: FormData): Promise<FormState>
     // Foreign keys skip row-level security, so confirm the person and training belong to this business.
     const [worker] = await tx.select({ id: schema.worker.id }).from(schema.worker).where(eq(schema.worker.id, workerId));
     if (!worker) return "That person could not be found.";
+    if (clientId) {
+      const [found] = await tx.select({ id: schema.client.id }).from(schema.client).where(eq(schema.client.id, clientId));
+      if (!found) return "That client could not be found.";
+    }
     if (requires.length) {
       const known = await tx.select({ id: schema.qualification.id }).from(schema.qualification).where(inArray(schema.qualification.id, requires));
       if (known.length !== requires.length) return "Some of the training chosen could not be found.";
     }
     const [shift] = await tx
       .insert(schema.shift)
-      .values({ organisationId, workerId, startsAt: new Date(startsAt), endsAt: new Date(endsAt) })
+      .values({ organisationId, workerId, clientId, travelMinutes, startsAt: new Date(startsAt), endsAt: new Date(endsAt) })
       .returning({ id: schema.shift.id });
     if (breakMinutes > 0) {
       // Place the break in the middle of the shift; exact break times can be edited later.
@@ -67,12 +75,12 @@ export async function addShift(_: FormState, form: FormData): Promise<FormState>
       action: "create",
       entity: "shift",
       entityId: shift!.id,
-      data: { workerId, date, start, end, breakMinutes, requires },
+      data: { workerId, date, start, end, breakMinutes, requires, clientId, travelMinutes },
     });
   });
   if (error) return { error };
   revalidatePath("/rota");
-  return { ok: "Shift added as a draft." };
+  return { ok: clientId ? "Visit added as a draft." : "Shift added as a draft." };
 }
 
 export async function cancelShift(form: FormData) {

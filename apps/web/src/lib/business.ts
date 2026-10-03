@@ -11,7 +11,12 @@ import { db } from "./db";
 const firstMembership = async (userId: string) =>
   (
     await db
-      .select({ organisationId: schema.membership.organisationId, role: schema.membership.role, name: schema.organisation.name })
+      .select({
+        organisationId: schema.membership.organisationId,
+        role: schema.membership.role,
+        name: schema.organisation.name,
+        sector: schema.organisation.sector,
+      })
       .from(schema.membership)
       .innerJoin(schema.organisation, eq(schema.membership.organisationId, schema.organisation.id))
       .where(eq(schema.membership.userId, userId))
@@ -25,7 +30,7 @@ export const requireManager = async () => {
   const membership = await firstMembership(user.id);
   if (!membership) redirect("/dashboard");
   if (membership.role === "worker") redirect("/me");
-  return { user, organisationId: membership.organisationId, businessName: membership.name };
+  return { user, organisationId: membership.organisationId, businessName: membership.name, sector: membership.sector };
 };
 
 /** The signed-in member of staff and their own staff record. Managers are sent to the dashboard. */

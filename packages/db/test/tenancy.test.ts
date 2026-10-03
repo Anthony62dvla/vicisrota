@@ -2,7 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDb, withOrganisation, type Database } from "../src/client";
 import { runMigrations } from "../src/migrate";
-import { auditEvent, leaveRequest, timeEntry, organisation, qualification, shift, worker, workerCheck } from "../src/schema";
+import { auditEvent, client, leaveRequest, timeEntry, organisation, qualification, shift, worker, workerCheck } from "../src/schema";
 
 // Needs a disposable Postgres database, connected as a non-superuser (superusers bypass row-level security).
 // Example: TEST_DATABASE_URL=postgres://vicisrota:vicisrota@localhost:5433/vicisrota_test
@@ -87,6 +87,12 @@ describe.skipIf(!url)("database", () => {
     expect(await withOrganisation(db, careHome, (tx) => tx.select().from(timeEntry))).toEqual([]);
     await expect(entry("2026-10-05T16:00:00Z", "2026-10-05T08:00:00Z")).rejects.toThrow();
     await expect(entry("2026-10-05T08:00:00Z", "2026-10-05T09:00:00Z", 60)).rejects.toThrow();
+  });
+
+  it("keeps clients private to each care provider", async () => {
+    await withOrganisation(db, careHome, (tx) => tx.insert(client).values({ organisationId: careHome, name: "Mrs Evans", postcode: "CF10 1AA" }));
+    expect(await withOrganisation(db, cafe, (tx) => tx.select().from(client))).toEqual([]);
+    expect(await withOrganisation(db, careHome, (tx) => tx.select().from(client))).toHaveLength(1);
   });
 
   it("shows nothing when no business is set", async () => {

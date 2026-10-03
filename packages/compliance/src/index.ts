@@ -7,3 +7,4 @@ export { addDays, londonDateTime, londonParts, weekStart } from "./time";
 export * from "./rules/checks";
 export * from "./rules/leave";
 export * from "./payroll";
+export * from "./rules/travelTime";
