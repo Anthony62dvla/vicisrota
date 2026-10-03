@@ -18,6 +18,8 @@ import {
   leaveYear,
   noShiftDuringLeave,
   payrollSummary,
+  allocateTips,
+  tipsPayBy,
   travelTimeMinimumWage,
   toCsv,
   csvCell,
@@ -497,5 +499,40 @@ describe("payroll with travel between visits", () => {
     const [amy] = payrollSummary({ from: "2026-10-05", to: "2026-10-11", workers: [adult], entries: visits, payRates });
     expect(amy?.grossPence).toBe(2600);
     expect(amy?.findings.map((f) => f.ruleId)).toEqual(["nmw.travel-between-visits"]);
+  });
+});
+
+describe("tips", () => {
+  it("shares tips by hours worked and hands out every penny", () => {
+    const shares = allocateTips(10000, [
+      { workerId: "a", hours: 10 },
+      { workerId: "b", hours: 20 },
+      { workerId: "c", hours: 0 },
+    ]);
+    expect(shares).toEqual([
+      { workerId: "a", hours: 10, pence: 3333 },
+      { workerId: "b", hours: 20, pence: 6667 },
+    ]);
+  });
+
+  it("never loses or invents pennies", () => {
+    const shares = allocateTips(1001, [
+      { workerId: "a", hours: 7.5 },
+      { workerId: "b", hours: 7.5 },
+      { workerId: "c", hours: 7.5 },
+    ]);
+    expect(shares.reduce((s, x) => s + x.pence, 0)).toBe(1001);
+    expect(shares.map((s) => s.pence).sort()).toEqual([333, 334, 334]);
+  });
+
+  it("can share equally", () => {
+    expect(allocateTips(900, [{ workerId: "a", hours: 2 }, { workerId: "b", hours: 40 }], "equal").map((s) => s.pence)).toEqual([450, 450]);
+  });
+
+  it("must be paid by the end of the following month", () => {
+    expect(tipsPayBy("2026-10-03")).toBe("2026-11-30");
+    expect(tipsPayBy("2026-11-15")).toBe("2026-12-31");
+    expect(tipsPayBy("2026-12-31")).toBe("2027-01-31");
+    expect(tipsPayBy("2027-01-31")).toBe("2027-02-28");
   });
 });

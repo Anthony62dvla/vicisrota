@@ -8,3 +8,4 @@ export * from "./rules/checks";
 export * from "./rules/leave";
 export * from "./payroll";
 export * from "./rules/travelTime";
+export * from "./tips";

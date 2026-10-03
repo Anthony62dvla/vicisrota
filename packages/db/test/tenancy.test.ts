@@ -2,7 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDb, withOrganisation, type Database } from "../src/client";
 import { runMigrations } from "../src/migrate";
-import { auditEvent, client, leaveRequest, timeEntry, organisation, qualification, shift, worker, workerCheck } from "../src/schema";
+import { auditEvent, client, tip, tipAllocation, tipShare, leaveRequest, timeEntry, organisation, qualification, shift, worker, workerCheck } from "../src/schema";
 
 // Needs a disposable Postgres database, connected as a non-superuser (superusers bypass row-level security).
 // Example: TEST_DATABASE_URL=postgres://vicisrota:vicisrota@localhost:5433/vicisrota_test
@@ -93,6 +93,33 @@ describe.skipIf(!url)("database", () => {
     await withOrganisation(db, careHome, (tx) => tx.insert(client).values({ organisationId: careHome, name: "Mrs Evans", postcode: "CF10 1AA" }));
     expect(await withOrganisation(db, cafe, (tx) => tx.select().from(client))).toEqual([]);
     expect(await withOrganisation(db, careHome, (tx) => tx.select().from(client))).toHaveLength(1);
+  });
+
+  it("keeps shared tips as a permanent record", async () => {
+    const [amy] = await withOrganisation(db, cafe, (tx) => tx.select({ id: worker.id }).from(worker));
+    const { allocationId, tipId } = await withOrganisation(db, cafe, async (tx) => {
+      const [allocation] = await tx
+        .insert(tipAllocation)
+        .values({ organisationId: cafe, periodFrom: "2026-10-01", periodTo: "2026-10-31", totalPence: 5000, method: "hours", payBy: "2026-11-30" })
+        .returning();
+      const [t] = await tx
+        .insert(tip)
+        .values({ organisationId: cafe, receivedOn: "2026-10-03", amountPence: 5000, source: "card", allocationId: allocation!.id })
+        .returning();
+      await tx.insert(tipShare).values({ organisationId: cafe, allocationId: allocation!.id, workerId: amy!.id, hours: 12.5, pence: 5000 });
+      return { allocationId: allocation!.id, tipId: t!.id };
+    });
+    expect(await withOrganisation(db, careHome, (tx) => tx.select().from(tipShare))).toEqual([]);
+    await expect(withOrganisation(db, cafe, (tx) => tx.update(tipShare).set({ pence: 1 }))).rejects.toThrow();
+    await expect(withOrganisation(db, cafe, (tx) => tx.delete(tip).where(eq(tip.id, tipId)))).rejects.toThrow();
+    await expect(withOrganisation(db, cafe, (tx) => tx.update(tipAllocation).set({ totalPence: 1 }).where(eq(tipAllocation.id, allocationId)))).rejects.toThrow();
+    await withOrganisation(db, cafe, (tx) => tx.update(tipAllocation).set({ paidAt: new Date() }).where(eq(tipAllocation.id, allocationId)));
+  });
+
+  it("refuses a tip of zero or less", async () => {
+    await expect(
+      withOrganisation(db, cafe, (tx) => tx.insert(tip).values({ organisationId: cafe, receivedOn: "2026-10-03", amountPence: 0, source: "cash" })),
+    ).rejects.toThrow();
   });
 
   it("shows nothing when no business is set", async () => {

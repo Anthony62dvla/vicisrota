@@ -27,6 +27,8 @@ export const shiftStatus = pgEnum("shift_status", ["draft", "published", "cancel
 export const checkKind = pgEnum("check_kind", ["right_to_work", "dbs"]);
 export const leaveKind = pgEnum("leave_kind", ["annual", "sick", "family", "unpaid", "compassionate", "other"]);
 export const leaveStatus = pgEnum("leave_status", ["requested", "approved", "declined", "cancelled"]);
+export const tipSource = pgEnum("tip_source", ["card", "cash", "service_charge"]);
+export const tipMethod = pgEnum("tip_method", ["hours", "equal"]);
 export const dbsLevel = pgEnum("dbs_level", ["basic", "standard", "enhanced", "enhanced_barred"]);
 
 const id = () => uuid("id").primaryKey().default(sql`gen_random_uuid()`);
@@ -46,6 +48,8 @@ export const organisation = pgTable("organisation", {
   leaveYearStartMonth: smallint("leave_year_start_month").notNull().default(1),
   /** Care: travel between visits is paid at the hourly rate. */
   paysTravelTime: boolean("pays_travel_time").notNull().default(false),
+  /** Written tipping policy that staff can read (Employment (Allocation of Tips) Act 2023). */
+  tippingPolicy: text("tipping_policy"),
   createdAt: createdAt(),
 });
 
@@ -370,3 +374,57 @@ export const client = pgTable("client", {
   active: boolean("active").notNull().default(true),
   createdAt: createdAt(),
 });
+
+/**
+ * Tips, gratuities and service charges received by the business. Records are kept for at least three
+ * years, so shared tips are never deleted.
+ */
+export const tip = pgTable(
+  "tip",
+  {
+    id: id(),
+    organisationId: orgId(),
+    receivedOn: date("received_on").notNull(),
+    amountPence: integer("amount_pence").notNull(),
+    source: tipSource("source").notNull(),
+    note: text("note"),
+    /** Set once the tip has been shared out; it can no longer be changed. */
+    allocationId: uuid("allocation_id").references(() => tipAllocation.id),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("tip_org_received_idx").on(t.organisationId, t.receivedOn), check("tip_amount_positive", sql`${t.amountPence} > 0`)],
+);
+
+/** One sharing-out of a tip pool for a period. */
+export const tipAllocation = pgTable("tip_allocation", {
+  id: id(),
+  organisationId: orgId(),
+  periodFrom: date("period_from").notNull(),
+  periodTo: date("period_to").notNull(),
+  totalPence: integer("total_pence").notNull(),
+  method: tipMethod("method").notNull(),
+  /** The legal deadline: the end of the month after the earliest tip in the pool was received. */
+  payBy: date("pay_by").notNull(),
+  paidAt: timestamp("paid_at", { withTimezone: true }),
+  requestId: text("request_id"),
+  createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+});
+
+export const tipShare = pgTable(
+  "tip_share",
+  {
+    id: id(),
+    organisationId: orgId(),
+    allocationId: uuid("allocation_id")
+      .notNull()
+      .references(() => tipAllocation.id),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id),
+    hours: numeric("hours", { precision: 7, scale: 2, mode: "number" }).notNull(),
+    pence: integer("pence").notNull(),
+  },
+  (t) => [index("tip_share_worker_idx").on(t.workerId)],
+);

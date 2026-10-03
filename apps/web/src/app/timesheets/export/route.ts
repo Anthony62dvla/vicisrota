@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   const { from, to } = period;
   const reference = await requestId();
 
-  const { lines, unconfirmed } = await withOrganisation(db, organisationId, async (tx) => {
+  const { lines, unconfirmed, tipsPence } = await withOrganisation(db, organisationId, async (tx) => {
     const payroll = await loadPayroll(tx, organisationId, from, to);
     const totalPence = payroll.lines.reduce((s, l) => s + l.grossPence, 0);
     const flagged = payroll.lines.filter((l) => l.findings.length).length;
@@ -54,6 +54,7 @@ export async function GET(request: Request) {
       "Travel hours",
       "Hourly rate (£)",
       "Gross pay (£)",
+      "Tips (£)",
       "Holiday hours built up",
       "Holiday days taken",
       "Holiday hours taken",
@@ -69,6 +70,7 @@ export async function GET(request: Request) {
       l.travelHours,
       l.ratesPence.map(pounds).join(" / "),
       pounds(l.grossPence),
+      pounds(tipsPence.get(l.workerId) ?? 0),
       l.holidayHoursAccrued,
       l.holidayDays,
       l.holidayHours,

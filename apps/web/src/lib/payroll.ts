@@ -67,5 +67,14 @@ export const loadPayroll = async (tx: Transaction, organisationId: string, from:
     paysTravelTime: organisation?.paysTravelTime ?? false,
   }).filter((l) => l.hours > 0 || l.travelHours > 0 || l.holidayDays > 0 || l.holidayHours > 0 || l.sickDays > 0 || l.otherLeaveDays > 0);
 
-  return { lines, unconfirmed: unconfirmed.length };
+  // Tips shared for periods ending in this pay period are paid with it.
+  const shares = await tx
+    .select({ workerId: schema.tipShare.workerId, pence: schema.tipShare.pence })
+    .from(schema.tipShare)
+    .innerJoin(schema.tipAllocation, eq(schema.tipShare.allocationId, schema.tipAllocation.id))
+    .where(and(gte(schema.tipAllocation.periodTo, from), lte(schema.tipAllocation.periodTo, to)));
+  const tipsPence = new Map<string, number>();
+  for (const s of shares) tipsPence.set(s.workerId, (tipsPence.get(s.workerId) ?? 0) + s.pence);
+
+  return { lines, unconfirmed: unconfirmed.length, tipsPence };
 };

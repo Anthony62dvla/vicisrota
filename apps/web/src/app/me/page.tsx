@@ -14,6 +14,7 @@ const MINUTE = 60_000;
 const WEEKS_AHEAD = 4;
 const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 const longDate = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" });
+const shortDate = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "long" });
 const STATUS = { requested: "Waiting for your manager", approved: "Approved", declined: "Not approved", cancelled: "Withdrawn" } as const;
 
 export default async function MyPage() {
@@ -46,7 +47,19 @@ export default async function MyPage() {
       .where(and(eq(schema.leaveRequest.workerId, worker.id), gte(schema.leaveRequest.endsOn, addDays(today, -60))))
       .orderBy(desc(schema.leaveRequest.startsOn));
     const { balances, year } = await loadBalances(tx, organisationId, today);
-    return { shifts, breaks, clients, leave, balance: balances.get(worker.id)!, year };
+    // Staff have a right to see their own tip records.
+    const tips = await tx
+      .select({ id: schema.tipShare.id, pence: schema.tipShare.pence, hours: schema.tipShare.hours, allocation: schema.tipAllocation })
+      .from(schema.tipShare)
+      .innerJoin(schema.tipAllocation, eq(schema.tipShare.allocationId, schema.tipAllocation.id))
+      .where(eq(schema.tipShare.workerId, worker.id))
+      .orderBy(desc(schema.tipAllocation.periodTo))
+      .limit(12);
+    const [org] = await tx
+      .select({ policy: schema.organisation.tippingPolicy })
+      .from(schema.organisation)
+      .where(eq(schema.organisation.id, organisationId));
+    return { shifts, breaks, clients, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
   });
 
   const days = new Map<string, typeof data.shifts>();
@@ -139,6 +152,32 @@ export default async function MyPage() {
           </ul>
         )}
       </section>
+
+      {(data.tips.length > 0 || data.policy) && (
+        <section className="mt-10" aria-labelledby="tips-heading">
+          <h2 id="tips-heading" className="text-lg font-semibold">Your tips</h2>
+          {data.tips.length === 0 ? (
+            <p className="mt-2">No tips shared with you yet.</p>
+          ) : (
+            <ul className="mt-2 flex flex-col gap-1">
+              {data.tips.map((t) => (
+                <li key={t.id}>
+                  {shortDate(t.allocation.periodFrom)} to {shortDate(t.allocation.periodTo)}: <strong>£{(t.pence / 100).toFixed(2)}</strong> for {t.hours} hours
+                  <span className="text-zinc-600 dark:text-zinc-400">
+                    {t.allocation.paidAt ? " · paid" : ` · to be paid by ${shortDate(t.allocation.payBy)}`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {data.policy && (
+            <details className="mt-3">
+              <summary className="cursor-pointer underline">How tips are shared here</summary>
+              <p className="mt-2 whitespace-pre-line rounded-md bg-zinc-100 p-3 text-sm dark:bg-zinc-900">{data.policy}</p>
+            </details>
+          )}
+        </section>
+      )}
 
       <section className="mt-10" aria-labelledby="ask-heading">
         <h2 id="ask-heading" className="text-lg font-semibold">Ask for time off</h2>
