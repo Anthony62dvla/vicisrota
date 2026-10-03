@@ -93,6 +93,20 @@ export function AddShiftForm({
           </label>
         </>
       )}
+      <fieldset className="flex flex-col gap-2">
+        <legend className="font-medium">Working alone</legend>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" name="loneWorking" /> This person will be working on their own
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-sm text-zinc-600 dark:text-zinc-400">They check in at the start, at this interval, and at the end. You see who is late.</span>
+          <select name="checkInMinutes" defaultValue="60" aria-label="Check in every" className={input}>
+            {[30, 60, 90, 120].map((m) => (
+              <option key={m} value={m}>Check in every {m < 60 ? `${m} minutes` : m === 60 ? "hour" : `${m / 60} hours`}</option>
+            ))}
+          </select>
+        </label>
+      </fieldset>
       {training.length > 0 && (
         <fieldset className="flex flex-col gap-2">
           <legend className="font-medium">Training this shift needs</legend>

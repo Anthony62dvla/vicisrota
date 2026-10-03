@@ -132,6 +132,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
                               {s.status === "published" ? "Published" : "Draft"}
                               {flagged.has(s.id) && " · needs attention"}
                               {s.coverRequestedAt && " · cover requested"}
+                              {s.loneWorking && " · working alone"}
                             </p>
                             <form action={cancelShift}>
                               <input type="hidden" name="shiftId" value={s.id} />

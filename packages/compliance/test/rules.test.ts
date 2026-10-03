@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  loneWorkStatus,
+  type LoneCheckKind,
   dailyRest,
   evaluate,
   irregularHoursAccrual,
@@ -534,5 +536,45 @@ describe("tips", () => {
     expect(tipsPayBy("2026-11-15")).toBe("2026-12-31");
     expect(tipsPayBy("2026-12-31")).toBe("2027-01-31");
     expect(tipsPayBy("2027-01-31")).toBe("2027-02-28");
+  });
+});
+
+describe("lone working check-ins", () => {
+  const H = 3_600_000;
+  const M = 60_000;
+  const base = { start: 10 * H, end: 14 * H, intervalMinutes: 60 };
+  const at = (kind: LoneCheckKind, t: number) => ({ kind, at: t });
+
+  it("waits for the shift to start, then allows the grace period", () => {
+    expect(loneWorkStatus({ ...base, checks: [], now: 9 * H }).state).toBe("not_started");
+    expect(loneWorkStatus({ ...base, checks: [], now: 10 * H + 10 * M }).state).toBe("ok");
+    const late = loneWorkStatus({ ...base, checks: [], now: 10 * H + 16 * M });
+    expect(late.state).toBe("overdue");
+    expect(late.reason).toMatch(/start/);
+  });
+
+  it("expects a check-in each interval after the last one", () => {
+    const checks = [at("start", 10 * H), at("ok", 11 * H)];
+    expect(loneWorkStatus({ ...base, checks, now: 12 * H + 10 * M })).toEqual({ state: "ok", dueAt: 12 * H });
+    expect(loneWorkStatus({ ...base, checks, now: 12 * H + 16 * M }).state).toBe("overdue");
+    // The manager reached them: the clock restarts from then.
+    expect(loneWorkStatus({ ...base, checks: [...checks, at("resolved", 12 * H + 20 * M)], now: 12 * H + 30 * M })).toEqual({ state: "ok", dueAt: 13 * H + 20 * M });
+  });
+
+  it("expects a check-out at the end of the shift", () => {
+    const checks = [at("start", 10 * H), at("ok", 13 * H + 30 * M)];
+    expect(loneWorkStatus({ ...base, checks, now: 14 * H }).dueAt).toBe(14 * H);
+    const missed = loneWorkStatus({ ...base, checks, now: 14 * H + 20 * M });
+    expect(missed.state).toBe("overdue");
+    expect(missed.reason).toMatch(/end/);
+    expect(loneWorkStatus({ ...base, checks: [...checks, at("finished", 14 * H)], now: 20 * H }).state).toBe("finished");
+  });
+
+  it("keeps a call for help open until a manager deals with it", () => {
+    const help = [at("start", 10 * H), at("help", 10 * H + 30 * M)];
+    expect(loneWorkStatus({ ...base, checks: help, now: 11 * H }).state).toBe("help");
+    // Saying "I'm OK" afterwards does not close it: someone must check.
+    expect(loneWorkStatus({ ...base, checks: [...help, at("ok", 10 * H + 40 * M)], now: 11 * H }).state).toBe("help");
+    expect(loneWorkStatus({ ...base, checks: [...help, at("resolved", 10 * H + 45 * M)], now: 11 * H }).state).toBe("ok");
   });
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { askToPickUp, requestTimeOff, type FormState } from "./actions";
+import { askToPickUp, loneCheckIn, requestTimeOff, type FormState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 
@@ -71,6 +71,47 @@ export function PickUpList({ shifts }: { shifts: { id: string; when: string; det
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/** Big, clear check-in buttons for someone working alone. Asking for help needs a second tap, to avoid accidents. */
+export function LoneCheckIn({ shiftId, started }: { shiftId: string; started: boolean }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(loneCheckIn, {});
+  const [askingHelp, setAskingHelp] = useState(false);
+  const button = "rounded-lg px-4 py-3 text-base font-medium disabled:opacity-60";
+  return (
+    <div className="mt-3 flex flex-col gap-3">
+      {state.error && <p role="alert" className="rounded-lg border border-red-400 p-3">{state.error}</p>}
+      {state.ok && <p role="status" className="rounded-lg border border-green-600 p-3">{state.ok}</p>}
+      <form action={action} className="flex flex-wrap gap-3">
+        <input type="hidden" name="shiftId" value={shiftId} />
+        {!started ? (
+          <button type="submit" name="kind" value="start" disabled={pending} className={`${button} bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900`}>I have started</button>
+        ) : (
+          <>
+            <button type="submit" name="kind" value="ok" disabled={pending} className={`${button} bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900`}>I am OK</button>
+            <button type="submit" name="kind" value="finished" disabled={pending} className={`${button} border border-zinc-400`}>I have finished safely</button>
+          </>
+        )}
+        {!askingHelp && (
+          <button type="button" onClick={() => setAskingHelp(true)} className={`${button} border-2 border-red-600 text-red-700 dark:text-red-400`}>I need help</button>
+        )}
+      </form>
+      {askingHelp && (
+        <form action={action} className="flex flex-col gap-3 rounded-lg border-2 border-red-600 p-3">
+          <p className="font-medium">If you are in danger, call 999 now.</p>
+          <input type="hidden" name="shiftId" value={shiftId} />
+          <label className="flex flex-col gap-1">
+            <span>What is happening? (optional)</span>
+            <input name="note" maxLength={1000} className="rounded-lg border border-zinc-400 px-3 py-2 text-base" />
+          </label>
+          <div className="flex flex-wrap gap-3">
+            <button type="submit" name="kind" value="help" disabled={pending} className={`${button} bg-red-700 text-white`}>Alert my manager</button>
+            <button type="button" onClick={() => setAskingHelp(false)} className={`${button} border border-zinc-400`}>Cancel</button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

@@ -31,6 +31,9 @@ export async function addShift(_: FormState, form: FormData): Promise<FormState>
   if (!DATE.test(date)) return { error: "Choose the day." };
   if (!TIME.test(start) || !TIME.test(end)) return { error: "Enter a start and finish time." };
   if (!(breakMinutes >= 0 && breakMinutes <= 240)) return { error: "Enter a break between 0 and 240 minutes." };
+  const loneWorking = form.get("loneWorking") === "on";
+  const checkInMinutes = Number(form.get("checkInMinutes") ?? 60);
+  if (!(Number.isInteger(checkInMinutes) && checkInMinutes >= 15 && checkInMinutes <= 240)) return { error: "Choose how often they check in." };
   if (!(Number.isInteger(travelMinutes) && travelMinutes >= 0 && travelMinutes <= 240))
     return { error: "Enter travel time between 0 and 240 minutes." };
 
@@ -56,7 +59,7 @@ export async function addShift(_: FormState, form: FormData): Promise<FormState>
     }
     const [shift] = await tx
       .insert(schema.shift)
-      .values({ organisationId, workerId, clientId, travelMinutes, startsAt: new Date(startsAt), endsAt: new Date(endsAt) })
+      .values({ organisationId, workerId, clientId, travelMinutes, loneWorking, checkInMinutes, startsAt: new Date(startsAt), endsAt: new Date(endsAt) })
       .returning({ id: schema.shift.id });
     if (breakMinutes > 0) {
       // Place the break in the middle of the shift; exact break times can be edited later.
@@ -78,7 +81,7 @@ export async function addShift(_: FormState, form: FormData): Promise<FormState>
       action: "create",
       entity: "shift",
       entityId: shift!.id,
-      data: { workerId, date, start, end, breakMinutes, requires, clientId, travelMinutes },
+      data: { workerId, date, start, end, breakMinutes, requires, clientId, travelMinutes, loneWorking, checkInMinutes },
     });
   });
   if (error) return { error };

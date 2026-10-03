@@ -8,6 +8,7 @@ import { requireStaff } from "@/lib/business";
 import { checkAssignment } from "@/lib/claims";
 import { db } from "@/lib/db";
 import { LEAVE_KINDS, LEAVE_LABEL } from "@/lib/leave";
+import { log } from "@/lib/log";
 import { requestId } from "@/lib/request";
 import { todayInUk } from "@/lib/rota";
 
@@ -161,4 +162,35 @@ export async function setCoverRequest(form: FormData) {
     });
   });
   revalidatePath("/me");
+}
+
+const LONE_KINDS = ["start", "ok", "finished", "help"] as const;
+
+/** A lone working check-in on the person's own shift: started, OK, finished safely, or a call for help. */
+export async function loneCheckIn(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId, worker } = await requireStaff();
+  const shiftId = String(form.get("shiftId") ?? "");
+  const kind = String(form.get("kind") ?? "") as (typeof LONE_KINDS)[number];
+  const note = String(form.get("note") ?? "").trim().slice(0, 1000) || null;
+  if (!LONE_KINDS.includes(kind)) return { error: "Something went wrong. Please try again." };
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
+    const [shift] = await tx
+      .select({ id: schema.shift.id })
+      .from(schema.shift)
+      .where(and(eq(schema.shift.id, shiftId), eq(schema.shift.workerId, worker.id), eq(schema.shift.loneWorking, true), eq(schema.shift.status, "published")));
+    if (!shift) return { error: "That shift could not be found." };
+    await tx.insert(schema.loneWorkCheck).values({ organisationId, shiftId, actorUserId: user.id, actorName: worker.fullName, kind, note });
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: `lone_${kind}`, entity: "shift", entityId: shiftId });
+    return {
+      ok: {
+        start: "Thanks. You have checked in.",
+        ok: "Thanks. Glad you are OK.",
+        finished: "Thanks. You have checked out. Get home safely.",
+        help: "Your manager has been alerted. If you are in danger, call 999 now.",
+      }[kind],
+    };
+  });
+  if (kind === "help" && !result.error) await log("warn", "lone worker asked for help", { organisationId, shiftId });
+  revalidatePath("/me");
+  return result;
 }

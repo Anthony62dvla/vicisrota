@@ -33,6 +33,7 @@ export const claimStatus = pgEnum("claim_status", ["requested", "approved", "dec
 export const concernCategory = pgEnum("concern_category", ["abuse_or_neglect", "self_harm", "colleague_conduct", "health_and_safety", "other"]);
 export const concernStatus = pgEnum("concern_status", ["open", "in_progress", "referred", "closed"]);
 export const concernActionKind = pgEnum("concern_action_kind", ["note", "referral", "status"]);
+export const loneCheckKind = pgEnum("lone_check_kind", ["start", "ok", "finished", "help", "resolved"]);
 export const dbsLevel = pgEnum("dbs_level", ["basic", "standard", "enhanced", "enhanced_barred"]);
 
 const id = () => uuid("id").primaryKey().default(sql`gen_random_uuid()`);
@@ -135,12 +136,16 @@ export const shift = pgTable(
     travelMinutes: integer("travel_minutes").notNull().default(0),
     /** Set when the person on this shift has asked for someone to cover it. */
     coverRequestedAt: timestamp("cover_requested_at", { withTimezone: true }),
+    /** Working alone: the person checks in at the start, every check_in_minutes, and at the end. */
+    loneWorking: boolean("lone_working").notNull().default(false),
+    checkInMinutes: smallint("check_in_minutes").notNull().default(60),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [
     check("shift_ends_after_start", sql`${t.endsAt} > ${t.startsAt}`),
     check("shift_travel_minutes", sql`${t.travelMinutes} between 0 and 240`),
+    check("shift_check_in_minutes", sql`${t.checkInMinutes} between 15 and 240`),
     index("shift_org_start_idx").on(t.organisationId, t.startsAt), index("shift_worker_idx").on(t.workerId, t.startsAt),
   ],
 );
@@ -507,4 +512,22 @@ export const safeguardingAction = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("safeguarding_action_concern_idx").on(t.concernId)],
+);
+
+/** Lone working check-ins, calls for help, and managers marking a call for help as dealt with. Append-only. */
+export const loneWorkCheck = pgTable(
+  "lone_work_check",
+  {
+    id: id(),
+    organisationId: orgId(),
+    shiftId: uuid("shift_id")
+      .notNull()
+      .references(() => shift.id),
+    actorUserId: text("actor_user_id").references(() => user.id, { onDelete: "set null" }),
+    actorName: text("actor_name"),
+    kind: loneCheckKind("kind").notNull(),
+    note: text("note"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("lone_work_check_shift_idx").on(t.shiftId, t.createdAt)],
 );

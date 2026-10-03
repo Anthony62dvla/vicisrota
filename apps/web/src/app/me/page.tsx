@@ -5,10 +5,11 @@ import Link from "next/link";
 import { requireStaff } from "@/lib/business";
 import { db } from "@/lib/db";
 import { formatAmount, LEAVE_KINDS, LEAVE_LABEL, loadBalances } from "@/lib/leave";
+import { loadLoneShifts } from "@/lib/lone-working";
 import { todayInUk } from "@/lib/rota";
 import { SignOutButton } from "../dashboard/sign-out";
 import { setCoverRequest, withdrawClaim, withdrawRequest } from "./actions";
-import { PickUpList, TimeOffForm } from "./forms";
+import { LoneCheckIn, PickUpList, TimeOffForm } from "./forms";
 
 const MINUTE = 60_000;
 /** How far ahead staff can see published shifts. */
@@ -77,7 +78,13 @@ export default async function MyPage() {
       .select({ policy: schema.organisation.tippingPolicy })
       .from(schema.organisation)
       .where(eq(schema.organisation.id, organisationId));
-    return { now: new Date().getTime(), shifts, breaks, clients, available, myClaims, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
+    const now = new Date().getTime();
+    // Lone working shifts starting within 30 minutes, under way, or ended in the last 2 hours without a check-out.
+    // Finished ones stay until the shift ends, as confirmation the check-out went through.
+    const lone = (await loadLoneShifts(tx, { from: new Date(now - 2 * 3_600_000), to: new Date(now + 30 * 60_000), now, workerId: worker.id })).filter(
+      (l) => l.status.state !== "finished" || l.shift.endsAt.getTime() > now,
+    );
+    return { now, lone, shifts, breaks, clients, available, myClaims, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
   });
 
   const days = new Map<string, typeof data.shifts>();
@@ -105,6 +112,29 @@ export default async function MyPage() {
         </div>
         <SignOutButton />
       </div>
+
+      {data.lone.map(({ shift, status, clientName, checks }) => (
+        <section key={shift.id} aria-label="Working alone" className={`mt-6 rounded-lg border-2 p-4 ${status.state === "help" ? "border-red-600" : "border-zinc-900 dark:border-zinc-100"}`}>
+          <h2 className="text-lg font-semibold">You are working alone{clientName ? ` with ${clientName}` : ""}</h2>
+          <p className="mt-1">
+            {timeFmt.format(shift.startsAt)} to {timeFmt.format(shift.endsAt)}.{" "}
+            {status.state === "finished"
+              ? ""
+              : status.state === "help"
+              ? "You asked for help. Your manager has been alerted."
+              : status.dueAt
+                ? `Next check-in by ${timeFmt.format(new Date(status.dueAt))}.`
+                : ""}
+          </p>
+          {status.state === "finished" ? (
+            <p role="status" className="mt-2 font-medium">
+              You checked out safely at {timeFmt.format(checks.find((c) => c.kind === "finished")!.createdAt)}.
+            </p>
+          ) : (
+            <LoneCheckIn shiftId={shift.id} started={checks.some((c) => c.kind !== "resolved")} />
+          )}
+        </section>
+      ))}
 
       <section className="mt-8" aria-labelledby="shifts-heading">
         <h2 id="shifts-heading" className="text-lg font-semibold">Your shifts</h2>

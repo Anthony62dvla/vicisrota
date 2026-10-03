@@ -120,6 +120,20 @@
       "when": 1791064049051,
       "tag": "0016_safeguarding_protection",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791064598675,
+      "tag": "0017_lone_working",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791064599560,
+      "tag": "0018_lone_working_protection",
+      "breakpoints": true
     }
   ]
 }

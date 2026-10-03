@@ -2,7 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDb, withOrganisation, type Database } from "../src/client";
 import { runMigrations } from "../src/migrate";
-import { auditEvent, client, safeguardingAction, safeguardingConcern, shiftClaim, tip, tipAllocation, tipShare, leaveRequest, timeEntry, organisation, qualification, shift, worker, workerCheck } from "../src/schema";
+import { auditEvent, loneWorkCheck, client, safeguardingAction, safeguardingConcern, shiftClaim, tip, tipAllocation, tipShare, leaveRequest, timeEntry, organisation, qualification, shift, worker, workerCheck } from "../src/schema";
 
 // Needs a disposable Postgres database, connected as a non-superuser (superusers bypass row-level security).
 // Example: TEST_DATABASE_URL=postgres://vicisrota:vicisrota@localhost:5433/vicisrota_test
@@ -152,6 +152,15 @@ describe.skipIf(!url)("database", () => {
     await expect(
       withOrganisation(db, careHome, (tx) => tx.update(safeguardingAction).set({ note: "x" }).where(eq(safeguardingAction.id, action!.id))),
     ).rejects.toThrow();
+  });
+
+  it("keeps lone working check-ins permanent and private", async () => {
+    const [night] = await withOrganisation(db, cafe, (tx) =>
+      tx.insert(shift).values({ organisationId: cafe, startsAt: new Date("2026-10-06T22:00:00Z"), endsAt: new Date("2026-10-07T06:00:00Z"), loneWorking: true }).returning(),
+    );
+    const [check] = await withOrganisation(db, cafe, (tx) => tx.insert(loneWorkCheck).values({ organisationId: cafe, shiftId: night!.id, kind: "help" }).returning());
+    await expect(withOrganisation(db, cafe, (tx) => tx.delete(loneWorkCheck).where(eq(loneWorkCheck.id, check!.id)))).rejects.toThrow();
+    expect(await withOrganisation(db, careHome, (tx) => tx.select().from(loneWorkCheck))).toEqual([]);
   });
 
   it("shows nothing when no business is set", async () => {
