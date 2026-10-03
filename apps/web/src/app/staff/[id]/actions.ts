@@ -1,10 +1,12 @@
 "use server";
 
 import { schema, withOrganisation, type Transaction } from "@vicisrota/db";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
+import { hashInviteToken, INVITE_DAYS, newInviteToken } from "@/lib/invite";
 import { requestId } from "@/lib/request";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -157,4 +159,47 @@ export async function updateHolidaySettings(_: FormState, form: FormData): Promi
   revalidatePath(`/staff/${workerId}`);
   revalidatePath("/leave");
   return result;
+}
+
+export type InviteState = FormState & { link?: string };
+
+/** Creates a fresh invitation link for a member of staff; any earlier unused link stops working. */
+export async function inviteStaff(_: InviteState, form: FormData): Promise<InviteState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  const token = newInviteToken();
+
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<InviteState> => {
+    const worker = await findWorker(tx, workerId);
+    if (!worker) return { error: "That person could not be found." };
+    const [linked] = await tx.select({ userId: schema.worker.userId }).from(schema.worker).where(eq(schema.worker.id, workerId));
+    if (linked?.userId) return { error: `${worker.name} already has a login.` };
+    await tx
+      .update(schema.invitation)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(schema.invitation.workerId, workerId), isNull(schema.invitation.acceptedAt), isNull(schema.invitation.revokedAt)));
+    const [row] = await tx
+      .insert(schema.invitation)
+      .values({
+        organisationId,
+        workerId,
+        tokenHash: hashInviteToken(token),
+        expiresAt: new Date(Date.now() + INVITE_DAYS * 86_400_000),
+        createdByUserId: user.id,
+      })
+      .returning({ id: schema.invitation.id });
+    await tx.insert(schema.auditEvent).values({
+      organisationId,
+      actorUserId: user.id,
+      requestId: await requestId(),
+      action: "invite",
+      entity: "worker",
+      entityId: workerId,
+      data: { invitationId: row!.id },
+    });
+    return { ok: `Send this link to ${worker.name}. It works once, for ${INVITE_DAYS} days.` };
+  });
+  if (result.error) return result;
+  const origin = (await headers()).get("origin") ?? process.env.BETTER_AUTH_URL ?? "";
+  return { ...result, link: `${origin}/join/${token}` };
 }

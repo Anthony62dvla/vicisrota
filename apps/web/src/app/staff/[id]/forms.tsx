@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { addCheck, addTraining, updateHolidaySettings, type FormState } from "./actions";
+import { addCheck, addTraining, inviteStaff, updateHolidaySettings, type FormState, type InviteState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 const button = "rounded-lg bg-zinc-900 px-4 py-2 text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900";
@@ -121,6 +121,32 @@ export function HolidaySettingsForm({
       </label>
       <button type="submit" disabled={pending} className={button}>
         {pending ? "Saving…" : "Save holiday settings"}
+      </button>
+    </form>
+  );
+}
+
+export function InviteForm({ workerId, name }: { workerId: string; name: string }) {
+  const [state, action, pending] = useActionState<InviteState, FormData>(inviteStaff, {});
+  const [copied, setCopied] = useState(false);
+  return (
+    <form action={action} className="mt-3 flex max-w-xl flex-col gap-3">
+      <input type="hidden" name="workerId" value={workerId} />
+      <Message state={state} />
+      {state.link && (
+        <div className="flex flex-wrap items-center gap-2">
+          <input readOnly value={state.link} aria-label="Invitation link" className={`${input} min-w-0 flex-1 font-mono text-sm`} onFocus={(e) => e.target.select()} />
+          <button
+            type="button"
+            className="rounded-lg border border-zinc-400 px-3 py-2"
+            onClick={() => navigator.clipboard.writeText(state.link!).then(() => setCopied(true))}
+          >
+            {copied ? "Copied" : "Copy link"}
+          </button>
+        </div>
+      )}
+      <button type="submit" disabled={pending} className={`${button} self-start`}>
+        {pending ? "Creating link…" : state.link ? "Create a new link" : `Invite ${name} to log in`}
       </button>
     </form>
   );

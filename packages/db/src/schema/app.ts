@@ -16,6 +16,7 @@ import {
   smallint,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
@@ -85,7 +86,11 @@ export const worker = pgTable(
     irregularHours: boolean("irregular_hours").notNull().default(false),
     createdAt: createdAt(),
   },
-  (t) => [index("worker_org_idx").on(t.organisationId)],
+  (t) => [
+    index("worker_org_idx").on(t.organisationId),
+    // A login is linked to at most one staff record per business.
+    uniqueIndex("worker_org_user_idx").on(t.organisationId, t.userId),
+  ],
 );
 
 export const payRate = pgTable(
@@ -317,3 +322,29 @@ export const payrollExport = pgTable("payroll_export", {
   createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
   createdAt: createdAt(),
 });
+
+/**
+ * An invitation for a member of staff to create a login. Like membership, this table has no row-level
+ * security: it is looked up by token before the business is known. Only a SHA-256 hash of the token is
+ * stored, so a database leak does not reveal working links.
+ */
+export const invitation = pgTable(
+  "invitation",
+  {
+    id: id(),
+    organisationId: uuid("organisation_id")
+      .notNull()
+      .references(() => organisation.id, { onDelete: "cascade" }),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull().unique(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    acceptedByUserId: text("accepted_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("invitation_worker_idx").on(t.workerId)],
+);

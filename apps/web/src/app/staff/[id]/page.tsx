@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import { formatAmount, loadBalances } from "@/lib/leave";
 import { todayInUk } from "@/lib/rota";
 import { removeTraining } from "./actions";
-import { AddCheckForm, AddTrainingForm, HolidaySettingsForm } from "./forms";
+import { AddCheckForm, AddTrainingForm, HolidaySettingsForm, InviteForm } from "./forms";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DBS_LABEL = { basic: "Basic", standard: "Standard", enhanced: "Enhanced", enhanced_barred: "Enhanced with barred list" };
@@ -32,11 +32,14 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
         .where(eq(schema.workerQualification.workerId, id))
         .orderBy(asc(schema.qualification.name)),
       holiday: await loadBalances(tx, organisationId, today),
+      login: worker.userId
+        ? (await tx.select({ email: schema.user.email }).from(schema.user).where(eq(schema.user.id, worker.userId)))[0]
+        : undefined,
       known: (await tx.select({ name: schema.qualification.name }).from(schema.qualification).orderBy(asc(schema.qualification.name))).map((q) => q.name),
     };
   });
   if (!data) notFound();
-  const { worker, checks, training, known, holiday } = data;
+  const { worker, checks, training, known, holiday, login } = data;
   const balance = holiday.balances.get(worker.id)!;
   const rtw = checks.filter((c) => c.kind === "right_to_work");
   const dbs = checks.filter((c) => c.kind === "dbs");
@@ -49,6 +52,21 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
         <Link href="/staff" className="underline">Staff</Link>
       </p>
       <h1 className="mt-2 text-2xl font-semibold">{worker.fullName}</h1>
+
+      <section className="mt-8">
+        <h2 className="text-lg font-semibold">Login</h2>
+        {login ? (
+          <p className="mt-2">{worker.fullName} logs in as {login.email} and can see their own shifts and ask for time off.</p>
+        ) : (
+          <>
+            <p className="mt-2">
+              Give {worker.fullName} their own login to see their shifts, add them to their phone calendar and ask for time off.
+              They only ever see their own information.
+            </p>
+            <InviteForm workerId={worker.id} name={worker.fullName} />
+          </>
+        )}
+      </section>
 
       <section className="mt-8">
         <h2 className="text-lg font-semibold">Right to work</h2>

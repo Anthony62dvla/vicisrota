@@ -2,6 +2,7 @@ import { schema } from "@vicisrota/db";
 import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
+import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { createBusiness } from "../actions";
 import { SignOutButton } from "./sign-out";
@@ -15,6 +16,8 @@ export default async function Dashboard() {
     .from(schema.membership)
     .innerJoin(schema.organisation, eq(schema.membership.organisationId, schema.organisation.id))
     .where(eq(schema.membership.userId, user.id));
+  // Staff have their own page with just their shifts and leave.
+  if (businesses.length > 0 && businesses.every((b) => b.role === "worker")) redirect("/me");
 
   return (
     <main className="mx-auto w-full max-w-2xl px-4 py-12">

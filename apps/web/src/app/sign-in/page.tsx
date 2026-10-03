@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
+import { safeNextPath } from "@/lib/next-path";
 import { Field, FormShell, SubmitButton } from "../form";
 
 export default function SignIn() {
@@ -20,7 +21,8 @@ export default function SignIn() {
     });
     setPending(false);
     if (error) return setError("That email and password do not match. Please check them and try again.");
-    router.push("/dashboard");
+    // After accepting an invitation link, return to it; otherwise the dashboard sends people to the right place.
+    router.push(safeNextPath(new URLSearchParams(window.location.search).get("next")) ?? "/dashboard");
   }
 
   return (

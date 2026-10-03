@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
+import { safeNextPath } from "@/lib/next-path";
 import { Field, FormShell, SubmitButton } from "../form";
 
 export default function SignUp() {
@@ -21,7 +22,8 @@ export default function SignUp() {
     });
     setPending(false);
     if (error) return setError(error.message ?? "We could not create your account. Please try again.");
-    router.push("/dashboard");
+    // After accepting an invitation link, return to it; otherwise the dashboard sends people to the right place.
+    router.push(safeNextPath(new URLSearchParams(window.location.search).get("next")) ?? "/dashboard");
   }
 
   return (
