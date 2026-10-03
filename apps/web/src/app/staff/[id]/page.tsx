@@ -53,7 +53,7 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
       </p>
       <h1 className="mt-2 text-2xl font-semibold">{worker.fullName}</h1>
 
-      <section className="mt-8">
+      <section id="login" className="mt-8 scroll-mt-4">
         <h2 className="text-lg font-semibold">Login</h2>
         {login ? (
           <p className="mt-2">{worker.fullName} logs in as {login.email} and can see their own shifts and ask for time off.</p>
@@ -68,7 +68,7 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
         )}
       </section>
 
-      <section className="mt-8">
+      <section id="right-to-work" className="mt-8 scroll-mt-4">
         <h2 className="text-lg font-semibold">Right to work</h2>
         {!hasValidRtw && (
           <p role="alert" className="mt-2 rounded-lg border border-red-400 p-3">
@@ -86,7 +86,7 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
         </ul>
       </section>
 
-      <section className="mt-8">
+      <section id="dbs" className="mt-8 scroll-mt-4">
         <h2 className="text-lg font-semibold">DBS</h2>
         {dbs.length === 0 ? (
           <p className="mt-2">No DBS check recorded.</p>

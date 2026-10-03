@@ -107,11 +107,11 @@ export const worker = pgTable(
     daysPerWeek: numeric("days_per_week", { precision: 3, scale: 1, mode: "number" }).notNull().default(5),
     /** Irregular hours or part-year: leave accrues at 12.07% of hours worked instead. */
     irregularHours: boolean("irregular_hours").notNull().default(false),
-    /** How the person likes their own pages shown: calm mode (fewer things at once) and larger text. */
     /** Hashed PIN for clocking in on an in-store tablet. */
     pinHash: text("pin_hash"),
     pinFailures: smallint("pin_failures").notNull().default(0),
     pinLockedUntil: timestamp("pin_locked_until", { withTimezone: true }),
+    /** How the person likes their own pages shown: calm mode (fewer things at once) and larger text. */
     preferences: jsonb("preferences").$type<{ calm?: boolean; largeText?: boolean }>().notNull().default({}),
     createdAt: createdAt(),
   },

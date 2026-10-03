@@ -5,6 +5,8 @@ import { requireUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { createBusiness } from "../actions";
+import { loadSetupSteps } from "@/lib/setup";
+import { SetupChecklist } from "./setup-checklist";
 import { SignOutButton } from "./sign-out";
 
 const SECTOR_LABELS = { care: "Care provider", hospitality: "Hospitality", small_business: "Small business" } as const;
@@ -15,9 +17,13 @@ export default async function Dashboard() {
     .select({ id: schema.organisation.id, name: schema.organisation.name, sector: schema.organisation.sector, role: schema.membership.role })
     .from(schema.membership)
     .innerJoin(schema.organisation, eq(schema.membership.organisationId, schema.organisation.id))
-    .where(eq(schema.membership.userId, user.id));
+    .where(eq(schema.membership.userId, user.id))
+    .orderBy(schema.membership.createdAt);
   // Staff have their own page with just their shifts and leave.
   if (businesses.length > 0 && businesses.every((b) => b.role === "worker")) redirect("/me");
+  // Pages work on the first business someone manages, so setup is shown for that one.
+  const managed = businesses.find((b) => b.role !== "worker");
+  const setup = managed ? await loadSetupSteps(managed.id) : null;
 
   return (
     <main className="mx-auto w-full max-w-2xl px-4 py-12">
@@ -28,6 +34,7 @@ export default async function Dashboard() {
 
       {businesses.length > 0 ? (
         <>
+        {setup && <SetupChecklist steps={setup} />}
         <nav className="mt-6 flex flex-wrap gap-4" aria-label="Main">
           <Link href="/rota" className="rounded-lg border border-zinc-400 px-4 py-2">Rota</Link>
           <Link href="/staff" className="rounded-lg border border-zinc-400 px-4 py-2">Staff</Link>
