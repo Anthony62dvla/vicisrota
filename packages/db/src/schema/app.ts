@@ -677,3 +677,40 @@ export const kioskDevice = pgTable("kiosk_device", {
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
   createdAt: createdAt(),
 });
+
+/**
+ * A message from managers to all staff, such as a policy change. The wording cannot be changed once
+ * posted (enforced in the database), so a confirmation always refers to what the person actually read.
+ */
+export const announcement = pgTable(
+  "announcement",
+  {
+    id: id(),
+    organisationId: orgId(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    /** Staff are asked to confirm they have read it, and managers see who has not. */
+    needsConfirmation: boolean("needs_confirmation").notNull().default(false),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("announcement_org_idx").on(t.organisationId, t.createdAt)],
+);
+
+/** When each person read or confirmed an announcement. Append-only. */
+export const announcementRead = pgTable(
+  "announcement_read",
+  {
+    id: id(),
+    organisationId: orgId(),
+    announcementId: uuid("announcement_id")
+      .notNull()
+      .references(() => announcement.id, { onDelete: "cascade" }),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    readAt: timestamp("read_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("announcement_read_once_idx").on(t.announcementId, t.workerId)],
+);

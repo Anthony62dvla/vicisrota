@@ -11,7 +11,7 @@ import { loadLoneShifts } from "@/lib/lone-working";
 import { SHORT_NOTICE_HOURS } from "@/lib/notices";
 import { todayInUk } from "@/lib/rota";
 import { SignOutButton } from "../dashboard/sign-out";
-import { addMyUnavailable, markNoticesSeen, removeMyUnavailable, savePreferences, setCoverRequest, withdrawClaim, withdrawRequest } from "./actions";
+import { addMyUnavailable, markNoticesSeen, readAnnouncement, removeMyUnavailable, savePreferences, setCoverRequest, withdrawClaim, withdrawRequest } from "./actions";
 import { formatUkMobile } from "@vicisrota/messaging";
 import { ClockButtons, LoneCheckIn, PickUpList, PinForm, TextSettingsForm, TimeOffForm } from "./forms";
 import { OfflineNotice } from "./offline-notice";
@@ -117,7 +117,17 @@ export default async function MyPage() {
       .from(schema.workerUnavailability)
       .where(eq(schema.workerUnavailability.workerId, worker.id))
       .orderBy(asc(schema.workerUnavailability.weekday), asc(schema.workerUnavailability.startsAt));
-    return { unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
+    const announcements = await tx
+      .select({ post: schema.announcement, readAt: schema.announcementRead.readAt })
+      .from(schema.announcement)
+      .leftJoin(
+        schema.announcementRead,
+        and(eq(schema.announcementRead.announcementId, schema.announcement.id), eq(schema.announcementRead.workerId, worker.id)),
+      )
+      .where(isNull(schema.announcement.archivedAt))
+      .orderBy(desc(schema.announcement.createdAt))
+      .limit(20);
+    return { announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
   });
 
   const days = new Map<string, typeof data.shifts>();
@@ -202,6 +212,22 @@ export default async function MyPage() {
           )}
         </section>
       ))}
+
+      {data.announcements
+        .filter((a) => !a.readAt)
+        .map(({ post }) => (
+          <section key={post.id} className="mt-6 rounded-lg border-2 border-sky-700 p-4" aria-labelledby={`announcement-${post.id}`}>
+            <p className="text-sm font-medium text-sky-800 dark:text-sky-300">Message from {businessName}</p>
+            <h2 id={`announcement-${post.id}`} className="text-lg font-semibold">{post.title}</h2>
+            <p className="mt-2 whitespace-pre-line">{post.body}</p>
+            <form action={readAnnouncement} className="mt-3">
+              <input type="hidden" name="id" value={post.id} />
+              <button type="submit" className="rounded-lg border border-zinc-400 px-4 py-2">
+                {post.needsConfirmation ? "I have read and understood this" : "Got it"}
+              </button>
+            </form>
+          </section>
+        ))}
 
       {data.notices.length > 0 && (
         <section className="mt-6 rounded-lg border-2 border-zinc-900 p-4 dark:border-zinc-100" aria-labelledby="changes-heading">
@@ -370,6 +396,24 @@ export default async function MyPage() {
         <h2 id="ask-heading" className="text-lg font-semibold">Ask for time off</h2>
         <TimeOffForm unit={unit} kinds={LEAVE_KINDS.map((k) => ({ value: k, label: LEAVE_LABEL[k] }))} />
       </section>
+      {data.announcements.some((a) => a.readAt) && (
+        <section className="mt-10" aria-labelledby="past-announcements-heading">
+          <h2 id="past-announcements-heading" className="text-lg font-semibold">Messages you have read</h2>
+          <ul className="mt-2 flex flex-col gap-2">
+            {data.announcements
+              .filter((a) => a.readAt)
+              .map(({ post }) => (
+                <li key={post.id}>
+                  <details>
+                    <summary className="cursor-pointer">{post.title}</summary>
+                    <p className="mt-1 whitespace-pre-line">{post.body}</p>
+                  </details>
+                </li>
+              ))}
+          </ul>
+        </section>
+      )}
+
       <section className="mt-10" aria-labelledby="availability-heading">
         <h2 id="availability-heading" className="text-lg font-semibold">Times you can&apos;t work</h2>
         <p className="mt-1">For example school runs, caring, study or another job. Your manager is warned before giving you a shift at these times.</p>

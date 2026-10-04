@@ -2,7 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDb, withOrganisation, type Database } from "../src/client";
 import { runMigrations } from "../src/migrate";
-import { auditEvent, clockEvent, loneWorkCheck, client, safeguardingAction, safeguardingConcern, shiftClaim, tip, tipAllocation, tipShare, leaveRequest, timeEntry, organisation, qualification, shift, worker, workerCheck, workerUnavailability } from "../src/schema";
+import { announcement, announcementRead, auditEvent, clockEvent, loneWorkCheck, client, safeguardingAction, safeguardingConcern, shiftClaim, tip, tipAllocation, tipShare, leaveRequest, timeEntry, organisation, qualification, shift, worker, workerCheck, workerUnavailability } from "../src/schema";
 
 // Needs a disposable Postgres database, connected as a non-superuser (superusers bypass row-level security).
 // Example: TEST_DATABASE_URL=postgres://vicisrota:vicisrota@localhost:5433/vicisrota_test
@@ -195,6 +195,20 @@ describe.skipIf(!url)("database", () => {
     expect(await withOrganisation(db, careHome, (tx) => tx.select().from(workerUnavailability))).toEqual([]);
     for (const bad of [{ weekday: 8, startsAt: "09:00", endsAt: "10:00" }, { weekday: 1, startsAt: "17:00", endsAt: "15:00" }, { weekday: 1, startsAt: "9am", endsAt: "10:00" }])
       await expect(withOrganisation(db, cafe, (tx) => tx.insert(workerUnavailability).values({ organisationId: cafe, workerId: jo!.id, ...bad }))).rejects.toThrow();
+  });
+
+  it("keeps announcement wording and read confirmations as they were", async () => {
+    const [sam] = await withOrganisation(db, cafe, (tx) => tx.insert(worker).values({ organisationId: cafe, fullName: "Sam", dateOfBirth: "1990-01-01" }).returning());
+    const [post] = await withOrganisation(db, cafe, (tx) =>
+      tx.insert(announcement).values({ organisationId: cafe, title: "New fire exits", body: "Use the side door.", needsConfirmation: true }).returning(),
+    );
+    await withOrganisation(db, cafe, (tx) => tx.insert(announcementRead).values({ organisationId: cafe, announcementId: post!.id, workerId: sam!.id }));
+    await expect(withOrganisation(db, cafe, (tx) => tx.update(announcement).set({ body: "Use the front door." }).where(eq(announcement.id, post!.id)))).rejects.toThrow();
+    await expect(withOrganisation(db, cafe, (tx) => tx.delete(announcement).where(eq(announcement.id, post!.id)))).rejects.toThrow();
+    await expect(withOrganisation(db, cafe, (tx) => tx.delete(announcementRead))).rejects.toThrow();
+    await expect(withOrganisation(db, cafe, (tx) => tx.insert(announcementRead).values({ organisationId: cafe, announcementId: post!.id, workerId: sam!.id }))).rejects.toThrow();
+    await withOrganisation(db, cafe, (tx) => tx.update(announcement).set({ archivedAt: new Date() }).where(eq(announcement.id, post!.id)));
+    expect(await withOrganisation(db, careHome, (tx) => tx.select().from(announcement))).toEqual([]);
   });
 
   it("shows nothing when no business is set", async () => {

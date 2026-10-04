@@ -335,3 +335,16 @@ export async function removeMyUnavailable(form: FormData) {
   );
   revalidatePath("/me");
 }
+
+/** Records that the person has read (or, where asked, confirmed) an announcement. Recorded once. */
+export async function readAnnouncement(form: FormData) {
+  const { organisationId, worker } = await requireStaff();
+  const id = String(form.get("id") ?? "");
+  await withOrganisation(db, organisationId, async (tx) => {
+    // Foreign keys skip row-level security, so check the announcement belongs to this business.
+    const [found] = await tx.select({ id: schema.announcement.id }).from(schema.announcement).where(eq(schema.announcement.id, id));
+    if (!found) return;
+    await tx.insert(schema.announcementRead).values({ organisationId, announcementId: id, workerId: worker.id }).onConflictDoNothing();
+  });
+  revalidatePath("/me");
+}
