@@ -41,6 +41,7 @@ export default async function Dashboard() {
           <Link href="/leave" className="rounded-lg border border-zinc-400 px-4 py-2">Leave</Link>
           <Link href="/sickness" className="rounded-lg border border-zinc-400 px-4 py-2">Sickness</Link>
           <Link href="/timesheets" className="rounded-lg border border-zinc-400 px-4 py-2">Timesheets</Link>
+          <Link href="/working-time" className="rounded-lg border border-zinc-400 px-4 py-2">Working time</Link>
           {businesses.some((b) => b.sector !== "care") && (
             <Link href="/tips" className="rounded-lg border border-zinc-400 px-4 py-2">Tips</Link>
           )}

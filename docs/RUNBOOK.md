@@ -51,3 +51,9 @@ Sickness is stored as leave of kind `sick`. Only approved sickness counts; staff
 - **Someone's SSP looks wrong:** open "Change or check" on the Sickness page. It shows the days of the week treated as working days (from their shifts in the 8 weeks before) and the average weekly earnings used. Earnings are estimated from confirmed hours unless a manager entered a figure on the first sickness of the period.
 - **Sickness that began before 6 April 2026** is flagged and not calculated; payroll works it out under the old rules.
 - The payroll export has a "Statutory Sick Pay (£)" column for the sick days inside the period.
+
+## Working time records
+
+`/working-time` shows each person's average week over the last 17 whole weeks (Monday to Sunday) from confirmed hours, worked out in `packages/compliance/src/workingTimeReport.ts`. Approved holiday, sickness and family leave are left out of the divisor so they do not lower the average. Under-18s are checked against 40 hours in every single week. `/working-time/export` downloads every confirmed piece of work (with breaks and night hours, 23:00 to 06:00) for up to a year at a time; each download is in the audit trail. Records must be kept for 2 years.
+
+- **Someone's average looks too low:** their hours may not be confirmed on Timesheets yet. Only confirmed hours count here; the rota check on publish uses planned shifts.
