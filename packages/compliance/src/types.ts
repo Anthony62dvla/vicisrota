@@ -19,6 +19,8 @@ export interface Worker {
   unavailable?: Unavailable[];
   /** Adjustments agreed with the person, e.g. because of a disability or neurodivergence. */
   adjustments?: Adjustments;
+  /** Ids of the job roles the person is set up to work, e.g. Chef or Senior carer. */
+  roles?: string[] | undefined;
 }
 
 /** A weekly time someone cannot work, in UK time. weekday: 1 = Monday to 7 = Sunday. to may be "24:00". */
@@ -67,6 +69,8 @@ export interface Shift {
   breaks?: Break[];
   /** Training the person on this shift must hold, e.g. medication competency. */
   requiredQualifications?: { id: string; name: string }[];
+  /** The job role the shift is for, if the business uses roles. */
+  role?: { id: string; name: string } | undefined;
   /** Care visits: minutes travelling from the previous visit. Travel between visits is working time for the minimum wage. */
   travelMinutesBefore?: number;
 }

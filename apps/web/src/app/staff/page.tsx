@@ -22,7 +22,7 @@ export default async function StaffPage() {
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-12">
       <p>
-        <Link href="/dashboard" className="underline">{businessName}</Link>
+        <Link href="/dashboard" className="underline">{businessName}</Link> · <Link href="/roles" className="underline">Job roles</Link>
       </p>
       <h1 className="mt-2 text-2xl font-semibold">Staff</h1>
       {workers.length === 0 ? (

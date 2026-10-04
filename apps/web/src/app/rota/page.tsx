@@ -8,6 +8,7 @@ import { LEAVE_LABEL } from "@/lib/leave";
 import { todayInUk, weekBounds } from "@/lib/rota";
 import { cancelShift } from "./actions";
 import { AddShiftForm, ClaimList, CopyWeekForm, PublishForm } from "./forms";
+import { RoleBadge } from "../role-badge";
 
 const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" });
 const dayFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" });
@@ -23,7 +24,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
 
   const previous = weekBounds(addDays(week, -7));
 
-  const { workers, training, clients, shifts, claims, leave, decision, rates, breaks, paysTravelTime, lastWeek } = await withOrganisation(db, organisationId, async (tx) => ({
+  const { workers, training, clients, shifts, claims, leave, decision, rates, breaks, paysTravelTime, lastWeek, roles } = await withOrganisation(db, organisationId, async (tx) => ({
     workers: await tx.select().from(schema.worker).orderBy(asc(schema.worker.fullName)),
     clients:
       sector === "care"
@@ -32,6 +33,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
             .from(schema.client)
             .orderBy(asc(schema.client.name))
         : [],
+    roles: await tx.select().from(schema.jobRole).orderBy(asc(schema.jobRole.name)),
     training: await tx.select({ id: schema.qualification.id, name: schema.qualification.name }).from(schema.qualification).orderBy(asc(schema.qualification.name)),
     shifts: await tx
       .select()
@@ -79,6 +81,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
   const findings = (decision?.findings ?? []) as Finding[];
   const flagged = new Set(findings.flatMap((f) => f.shiftIds));
   const clientName = new Map(clients.map((c) => [c.id, c.name]));
+  const roleById = new Map(roles.map((r) => [r.id, r]));
   // Requests for this week's shifts.
   const claimsShown = claims.flatMap((c) => {
     const shift = shifts.find((s) => s.id === c.claim.shiftId);
@@ -182,6 +185,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
                             className={`mb-1 rounded-md border p-1 ${flagged.has(s.id) ? "border-red-500" : "border-zinc-300 dark:border-zinc-700"}`}
                           >
                             <p>{timeFmt.format(s.startsAt)}–{timeFmt.format(s.endsAt)}</p>
+                            {s.roleId && roleById.has(s.roleId) && <RoleBadge name={roleById.get(s.roleId)!.name} colour={roleById.get(s.roleId)!.colour} />}
                             {s.clientId && <p className="text-xs font-medium">{clientName.get(s.clientId) ?? "Visit"}</p>}
                             {s.travelMinutes > 0 && <p className="text-xs text-zinc-600 dark:text-zinc-400">{s.travelMinutes} min travel before</p>}
                             <p className="text-xs text-zinc-600 dark:text-zinc-400">
@@ -210,6 +214,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
                         .map((s) => (
                           <div key={s.id} className="mb-1 rounded-md border border-dashed border-zinc-500 p-1">
                             <p>{timeFmt.format(s.startsAt)}–{timeFmt.format(s.endsAt)}</p>
+                            {s.roleId && roleById.has(s.roleId) && <RoleBadge name={roleById.get(s.roleId)!.name} colour={roleById.get(s.roleId)!.colour} />}
                             <p className="text-xs text-zinc-600 dark:text-zinc-400">
                               {s.status === "published" ? "Open to staff" : "Draft"}
                               {claims.some((c) => c.claim.shiftId === s.id) && " · requested"}
@@ -277,7 +282,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
         )}
       </section>
 
-      {workers.length > 0 && <AddShiftForm workers={workers.map((w) => ({ id: w.id, name: w.fullName }))} days={days} training={training} clients={sector === "care" ? clients.filter((c) => c.active) : undefined} />}
+      {workers.length > 0 && <AddShiftForm workers={workers.map((w) => ({ id: w.id, name: w.fullName }))} days={days} training={training} roles={roles.map((r) => ({ id: r.id, name: r.name }))} clients={sector === "care" ? clients.filter((c) => c.active) : undefined} />}
     </main>
   );
 }

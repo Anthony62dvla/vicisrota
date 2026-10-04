@@ -26,7 +26,7 @@ export const loadComplianceContext = async (
   const { from } = weekBounds(addDays(weekStart, -7 * HISTORY_WEEKS));
   const { to } = weekBounds(weekStart);
 
-  const [[organisation], workers, rates, shifts, checks, qualifications, held, leave, unavailable] = await Promise.all([
+  const [[organisation], workers, rates, shifts, checks, qualifications, held, leave, unavailable, roles, workerRoles] = await Promise.all([
     tx
       .select({ requiresEnhancedDbs: schema.organisation.requiresEnhancedDbs, paysTravelTime: schema.organisation.paysTravelTime })
       .from(schema.organisation)
@@ -51,7 +51,10 @@ export const loadComplianceContext = async (
         ),
       ),
     tx.select().from(schema.workerUnavailability),
+    tx.select({ id: schema.jobRole.id, name: schema.jobRole.name }).from(schema.jobRole),
+    tx.select().from(schema.workerRole),
   ]);
+  const roleById = new Map(roles.map((r) => [r.id, r]));
   const assigned = shifts
     .map((s) => (s.id === assume?.shiftId ? { ...s, workerId: assume.workerId } : s))
     .filter((s) => s.workerId);
@@ -95,6 +98,7 @@ export const loadComplianceContext = async (
       unavailable: unavailable.filter((u) => u.workerId === w.id).map((u) => ({ weekday: u.weekday, from: u.startsAt, to: u.endsAt })),
       // The note explaining why stays out of the rota check.
       adjustments: { maxShiftHours: w.adjustments.maxShiftHours, earliestStart: w.adjustments.earliestStart, latestFinish: w.adjustments.latestFinish },
+      roles: workerRoles.filter((r) => r.workerId === w.id).map((r) => r.roleId),
     })),
     payRates: rates.map((r) => ({ workerId: r.workerId, hourlyPence: r.hourlyPence, effectiveFrom: r.effectiveFrom })),
     shifts: assigned.map((s) => ({
@@ -106,6 +110,7 @@ export const loadComplianceContext = async (
         .filter((b) => b.shiftId === s.id)
         .map((b) => ({ start: b.startsAt.toISOString(), end: b.endsAt.toISOString() })),
       travelMinutesBefore: s.travelMinutes,
+      role: s.roleId ? roleById.get(s.roleId) : undefined,
       requiredQualifications: requirements
         .filter((r) => r.shiftId === s.id)
         .map((r) => ({ id: r.qualificationId, name: qualificationName.get(r.qualificationId) ?? "Training" })),

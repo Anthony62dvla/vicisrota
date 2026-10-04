@@ -71,9 +71,15 @@ export default async function MyPage() {
           gt(schema.shift.startsAt, new Date()),
           lt(schema.shift.startsAt, to),
           or(isNull(schema.shift.workerId), and(isNotNull(schema.shift.coverRequestedAt), ne(schema.shift.workerId, worker.id))),
+          // Only shifts with no role, or a role this person is set up for.
+          or(
+            isNull(schema.shift.roleId),
+            inArray(schema.shift.roleId, tx.select({ id: schema.workerRole.roleId }).from(schema.workerRole).where(eq(schema.workerRole.workerId, worker.id))),
+          ),
         ),
       )
       .orderBy(asc(schema.shift.startsAt));
+    const roles = await tx.select().from(schema.jobRole);
     const myClaims = await tx
       .select({ claim: schema.shiftClaim, shift: schema.shift })
       .from(schema.shiftClaim)
@@ -130,7 +136,7 @@ export default async function MyPage() {
       .limit(20);
     const sick = (await loadSickness(tx, addDays(today, 366), [worker.id])).get(worker.id);
     const sickPay = new Map((sick?.records ?? []).filter((r) => !r.ssp.oldRules && r.ssp.pence > 0).map((r) => [r.id, r.ssp.pence]));
-    return { sickPay, announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
+    return { roles, sickPay, announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
   });
 
   const days = new Map<string, typeof data.shifts>();
@@ -140,12 +146,13 @@ export default async function MyPage() {
   }
   const { balance } = data;
   const claimed = new Set(data.myClaims.map((c) => c.claim.shiftId));
+  const roleName = new Map(data.roles.map((r) => [r.id, r.name]));
   const pickUp = data.available
     .filter((s) => !claimed.has(s.id))
     .map((s) => ({
       id: s.id,
       when: `${longDate(londonParts(s.startsAt.getTime()).date)}, ${timeFmt.format(s.startsAt)} to ${timeFmt.format(s.endsAt)}`,
-      detail: s.workerId ? "A colleague needs cover" : "Open shift",
+      detail: `${s.workerId ? "A colleague needs cover" : "Open shift"}${s.roleId && roleName.has(s.roleId) ? ` · ${roleName.get(s.roleId)}` : ""}`,
     }));
   const unit = worker.irregularHours ? "hours" : "days";
   const { calm = false, largeText = false } = worker.preferences;
@@ -288,6 +295,7 @@ export default async function MyPage() {
                       <p>
                         {timeFmt.format(s.startsAt)} to {timeFmt.format(s.endsAt)}
                         {client && <strong>{` · Visit to ${client.name}`}</strong>}
+                        {s.roleId && roleName.has(s.roleId) && <strong>{` · ${roleName.get(s.roleId)}`}</strong>}
                         <span className="text-zinc-600 dark:text-zinc-400">
                           {" "}· {Number.isInteger(paidHours) ? paidHours : paidHours.toFixed(2).replace(/0$/, "")} {paidHours === 1 ? "hour" : "hours"}
                           {unpaid > 0 && `, ${Math.round(unpaid / MINUTE)} minute break`}

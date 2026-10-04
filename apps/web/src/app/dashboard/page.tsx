@@ -45,6 +45,7 @@ export default async function Dashboard() {
         <nav className="mt-6 flex flex-wrap gap-4" aria-label="Main">
           <Link href="/rota" className="rounded-lg border border-zinc-400 px-4 py-2">Rota</Link>
           <Link href="/staff" className="rounded-lg border border-zinc-400 px-4 py-2">Staff</Link>
+          <Link href="/roles" className="rounded-lg border border-zinc-400 px-4 py-2">Job roles</Link>
           <Link href="/leave" className="rounded-lg border border-zinc-400 px-4 py-2">Leave</Link>
           <Link href="/sickness" className="rounded-lg border border-zinc-400 px-4 py-2">Sickness</Link>
           <Link href="/timesheets" className="rounded-lg border border-zinc-400 px-4 py-2">Timesheets</Link>

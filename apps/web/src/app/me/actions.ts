@@ -6,7 +6,7 @@ import { and, eq, gt, gte, inArray, isNull, lte } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { addUnavailable, parseSlot, removeUnavailable } from "@/lib/availability";
 import { requireStaff } from "@/lib/business";
-import { checkAssignment } from "@/lib/claims";
+import { canWorkRole, checkAssignment } from "@/lib/claims";
 import { recordClock } from "@/lib/clock";
 import { hashPin, pinProblem } from "@/lib/pin";
 import { db } from "@/lib/db";
@@ -143,6 +143,7 @@ export async function askToPickUp(_: FormState, form: FormData): Promise<FormSta
       .where(and(eq(schema.shift.id, shiftId), eq(schema.shift.status, "published"), gt(schema.shift.startsAt, new Date())));
     // Only open shifts and shifts someone has asked to have covered can be picked up.
     if (!shift || shift.workerId === worker.id || (shift.workerId && !shift.coverRequestedAt)) return { error: "That shift is no longer available." };
+    if (!(await canWorkRole(tx, worker.id, shift.roleId))) return { error: "This shift is for a job role you are not set up for. Ask your manager if you can do it." };
     const check = await checkAssignment(tx, organisationId, shiftId, worker.id);
     if (!check) return { error: "That shift is no longer available." };
     if (check.blocks.length) return { error: `You can't take this shift: ${check.blocks.map((f) => f.message).join(" ")}` };

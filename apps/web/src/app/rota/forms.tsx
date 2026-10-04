@@ -29,11 +29,13 @@ export function AddShiftForm({
   workers,
   days,
   training,
+  roles,
   clients,
 }: {
   workers: { id: string; name: string }[];
   days: string[];
   training: { id: string; name: string }[];
+  roles: { id: string; name: string }[];
   /** Care providers only: clients a shift can be a visit to. */
   clients?: { id: string; name: string }[];
 }) {
@@ -51,6 +53,17 @@ export function AddShiftForm({
           ))}
         </select>
       </label>
+      {roles.length > 0 && (
+        <label className="flex flex-col gap-1">
+          <span className="font-medium">Job role</span>
+          <select name="roleId" className={input}>
+            <option value="">No particular role</option>
+            {roles.map((r) => (
+              <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
+          </select>
+        </label>
+      )}
       <label className="flex flex-col gap-1">
         <span className="font-medium">Day</span>
         <select name="date" required className={input}>

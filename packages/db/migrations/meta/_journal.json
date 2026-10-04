@@ -239,6 +239,20 @@
       "when": 1791122990314,
       "tag": "0033_superadmin_protection",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1791127423189,
+      "tag": "0034_job_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1791127424229,
+      "tag": "0035_job_roles_rls",
+      "breakpoints": true
     }
   ]
 }

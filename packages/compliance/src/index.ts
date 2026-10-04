@@ -16,3 +16,4 @@ export * from "./rules/availability";
 export * from "./planning";
 export * from "./ssp";
 export * from "./workingTimeReport";
+export * from "./rules/roles";

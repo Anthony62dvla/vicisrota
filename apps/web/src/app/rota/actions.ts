@@ -29,6 +29,7 @@ export async function addShift(_: FormState, form: FormData): Promise<FormState>
   const breakMinutes = Number(form.get("breakMinutes") ?? 0);
   const requires = [...new Set(form.getAll("requires").map(String))];
   const clientId = String(form.get("clientId") ?? "") || null;
+  const roleId = String(form.get("roleId") ?? "") || null;
   const travelMinutes = Number(form.get("travelMinutes") ?? 0);
   if (!DATE.test(date)) return { error: "Choose the day." };
   if (!TIME.test(start) || !TIME.test(end)) return { error: "Enter a start and finish time." };
@@ -55,13 +56,17 @@ export async function addShift(_: FormState, form: FormData): Promise<FormState>
       const [found] = await tx.select({ id: schema.client.id }).from(schema.client).where(eq(schema.client.id, clientId));
       if (!found) return "That client could not be found.";
     }
+    if (roleId) {
+      const [found] = await tx.select({ id: schema.jobRole.id }).from(schema.jobRole).where(eq(schema.jobRole.id, roleId));
+      if (!found) return "That job role could not be found.";
+    }
     if (requires.length) {
       const known = await tx.select({ id: schema.qualification.id }).from(schema.qualification).where(inArray(schema.qualification.id, requires));
       if (known.length !== requires.length) return "Some of the training chosen could not be found.";
     }
     const [shift] = await tx
       .insert(schema.shift)
-      .values({ organisationId, workerId, clientId, travelMinutes, loneWorking, checkInMinutes, startsAt: new Date(startsAt), endsAt: new Date(endsAt) })
+      .values({ organisationId, workerId, clientId, roleId, travelMinutes, loneWorking, checkInMinutes, startsAt: new Date(startsAt), endsAt: new Date(endsAt) })
       .returning({ id: schema.shift.id });
     if (breakMinutes > 0) {
       // Place the break in the middle of the shift; exact break times can be edited later.
@@ -83,7 +88,7 @@ export async function addShift(_: FormState, form: FormData): Promise<FormState>
       action: "create",
       entity: "shift",
       entityId: shift!.id,
-      data: { workerId, date, start, end, breakMinutes, requires, clientId, travelMinutes, loneWorking, checkInMinutes },
+      data: { workerId, date, start, end, breakMinutes, requires, clientId, roleId, travelMinutes, loneWorking, checkInMinutes },
     });
   });
   if (error) return { error };
@@ -238,7 +243,7 @@ const aWeekLater = (d: Date) => {
 };
 
 /**
- * Copies last week's shifts into this week as drafts, with their breaks, training needs, visits and
+ * Copies last week's shifts into this week as drafts, with their roles, breaks, training needs, visits and
  * lone working settings. A shift already in this week for the same person at the same time is skipped,
  * so pressing it twice does nothing more. Nobody sees the copies until the week is checked and published.
  */
@@ -277,6 +282,7 @@ export async function copyPreviousWeek(_: FormState, form: FormData): Promise<Fo
           workerId: s.workerId,
           locationId: s.locationId,
           clientId: s.clientId,
+          roleId: s.roleId,
           travelMinutes: s.travelMinutes,
           loneWorking: s.loneWorking,
           checkInMinutes: s.checkInMinutes,

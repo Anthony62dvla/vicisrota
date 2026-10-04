@@ -66,3 +66,7 @@ VicisRota staff use `/admin` to see every customer business (counts and setup pr
 - **Onboarding:** "Set up a new customer" creates the business and an owner link (14 days). Send it to the owner yourself; whoever opens it becomes the owner. The welcome page warns if they are signed in with a different email. "Make a new owner link" replaces a lost or expired one.
 - **The trail:** every superadmin action, reference lookup and owner joining is in `platform_audit`, which cannot be changed or deleted. Owner links are never stored or logged, only who they were for.
 - **Brand colours** are CSS variables at the top of `src/app/globals.css` (`--brand` and friends, with dark-mode values), plus `src/lib/brand.ts` for the phone theme colour. The app icons are drawn from `public/icon.svg`.
+
+## Job roles
+
+Roles (`job_role`, with `worker_role` for who can work each) are optional. A shift can have one role (`shift.role_id`). The rota warns (rule `roles.job-role`, never blocks) when someone is put on a role they are not set up for. Staff only see, and can only ask for, open shifts with no role or a role they hold. Ready-made UK roles for each sector live in `apps/web/src/lib/role-suggestions.ts`; add to that list to offer more. Removing a role leaves its shifts in place without a role.

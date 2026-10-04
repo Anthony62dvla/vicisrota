@@ -9,6 +9,7 @@ import { todayInUk } from "@/lib/rota";
 import { AvailabilityEditor } from "../../availability-editor";
 import { addStaffUnavailable, removeStaffUnavailable, removeTraining } from "./actions";
 import { formatUkMobile } from "@vicisrota/messaging";
+import { WorkerRolesForm } from "../../roles/forms";
 import { AddCheckForm, AddTrainingForm, AdjustmentsForm, HolidaySettingsForm, InviteForm, MobileForm } from "./forms";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -42,11 +43,13 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
         .from(schema.workerUnavailability)
         .where(eq(schema.workerUnavailability.workerId, id))
         .orderBy(asc(schema.workerUnavailability.weekday), asc(schema.workerUnavailability.startsAt)),
+      roles: await tx.select().from(schema.jobRole).orderBy(asc(schema.jobRole.name)),
+      held: (await tx.select({ roleId: schema.workerRole.roleId }).from(schema.workerRole).where(eq(schema.workerRole.workerId, id))).map((r) => r.roleId),
       known: (await tx.select({ name: schema.qualification.name }).from(schema.qualification).orderBy(asc(schema.qualification.name))).map((q) => q.name),
     };
   });
   if (!data) notFound();
-  const { worker, checks, training, known, holiday, login, unavailable } = data;
+  const { worker, checks, training, known, holiday, login, unavailable, roles, held } = data;
   const balance = holiday.balances.get(worker.id)!;
   const rtw = checks.filter((c) => c.kind === "right_to_work");
   const dbs = checks.filter((c) => c.kind === "dbs");
@@ -59,6 +62,21 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
         <Link href="/staff" className="underline">Staff</Link>
       </p>
       <h1 className="mt-2 text-2xl font-semibold">{worker.fullName}</h1>
+
+      <section id="roles" className="mt-8 scroll-mt-4" aria-labelledby="roles-heading">
+        <h2 id="roles-heading" className="text-lg font-semibold">Job roles</h2>
+        {roles.length === 0 ? (
+          <p className="mt-2">
+            Your business has no job roles yet. <Link href="/roles" className="underline">Add roles</Link> such as Chef or Senior carer if you want
+            them on the rota.
+          </p>
+        ) : (
+          <>
+            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">The roles {worker.fullName} can work. Open shifts are only offered for these.</p>
+            <WorkerRolesForm workerId={worker.id} roles={roles} held={held} />
+          </>
+        )}
+      </section>
 
       <section id="mobile" className="mt-8 scroll-mt-4">
         <h2 className="text-lg font-semibold">Mobile number</h2>

@@ -1,6 +1,6 @@
 import { evaluate, londonParts, weekStart, type Finding } from "@vicisrota/compliance";
 import { schema, type Transaction } from "@vicisrota/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { loadComplianceContext } from "./rota";
 
 /**
@@ -18,4 +18,14 @@ export const checkAssignment = async (tx: Transaction, organisationId: string, s
     blocks: findings.filter((f) => f.severity === "block"),
     warnings: findings.filter((f) => f.severity === "warn"),
   };
+};
+
+/** Whether someone may pick up a shift for its job role. Shifts without a role are open to everyone. */
+export const canWorkRole = async (tx: Transaction, workerId: string, roleId: string | null) => {
+  if (!roleId) return true;
+  const [held] = await tx
+    .select({ roleId: schema.workerRole.roleId })
+    .from(schema.workerRole)
+    .where(and(eq(schema.workerRole.workerId, workerId), eq(schema.workerRole.roleId, roleId)));
+  return Boolean(held);
 };

@@ -19,6 +19,7 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 
@@ -159,6 +160,8 @@ export const shift = pgTable(
     clientId: uuid("client_id").references(() => client.id, { onDelete: "set null" }),
     /** Care: minutes travelling from the previous visit. */
     travelMinutes: integer("travel_minutes").notNull().default(0),
+    /** The job role the shift is for, e.g. Chef. Optional: small teams may not use roles. */
+    roleId: uuid("role_id").references((): AnyPgColumn => jobRole.id, { onDelete: "set null" }),
     /** Set when the person on this shift has asked for someone to cover it. */
     coverRequestedAt: timestamp("cover_requested_at", { withTimezone: true }),
     /** Working alone: the person checks in at the start, every check_in_minutes, and at the end. */
@@ -767,4 +770,35 @@ export const platformAudit = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("platform_audit_created_idx").on(t.createdAt)],
+);
+
+/** Colours a job role can be shown in. The name is always shown too, so colour is never the only clue. */
+export const roleColour = pgEnum("role_colour", ["teal", "blue", "purple", "pink", "orange", "green", "grey"]);
+
+/** Job roles a business uses on its rota, e.g. "Chef" or "Senior carer". */
+export const jobRole = pgTable(
+  "job_role",
+  {
+    id: id(),
+    organisationId: orgId(),
+    name: text("name").notNull(),
+    colour: roleColour("colour").notNull().default("teal"),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("job_role_org_name_idx").on(t.organisationId, sql`lower(${t.name})`)],
+);
+
+/** Which roles each person is set up to work. */
+export const workerRole = pgTable(
+  "worker_role",
+  {
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    roleId: uuid("role_id")
+      .notNull()
+      .references(() => jobRole.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.workerId, t.roleId] })],
 );
