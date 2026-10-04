@@ -316,6 +316,13 @@ export const leaveRequest = pgTable(
     /** Hours taken from the balance (annual leave, irregular hours). */
     hours: numeric("hours", { precision: 5, scale: 2, mode: "number" }),
     note: text("note"),
+    /** Sickness only: the day the manager had the fit note, needed for spells over 7 days. */
+    fitNoteOn: date("fit_note_on"),
+    /**
+     * Sickness only: average weekly earnings for Statutory Sick Pay, in pence, entered by the manager.
+     * Empty means VicisRota estimates it from confirmed hours in the 8 weeks before.
+     */
+    sspWeeklyEarningsPence: integer("ssp_weekly_earnings_pence"),
     requestedByUserId: text("requested_by_user_id").references(() => user.id, { onDelete: "set null" }),
     decidedByUserId: text("decided_by_user_id").references(() => user.id, { onDelete: "set null" }),
     decidedAt: timestamp("decided_at", { withTimezone: true }),

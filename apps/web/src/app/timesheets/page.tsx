@@ -97,7 +97,7 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
       },
     };
   });
-  const { lines, unconfirmed } = data.payroll;
+  const { lines, unconfirmed, sspPence } = data.payroll;
   const total = lines.reduce((s, l) => s + l.grossPence, 0);
   const hasTravel = lines.some((l) => l.travelHours > 0);
   const query$ = `from=${from}&to=${to}`;
@@ -179,7 +179,7 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
                         {[
                           l.holidayDays && `${l.holidayDays} holiday days`,
                           l.holidayHours && `${l.holidayHours} holiday hours`,
-                          l.sickDays && `${l.sickDays} sick days`,
+                          l.sickDays && `${l.sickDays} sick day${l.sickDays === 1 ? "" : "s"}${sspPence.has(l.workerId) ? ` (SSP ${pounds(sspPence.get(l.workerId)!)})` : ""}`,
                           l.otherLeaveDays && `${l.otherLeaveDays} other leave days`,
                         ]
                           .filter(Boolean)
@@ -200,8 +200,9 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
               Download payroll file (CSV)
             </a>
             <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-              Opens in Excel or Google Sheets and can be imported into most payroll software. Sick days are calendar days; check
-              Statutory Sick Pay qualifying days in your payroll software.
+              Opens in Excel or Google Sheets and can be imported into most payroll software. Sick days are calendar days. Statutory
+              Sick Pay is worked out on the <Link href="/sickness" className="underline">Sickness page</Link> from the days each person
+              normally works; sickness that began before 6 April 2026 is not included.
             </p>
           </>
         )}

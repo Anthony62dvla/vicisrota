@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { askToPickUp, clock, loneCheckIn, requestTimeOff, saveTextSettings, setClockPin, type FormState } from "./actions";
+import { askToPickUp, clock, loneCheckIn, reportSick, requestTimeOff, saveTextSettings, setClockPin, type FormState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 
@@ -216,6 +216,24 @@ export function TextSettingsForm({ mobile, textChanges }: { mobile: string | nul
         </span>
       </label>
       <button type="submit" disabled={pending} className="self-start rounded-lg border border-zinc-400 px-4 py-2 disabled:opacity-60">Save</button>
+    </form>
+  );
+}
+
+export function ReportSickForm() {
+  const [state, action, pending] = useActionState<FormState, FormData>(reportSick, {});
+  if (state.ok) return <p role="status" className="mt-3 rounded-lg border border-green-600 p-3">{state.ok}</p>;
+  return (
+    <form key={JSON.stringify(state.values ?? {})} action={action} className="mt-3 flex max-w-md flex-col gap-3">
+      {state.error && <p role="alert" className="rounded-lg border border-red-400 p-3">{state.error}</p>}
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Last day you expect to be off (optional)</span>
+        <span className="text-sm text-zinc-600 dark:text-zinc-400">Leave empty for just today. You do not have to give a reason.</span>
+        <input name="endsOn" type="date" defaultValue={state.values?.endsOn ?? ""} className={input} />
+      </label>
+      <button type="submit" disabled={pending} className="self-start rounded-lg bg-zinc-900 px-4 py-2 text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900">
+        {pending ? "Sending…" : "Tell my manager I am off sick"}
+      </button>
     </form>
   );
 }

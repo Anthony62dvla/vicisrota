@@ -10,10 +10,11 @@ import { clockableShifts } from "@/lib/clock";
 import { loadLoneShifts } from "@/lib/lone-working";
 import { SHORT_NOTICE_HOURS } from "@/lib/notices";
 import { todayInUk } from "@/lib/rota";
+import { loadSickness } from "@/lib/sickness";
 import { SignOutButton } from "../dashboard/sign-out";
 import { addMyUnavailable, markNoticesSeen, readAnnouncement, removeMyUnavailable, savePreferences, setCoverRequest, withdrawClaim, withdrawRequest } from "./actions";
 import { formatUkMobile } from "@vicisrota/messaging";
-import { ClockButtons, LoneCheckIn, PickUpList, PinForm, TextSettingsForm, TimeOffForm } from "./forms";
+import { ClockButtons, LoneCheckIn, PickUpList, PinForm, ReportSickForm, TextSettingsForm, TimeOffForm } from "./forms";
 import { OfflineNotice } from "./offline-notice";
 import { AvailabilityEditor } from "../availability-editor";
 import { adjustmentLines } from "@/lib/availability-labels";
@@ -127,7 +128,9 @@ export default async function MyPage() {
       .where(isNull(schema.announcement.archivedAt))
       .orderBy(desc(schema.announcement.createdAt))
       .limit(20);
-    return { announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
+    const sick = (await loadSickness(tx, addDays(today, 366), [worker.id])).get(worker.id);
+    const sickPay = new Map((sick?.records ?? []).filter((r) => !r.ssp.oldRules && r.ssp.pence > 0).map((r) => [r.id, r.ssp.pence]));
+    return { sickPay, announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
   });
 
   const days = new Map<string, typeof data.shifts>();
@@ -261,6 +264,11 @@ export default async function MyPage() {
         </p>
       )}
 
+      <details className="mt-6 rounded-lg border border-zinc-300 p-4 dark:border-zinc-700">
+        <summary className="cursor-pointer font-medium">Off sick?</summary>
+        <ReportSickForm />
+      </details>
+
       <section className="mt-8" aria-labelledby="shifts-heading">
         <h2 id="shifts-heading" className="text-lg font-semibold">Your shifts</h2>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">Published shifts for the next {WEEKS_AHEAD} weeks. Times are UK time.</p>
@@ -352,7 +360,10 @@ export default async function MyPage() {
                   <p className="font-medium">
                     {LEAVE_LABEL[l.kind]}: {l.startsOn === l.endsOn ? longDate(l.startsOn) : `${longDate(l.startsOn)} to ${longDate(l.endsOn)}`}
                   </p>
-                  <p className="text-sm">{STATUS[l.status]}</p>
+                  <p className="text-sm">
+                    {STATUS[l.status]}
+                    {data.sickPay.has(l.id) && ` · Statutory Sick Pay £${(data.sickPay.get(l.id)! / 100).toFixed(2)}`}
+                  </p>
                 </div>
                 {l.status === "requested" && (
                   <form action={withdrawRequest}>

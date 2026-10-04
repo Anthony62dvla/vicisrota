@@ -42,3 +42,12 @@ Nothing else is saved, and manager pages always need the network. Signing out cl
 - **Someone sees an old rota with no "No signal" notice:** their phone thinks it is online but cannot reach the server. The page shows "Updated at" at the bottom.
 - **Changing what is saved:** bump `PAGE_CACHE` or `STATIC_CACHE` in `public/sw.js` (and `PAGE_CACHE` in `src/lib/offline.ts`). The old caches are deleted when the new worker starts.
 - **Turning it off:** replace `public/sw.js` with a worker that deletes all caches and calls `self.registration.unregister()`.
+
+## Sickness and Statutory Sick Pay
+
+Sickness is stored as leave of kind `sick`. Only approved sickness counts; staff who tap "Off sick?" on their own page create a request that a manager confirms on the Sickness or Leave page. SSP is worked out in `packages/compliance/src/ssp.ts` under the rules from 6 April 2026 (paid from day one, 80% of average weekly earnings capped at the weekly rate, 56-day linking, 28 weeks).
+
+- **The weekly rate changes each April:** add a new entry to `SSP_WEEKLY_RATES` with its `from` date. Never edit an old one.
+- **Someone's SSP looks wrong:** open "Change or check" on the Sickness page. It shows the days of the week treated as working days (from their shifts in the 8 weeks before) and the average weekly earnings used. Earnings are estimated from confirmed hours unless a manager entered a figure on the first sickness of the period.
+- **Sickness that began before 6 April 2026** is flagged and not calculated; payroll works it out under the old rules.
+- The payroll export has a "Statutory Sick Pay (£)" column for the sick days inside the period.

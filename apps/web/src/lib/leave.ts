@@ -1,6 +1,6 @@
-import { annualEntitlementDays, irregularHoursAccrual, leaveYear, type LeaveKind } from "@vicisrota/compliance";
+import { addDays, annualEntitlementDays, irregularHoursAccrual, leaveYear, londonDateTime, type LeaveKind } from "@vicisrota/compliance";
 import { schema, type Transaction } from "@vicisrota/db";
-import { and, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, lt, lte, ne } from "drizzle-orm";
 
 export const LEAVE_LABEL: Record<LeaveKind, string> = {
   annual: "Holiday",
@@ -93,3 +93,23 @@ export const formatAmount = (n: number, unit: "days" | "hours") => {
   const value = Number.isInteger(n) ? String(n) : n.toFixed(unit === "hours" ? 2 : 1).replace(/\.?0+$/, "");
   return `${value} ${unit === "hours" ? (n === 1 ? "hour" : "hours") : n === 1 ? "day" : "days"}`;
 };
+
+/** Shifts already on the rota during the leave, so the manager knows to move them. */
+export const clashNote = async (tx: Transaction, workerId: string, startsOn: string, endsOn: string) => {
+  const shifts = await tx
+    .select({ id: schema.shift.id })
+    .from(schema.shift)
+    .where(
+      and(
+        eq(schema.shift.workerId, workerId),
+        ne(schema.shift.status, "cancelled"),
+        // Shifts touching any day of the leave, including overnight shifts that run into it.
+        lt(schema.shift.startsAt, new Date(londonDateTime(addDays(endsOn, 1), "00:00"))),
+        gt(schema.shift.endsAt, new Date(londonDateTime(startsOn, "00:00"))),
+      ),
+    );
+  return shifts.length
+    ? ` They have ${shifts.length} shift${shifts.length === 1 ? "" : "s"} on the rota during this leave, which ${shifts.length === 1 ? "needs" : "need"} moving to someone else.`
+    : "";
+};
+

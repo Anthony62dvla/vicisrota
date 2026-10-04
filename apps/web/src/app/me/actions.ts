@@ -1,8 +1,8 @@
 "use server";
 
-import type { LeaveKind } from "@vicisrota/compliance";
+import { addDays, type LeaveKind } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, isNull, lte } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { addUnavailable, parseSlot, removeUnavailable } from "@/lib/availability";
 import { requireStaff } from "@/lib/business";
@@ -64,6 +64,48 @@ export async function requestTimeOff(_: FormState, form: FormData): Promise<Form
   });
   revalidatePath("/me");
   return { ok: `Your ${LEAVE_LABEL[kind].toLowerCase()} request has been sent. You will see the answer here.` };
+}
+
+/** One tap to tell the manager they are off sick, from today. No reason or medical details are asked for. */
+export async function reportSick(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId, worker } = await requireStaff();
+  const today = todayInUk();
+  const endsOn = String(form.get("endsOn") ?? "") || today;
+  if (!DATE.test(endsOn) || endsOn < today) return { error: "The last day you expect to be off cannot be before today.", values: { endsOn } };
+  if (endsOn > addDays(today, 90)) return { error: "Choose a last day within the next 3 months. You can tell your manager if it is longer.", values: { endsOn } };
+
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
+    const [already] = await tx
+      .select({ id: schema.leaveRequest.id })
+      .from(schema.leaveRequest)
+      .where(
+        and(
+          eq(schema.leaveRequest.workerId, worker.id),
+          eq(schema.leaveRequest.kind, "sick"),
+          inArray(schema.leaveRequest.status, ["requested", "approved"]),
+          lte(schema.leaveRequest.startsOn, endsOn),
+          gte(schema.leaveRequest.endsOn, today),
+        ),
+      );
+    if (already) return { ok: "Your manager already knows you are off sick. Get well soon." };
+    const [row] = await tx
+      .insert(schema.leaveRequest)
+      .values({ organisationId, workerId: worker.id, kind: "sick", startsOn: today, endsOn, requestedByUserId: user.id })
+      .returning({ id: schema.leaveRequest.id });
+    await tx.insert(schema.auditEvent).values({
+      organisationId,
+      actorUserId: user.id,
+      requestId: await requestId(),
+      action: "create",
+      entity: "leave_request",
+      entityId: row!.id,
+      data: { workerId: worker.id, kind: "sick", startsOn: today, endsOn, selfService: true },
+    });
+    return { ok: "Your manager has been told you are off sick. Get well soon." };
+  });
+  revalidatePath("/me");
+  revalidatePath("/sickness");
+  return result;
 }
 
 export async function withdrawRequest(form: FormData) {

@@ -1,6 +1,7 @@
-import { addDays, londonDateTime, payrollSummary } from "@vicisrota/compliance";
+import { addDays, londonDateTime, payrollSummary, sspInPeriod } from "@vicisrota/compliance";
 import { schema, type Transaction } from "@vicisrota/db";
 import { and, eq, gte, isNull, lt, lte } from "drizzle-orm";
+import { loadSickness } from "./sickness";
 
 const MINUTE = 60_000;
 
@@ -76,5 +77,12 @@ export const loadPayroll = async (tx: Transaction, organisationId: string, from:
   const tipsPence = new Map<string, number>();
   for (const s of shares) tipsPence.set(s.workerId, (tipsPence.get(s.workerId) ?? 0) + s.pence);
 
-  return { lines, unconfirmed: unconfirmed.length, tipsPence };
+  // Statutory Sick Pay for sick days inside this pay period. Earlier sickness is loaded too, for linking.
+  const sspPence = new Map<string, number>();
+  for (const [workerId, s] of await loadSickness(tx, to)) {
+    const pence = sspInPeriod(s.days, from, to);
+    if (pence > 0) sspPence.set(workerId, pence);
+  }
+
+  return { lines, unconfirmed: unconfirmed.length, tipsPence, sspPence };
 };

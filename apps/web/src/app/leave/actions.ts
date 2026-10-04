@@ -1,12 +1,12 @@
 "use server";
 
-import { addDays, londonDateTime, type LeaveKind } from "@vicisrota/compliance";
-import { schema, withOrganisation, type Transaction } from "@vicisrota/db";
-import { and, eq, gt, inArray, lt, ne } from "drizzle-orm";
+import type { LeaveKind } from "@vicisrota/compliance";
+import { schema, withOrganisation } from "@vicisrota/db";
+import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
-import { formatAmount, LEAVE_KINDS, LEAVE_LABEL, loadBalances } from "@/lib/leave";
+import { clashNote, formatAmount, LEAVE_KINDS, LEAVE_LABEL, loadBalances } from "@/lib/leave";
 import { requestId } from "@/lib/request";
 import { todayInUk } from "@/lib/rota";
 
@@ -65,27 +65,9 @@ export async function bookLeave(_: FormState, form: FormData): Promise<FormState
   });
   revalidatePath("/leave");
   revalidatePath("/rota");
+  revalidatePath("/sickness");
   return result;
 }
-
-/** Shifts already on the rota during the leave, so the manager knows to move them. */
-const clashNote = async (tx: Transaction, workerId: string, startsOn: string, endsOn: string) => {
-  const shifts = await tx
-    .select({ id: schema.shift.id })
-    .from(schema.shift)
-    .where(
-      and(
-        eq(schema.shift.workerId, workerId),
-        ne(schema.shift.status, "cancelled"),
-        // Shifts touching any day of the leave, including overnight shifts that run into it.
-        lt(schema.shift.startsAt, new Date(londonDateTime(addDays(endsOn, 1), "00:00"))),
-        gt(schema.shift.endsAt, new Date(londonDateTime(startsOn, "00:00"))),
-      ),
-    );
-  return shifts.length
-    ? ` They have ${shifts.length} shift${shifts.length === 1 ? "" : "s"} on the rota during this leave, which ${shifts.length === 1 ? "needs" : "need"} moving to someone else.`
-    : "";
-};
 
 export async function decideLeave(_: FormState, form: FormData): Promise<FormState> {
   const { user, organisationId } = await requireManager();
@@ -125,5 +107,6 @@ export async function decideLeave(_: FormState, form: FormData): Promise<FormSta
   });
   revalidatePath("/leave");
   revalidatePath("/rota");
+  revalidatePath("/sickness");
   return result;
 }
