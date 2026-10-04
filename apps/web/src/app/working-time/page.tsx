@@ -131,7 +131,7 @@ export default async function WorkingTimePage() {
             <span className="font-medium">To</span>
             <input name="to" type="date" defaultValue={addDays(today, -1)} className="rounded-lg border border-zinc-400 px-3 py-2 text-base" />
           </label>
-          <button type="submit" className="rounded-lg bg-zinc-900 px-4 py-2 text-white dark:bg-zinc-100 dark:text-zinc-900">Download (CSV)</button>
+          <button type="submit" className="rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover">Download (CSV)</button>
         </form>
       </section>
     </main>

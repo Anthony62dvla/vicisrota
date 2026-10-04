@@ -8,7 +8,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "generate": "drizzle-kit generate",
-    "migrate": "tsx src/migrate.ts"
+    "migrate": "tsx src/migrate.ts",
+    "add-superadmin": "tsx src/add-superadmin.ts"
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.11",

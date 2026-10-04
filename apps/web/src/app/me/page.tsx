@@ -173,7 +173,7 @@ export default async function MyPage() {
       <OfflineNotice updatedAt={updatedAt} />
 
       {data.clockable.map(({ shift, summary }) => (
-        <section key={`clock-${shift.id}`} aria-label="Clock in and out" className="mt-6 rounded-lg border-2 border-zinc-900 p-4 dark:border-zinc-100">
+        <section key={`clock-${shift.id}`} aria-label="Clock in and out" className="mt-6 rounded-lg border-2 border-brand p-4">
           <h2 className="text-lg font-semibold">
             {summary.state === "not_in" ? "Your shift" : summary.state === "out" ? "Shift finished" : summary.state === "on_break" ? "On a break" : "Clocked in"}
           </h2>
@@ -194,7 +194,7 @@ export default async function MyPage() {
       ))}
 
       {data.lone.map(({ shift, status, clientName, checks }) => (
-        <section key={shift.id} aria-label="Working alone" className={`mt-6 rounded-lg border-2 p-4 ${status.state === "help" ? "border-red-600" : "border-zinc-900 dark:border-zinc-100"}`}>
+        <section key={shift.id} aria-label="Working alone" className={`mt-6 rounded-lg border-2 p-4 ${status.state === "help" ? "border-red-600" : "border-brand"}`}>
           <h2 className="text-lg font-semibold">You are working alone{clientName ? ` with ${clientName}` : ""}</h2>
           <p className="mt-1">
             {timeFmt.format(shift.startsAt)} to {timeFmt.format(shift.endsAt)}.{" "}
@@ -233,7 +233,7 @@ export default async function MyPage() {
         ))}
 
       {data.notices.length > 0 && (
-        <section className="mt-6 rounded-lg border-2 border-zinc-900 p-4 dark:border-zinc-100" aria-labelledby="changes-heading">
+        <section className="mt-6 rounded-lg border-2 border-brand p-4" aria-labelledby="changes-heading">
           <h2 id="changes-heading" className="text-lg font-semibold">What has changed in your rota</h2>
           <ul className="mt-2 flex flex-col gap-2">
             {data.notices.map((n) => (
@@ -277,7 +277,7 @@ export default async function MyPage() {
         ) : (
           <ul className="mt-3 flex flex-col gap-3">
             {[...days].map(([d, shifts]) => (
-              <li key={d} className={`rounded-lg border p-3 ${d === today ? "border-zinc-900 dark:border-zinc-100" : "border-zinc-300 dark:border-zinc-700"}`}>
+              <li key={d} className={`rounded-lg border p-3 ${d === today ? "border-brand" : "border-zinc-300 dark:border-zinc-700"}`}>
                 <h3 className="font-semibold">{d === today ? `Today, ${longDate(d)}` : longDate(d)}</h3>
                 {shifts.map((s) => {
                   const unpaid = data.breaks.filter((b) => b.shiftId === s.id).reduce((sum, b) => sum + (b.endsAt.getTime() - b.startsAt.getTime()), 0);

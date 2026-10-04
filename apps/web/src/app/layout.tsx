@@ -1,3 +1,4 @@
+import { BRAND } from "@/lib/brand";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ServiceWorker } from "./service-worker";
@@ -10,7 +11,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#18181b",
+  themeColor: BRAND.teal,
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

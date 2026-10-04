@@ -27,7 +27,7 @@ export function SetupChecklist({ steps }: { steps: SetupStep[] }) {
 
   const next = required.find((s) => !s.done)!;
   return (
-    <section aria-labelledby="setup-heading" className="mt-6 rounded-lg border-2 border-zinc-900 p-4 dark:border-zinc-100">
+    <section aria-labelledby="setup-heading" className="mt-6 rounded-lg border-2 border-brand p-4">
       <h2 id="setup-heading" className="text-lg font-semibold">Get ready for your first rota</h2>
       <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
         {doneCount} of {required.length} steps done. Each step ticks itself off when you finish it.
@@ -57,7 +57,7 @@ function Step({ step, next }: { step: SetupStep; next: boolean }) {
         </p>
         {!step.done && <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">{step.why}</p>}
         {next && (
-          <Link href={step.href} className="mt-3 inline-block rounded-lg bg-zinc-900 px-4 py-2 text-white dark:bg-zinc-100 dark:text-zinc-900">
+          <Link href={step.href} className="mt-3 inline-block rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover">
             Do this next
           </Link>
         )}

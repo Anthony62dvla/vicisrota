@@ -39,7 +39,7 @@ export function Field({ label, ...input }: { label: string } & InputHTMLAttribut
 
 export function SubmitButton({ pending, children }: { pending: boolean; children: ReactNode }) {
   return (
-    <button type="submit" disabled={pending} className="rounded-lg bg-zinc-900 px-4 py-2 text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900">
+    <button type="submit" disabled={pending} className="rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover disabled:opacity-60">
       {pending ? "Please wait…" : children}
     </button>
   );

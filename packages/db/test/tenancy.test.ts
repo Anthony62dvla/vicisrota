@@ -2,7 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDb, withOrganisation, type Database } from "../src/client";
 import { runMigrations } from "../src/migrate";
-import { announcement, announcementRead, auditEvent, clockEvent, loneWorkCheck, client, safeguardingAction, safeguardingConcern, shiftClaim, tip, tipAllocation, tipShare, leaveRequest, timeEntry, organisation, qualification, shift, worker, workerCheck, workerUnavailability } from "../src/schema";
+import { announcement, announcementRead, auditEvent, clockEvent, loneWorkCheck, client, safeguardingAction, safeguardingConcern, shiftClaim, tip, tipAllocation, tipShare, leaveRequest, timeEntry, organisation, platformAudit, qualification, shift, worker, workerCheck, workerUnavailability } from "../src/schema";
 
 // Needs a disposable Postgres database, connected as a non-superuser (superusers bypass row-level security).
 // Example: TEST_DATABASE_URL=postgres://vicisrota:vicisrota@localhost:5433/vicisrota_test
@@ -177,7 +177,7 @@ describe.skipIf(!url)("database", () => {
 
   it("protects every business table with row-level security, except the few filtered by hand", async () => {
     // These have no policy on purpose and every query on them filters by business in code.
-    const filteredInCode = ["membership", "invitation", "kiosk_device"];
+    const filteredInCode = ["membership", "invitation", "kiosk_device", "owner_invitation", "platform_audit"];
     const rows = (await db.execute(sql`
       select c.relname as name, c.relrowsecurity as enabled, c.relforcerowsecurity as forced
       from pg_class c join pg_namespace n on n.oid = c.relnamespace
@@ -187,6 +187,12 @@ describe.skipIf(!url)("database", () => {
     const unprotected = rows.filter((r) => !(r.enabled && r.forced) && !filteredInCode.includes(r.name)).map((r) => r.name);
     expect(rows.length).toBeGreaterThan(20);
     expect(unprotected).toEqual([]);
+  });
+
+  it("keeps the superadmin trail as it was", async () => {
+    const [row] = await db.insert(platformAudit).values({ action: "create_business", organisationId: cafe, data: { name: "Cafe" } }).returning();
+    await expect(db.update(platformAudit).set({ action: "changed" }).where(eq(platformAudit.id, row!.id))).rejects.toThrow();
+    await expect(db.delete(platformAudit).where(eq(platformAudit.id, row!.id))).rejects.toThrow();
   });
 
   it("keeps availability private and refuses impossible times", async () => {

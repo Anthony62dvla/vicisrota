@@ -225,6 +225,20 @@
       "when": 1791096576662,
       "tag": "0031_sickness_pay",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791122989334,
+      "tag": "0032_superadmin",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791122990314,
+      "tag": "0033_superadmin_protection",
+      "breakpoints": true
     }
   ]
 }

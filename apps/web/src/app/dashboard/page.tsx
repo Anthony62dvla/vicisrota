@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { createBusiness } from "../actions";
 import { loadSetupSteps } from "@/lib/setup";
+import { isSuperadmin } from "@/lib/superadmin";
 import { SetupChecklist } from "./setup-checklist";
 import { SignOutButton } from "./sign-out";
 
@@ -24,6 +25,7 @@ export default async function Dashboard() {
   // Pages work on the first business someone manages, so setup is shown for that one.
   const managed = businesses.find((b) => b.role !== "worker");
   const setup = managed ? await loadSetupSteps(managed.id) : null;
+  const superadmin = await isSuperadmin(user.id);
 
   return (
     <main className="mx-auto w-full max-w-2xl px-4 py-12">
@@ -31,6 +33,11 @@ export default async function Dashboard() {
         <h1 className="text-2xl font-semibold">Hello, {user.name}</h1>
         <SignOutButton />
       </div>
+      {superadmin && (
+        <p className="mt-2">
+          <Link href="/admin" className="font-medium text-brand underline">VicisRota superadmin</Link>
+        </p>
+      )}
 
       {businesses.length > 0 ? (
         <>
@@ -79,7 +86,7 @@ export default async function Dashboard() {
               </label>
             ))}
           </fieldset>
-          <button type="submit" className="rounded-lg bg-zinc-900 px-4 py-2 text-white dark:bg-zinc-100 dark:text-zinc-900">
+          <button type="submit" className="rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover">
             Create business
           </button>
         </form>

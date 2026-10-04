@@ -28,7 +28,7 @@ export function AnnouncementForm() {
           <span className="block text-sm text-zinc-600 dark:text-zinc-400">For policy changes and safety information. You will see who has not confirmed yet.</span>
         </span>
       </label>
-      <button type="submit" disabled={pending} className="self-start rounded-lg bg-zinc-900 px-4 py-2 text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900">
+      <button type="submit" disabled={pending} className="self-start rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover disabled:opacity-60">
         {pending ? "Posting…" : "Post to all staff"}
       </button>
     </form>

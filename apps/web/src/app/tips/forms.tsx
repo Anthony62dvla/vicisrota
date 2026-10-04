@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import { recordTip, saveTippingPolicy, shareTips, type FormState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
-const button = "self-start rounded-lg bg-zinc-900 px-4 py-2 text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900";
+const button = "self-start rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover disabled:opacity-60";
 
 function Message({ state }: { state: FormState }) {
   if (state.error) return <p role="alert" className="rounded-lg border border-red-400 p-3">{state.error}</p>;

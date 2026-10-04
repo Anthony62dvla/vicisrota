@@ -721,3 +721,50 @@ export const announcementRead = pgTable(
   },
   (t) => [uniqueIndex("announcement_read_once_idx").on(t.announcementId, t.workerId)],
 );
+
+/**
+ * VicisRota's own staff who can use the superadmin area (/admin). Platform-wide, so no row-level security.
+ * Added only from the command line (`npm run add-superadmin -w @vicisrota/db -- <email>`), never from the app,
+ * so nobody can make themselves a superadmin by signing up with an address.
+ */
+export const platformAdmin = pgTable("platform_admin", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  createdAt: createdAt(),
+});
+
+/**
+ * An invitation for a new customer's owner to take over a business a superadmin set up for them.
+ * Looked up by token before the person belongs to the business, so no row-level security, like invitation.
+ */
+export const ownerInvitation = pgTable("owner_invitation", {
+  id: id(),
+  organisationId: uuid("organisation_id")
+    .notNull()
+    .references(() => organisation.id, { onDelete: "cascade" }),
+  /** Who the business expects, shown on the link page. The link works for whoever opens it, so it must go to them directly. */
+  ownerName: text("owner_name").notNull(),
+  email: text("email").notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+  acceptedByUserId: text("accepted_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+});
+
+/** Everything a superadmin does, kept apart from each business's own audit trail. Append-only (trigger). */
+export const platformAudit = pgTable(
+  "platform_audit",
+  {
+    id: id(),
+    actorUserId: text("actor_user_id").references(() => user.id, { onDelete: "set null" }),
+    action: text("action").notNull(),
+    organisationId: uuid("organisation_id").references(() => organisation.id, { onDelete: "set null" }),
+    data: jsonb("data"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("platform_audit_created_idx").on(t.createdAt)],
+);

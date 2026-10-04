@@ -57,3 +57,12 @@ Sickness is stored as leave of kind `sick`. Only approved sickness counts; staff
 `/working-time` shows each person's average week over the last 17 whole weeks (Monday to Sunday) from confirmed hours, worked out in `packages/compliance/src/workingTimeReport.ts`. Approved holiday, sickness and family leave are left out of the divisor so they do not lower the average. Under-18s are checked against 40 hours in every single week. `/working-time/export` downloads every confirmed piece of work (with breaks and night hours, 23:00 to 06:00) for up to a year at a time; each download is in the audit trail. Records must be kept for 2 years.
 
 - **Someone's average looks too low:** their hours may not be confirmed on Timesheets yet. Only confirmed hours count here; the rota check on publish uses planned shifts.
+
+## Superadmin and onboarding
+
+VicisRota staff use `/admin` to see every customer business (counts and setup progress only, never staff details), set up a business for a new customer, and look up an error reference across all businesses. Anyone else gets "not found".
+
+- **Giving someone superadmin access:** they sign up as normal, then someone with database access runs `DATABASE_URL=... npm run add-superadmin -w @vicisrota/db -- their@email`. Add `--remove` to take it away. There is deliberately no way to do this from the app.
+- **Onboarding:** "Set up a new customer" creates the business and an owner link (14 days). Send it to the owner yourself; whoever opens it becomes the owner. The welcome page warns if they are signed in with a different email. "Make a new owner link" replaces a lost or expired one.
+- **The trail:** every superadmin action, reference lookup and owner joining is in `platform_audit`, which cannot be changed or deleted. Owner links are never stored or logged, only who they were for.
+- **Brand colours** are CSS variables at the top of `src/app/globals.css` (`--brand` and friends, with dark-mode values), plus `src/lib/brand.ts` for the phone theme colour. The app icons are drawn from `public/icon.svg`.

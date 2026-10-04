@@ -38,7 +38,7 @@ export default async function JoinPage({ params }: PageProps<"/join/[token]">) {
         </>
       ) : (
         <div className="mt-6 flex flex-col gap-3">
-          <Link href={`/sign-up?next=${next}`} className="rounded-lg bg-zinc-900 px-4 py-2 text-center text-white dark:bg-zinc-100 dark:text-zinc-900">
+          <Link href={`/sign-up?next=${next}`} className="rounded-lg bg-brand px-4 py-2 text-center text-on-brand hover:bg-brand-hover">
             Create your login
           </Link>
           <Link href={`/sign-in?next=${next}`} className="rounded-lg border border-zinc-400 px-4 py-2 text-center">

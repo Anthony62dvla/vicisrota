@@ -43,7 +43,7 @@ export function TimeOffForm({ unit, kinds }: { unit: "days" | "hours"; kinds: { 
         <span className="text-sm text-zinc-600 dark:text-zinc-400">You do not have to give a reason or any medical details.</span>
         <textarea name="note" rows={2} className={input} />
       </label>
-      <button type="submit" disabled={pending} className="self-start rounded-lg bg-zinc-900 px-4 py-2 text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900">
+      <button type="submit" disabled={pending} className="self-start rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover disabled:opacity-60">
         {pending ? "Sending…" : "Send request"}
       </button>
     </form>
@@ -87,10 +87,10 @@ export function LoneCheckIn({ shiftId, started }: { shiftId: string; started: bo
       <form action={action} className="flex flex-wrap gap-3">
         <input type="hidden" name="shiftId" value={shiftId} />
         {!started ? (
-          <button type="submit" name="kind" value="start" disabled={pending} className={`${button} bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900`}>I have started</button>
+          <button type="submit" name="kind" value="start" disabled={pending} className={`${button} bg-brand text-on-brand hover:bg-brand-hover`}>I have started</button>
         ) : (
           <>
-            <button type="submit" name="kind" value="ok" disabled={pending} className={`${button} bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900`}>I am OK</button>
+            <button type="submit" name="kind" value="ok" disabled={pending} className={`${button} bg-brand text-on-brand hover:bg-brand-hover`}>I am OK</button>
             <button type="submit" name="kind" value="finished" disabled={pending} className={`${button} border border-zinc-400`}>I have finished safely</button>
           </>
         )}
@@ -161,7 +161,7 @@ export function ClockButtons({ shiftId, actions, askLocation }: { shiftId: strin
               name="kind"
               value={k}
               disabled={busy}
-              className={`rounded-lg px-5 py-3 text-base font-medium disabled:opacity-60 ${i === 0 ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900" : "border border-zinc-400"}`}
+              className={`rounded-lg px-5 py-3 text-base font-medium disabled:opacity-60 ${i === 0 ? "bg-brand text-on-brand hover:bg-brand-hover" : "border border-zinc-400"}`}
             >
               {CLOCK_LABEL[k]}
             </button>
@@ -231,7 +231,7 @@ export function ReportSickForm() {
         <span className="text-sm text-zinc-600 dark:text-zinc-400">Leave empty for just today. You do not have to give a reason.</span>
         <input name="endsOn" type="date" defaultValue={state.values?.endsOn ?? ""} className={input} />
       </label>
-      <button type="submit" disabled={pending} className="self-start rounded-lg bg-zinc-900 px-4 py-2 text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900">
+      <button type="submit" disabled={pending} className="self-start rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover disabled:opacity-60">
         {pending ? "Sending…" : "Tell my manager I am off sick"}
       </button>
     </form>

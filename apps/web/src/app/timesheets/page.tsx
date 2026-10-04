@@ -196,7 +196,7 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
                 </tfoot>
               </table>
             </div>
-            <a href={`/timesheets/export?${query$}`} className="mt-4 inline-block rounded-lg bg-zinc-900 px-4 py-2 text-white dark:bg-zinc-100 dark:text-zinc-900">
+            <a href={`/timesheets/export?${query$}`} className="mt-4 inline-block rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover">
               Download payroll file (CSV)
             </a>
             <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">

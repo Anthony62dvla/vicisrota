@@ -5,7 +5,7 @@
  * PAGE_CACHE must match src/lib/offline.ts, which clears it on sign out.
  */
 const PAGE_CACHE = "vr-pages-v1";
-const STATIC_CACHE = "vr-static-v1";
+const STATIC_CACHE = "vr-static-v2";
 const SAVED_PAGES = ["/me"];
 const OFFLINE_PAGE = "/offline.html";
 

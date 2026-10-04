@@ -82,7 +82,7 @@ export function Kiosk({ people }: { people: KioskPerson[] }) {
           )}
         </div>
         <div className="flex gap-3">
-          <button type="submit" disabled={pending || pin.length < 4} className={`${big} bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900`}>
+          <button type="submit" disabled={pending || pin.length < 4} className={`${big} bg-brand text-on-brand hover:bg-brand-hover`}>
             {pending ? "Checking…" : "Done"}
           </button>
           <button type="button" onClick={() => (setChosen(null), setPin(""))} className={`${big} border border-zinc-400`}>
@@ -111,7 +111,7 @@ export function Kiosk({ people }: { people: KioskPerson[] }) {
                 key={k}
                 type="button"
                 onClick={() => setChosen({ person: p, kind: k })}
-                className={`${big} ${i === 0 ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900" : "border border-zinc-400"}`}
+                className={`${big} ${i === 0 ? "bg-brand text-on-brand hover:bg-brand-hover" : "border border-zinc-400"}`}
               >
                 {LABEL[k]}
               </button>
