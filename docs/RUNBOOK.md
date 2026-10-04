@@ -28,3 +28,16 @@ row-level security list (see `packages/db/migrations/0001_row_level_security.sql
 - Missed check-ins are found by `GET /api/cron/alerts`, which a scheduler must call every 5 minutes with `Authorization: Bearer $CRON_SECRET`. Calls for help are texted straight away and do not depend on the scheduler.
 - Every text is recorded in `sms_message` before it is sent, with `ok`, the provider's reference and any error. Managers see the last 10 under "Recent texts" on the Lone working page. A failed send is also logged at error level ("text message failed").
 - If alerts stop arriving: check "Recent texts" for errors, check the provider account has credit, and check the scheduler is calling the alerts route (the log line "alert check ran" appears on each call).
+
+## Phone app and offline shifts
+
+VicisRota can be added to a phone's home screen (`src/app/manifest.ts`, icons in `public/`). In production builds a service worker (`public/sw.js`) saves two things on the phone:
+
+- the person's own page, `/me`, refreshed every time they open it with signal, so they can see their shifts with no signal;
+- the app's built files under `/_next/static/`, which never change once built.
+
+Nothing else is saved, and manager pages always need the network. Signing out clears the saved page (`src/lib/offline.ts`), and so does opening `/me` after the session has ended.
+
+- **Someone sees an old rota with no "No signal" notice:** their phone thinks it is online but cannot reach the server. The page shows "Updated at" at the bottom.
+- **Changing what is saved:** bump `PAGE_CACHE` or `STATIC_CACHE` in `public/sw.js` (and `PAGE_CACHE` in `src/lib/offline.ts`). The old caches are deleted when the new worker starts.
+- **Turning it off:** replace `public/sw.js` with a worker that deletes all caches and calls `self.registration.unregister()`.

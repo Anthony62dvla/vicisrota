@@ -13,6 +13,7 @@ import { todayInUk } from "@/lib/rota";
 import { SignOutButton } from "../dashboard/sign-out";
 import { markNoticesSeen, savePreferences, setCoverRequest, withdrawClaim, withdrawRequest } from "./actions";
 import { ClockButtons, LoneCheckIn, PickUpList, PinForm, TimeOffForm } from "./forms";
+import { OfflineNotice } from "./offline-notice";
 
 const MINUTE = 60_000;
 /** How far ahead staff can see published shifts. */
@@ -135,6 +136,9 @@ export default async function MyPage() {
     taken_by_colleague: "A colleague is covering this",
   } as const;
 
+  // Shown on the copy saved on their phone, so they know how old it is when there is no signal.
+  const updatedAt = `${timeFmt.format(data.now)} on ${shortDate(londonParts(data.now).date)}`;
+
   return (
     <main className={`mx-auto w-full max-w-2xl px-4 py-12 ${largeText ? "text-lg" : ""}`}>
       <div className="flex items-center justify-between gap-4">
@@ -144,6 +148,8 @@ export default async function MyPage() {
         </div>
         <SignOutButton />
       </div>
+
+      <OfflineNotice updatedAt={updatedAt} />
 
       {data.clockable.map(({ shift, summary }) => (
         <section key={`clock-${shift.id}`} aria-label="Clock in and out" className="mt-6 rounded-lg border-2 border-zinc-900 p-4 dark:border-zinc-100">
@@ -374,6 +380,15 @@ export default async function MyPage() {
         </section>
       )}
 
+      <section className="mt-10" aria-labelledby="install-heading">
+        <h2 id="install-heading" className="text-lg font-semibold">Put VicisRota on your phone</h2>
+        <p className="mt-1">It then opens like an app, and your shifts are saved on your phone so you can see them with no signal.</p>
+        <ul className="mt-2 list-disc pl-6">
+          <li>iPhone: open this page in Safari, tap Share, then &ldquo;Add to Home Screen&rdquo;.</li>
+          <li>Android: open this page in Chrome, tap the menu (three dots), then &ldquo;Add to Home screen&rdquo; or &ldquo;Install app&rdquo;.</li>
+        </ul>
+      </section>
+
       <section className="mt-10" aria-labelledby="view-heading">
         <h2 id="view-heading" className="text-lg font-semibold">How this page looks</h2>
         <form action={savePreferences} className="mt-2 flex flex-col gap-3">
@@ -389,6 +404,7 @@ export default async function MyPage() {
           </label>
           <button type="submit" className="self-start rounded-lg border border-zinc-400 px-4 py-2">Save</button>
         </form>
+        <p className="mt-6 text-sm text-zinc-600 dark:text-zinc-400">Updated at {updatedAt}.</p>
       </section>
     </main>
   );

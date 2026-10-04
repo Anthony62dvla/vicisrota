@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#18181b"/>
+  <!-- A turning arrow (vicis: a turn, a shift) around a V. -->
+  <path d="M256 96a160 160 0 1 1-138.6 80" fill="none" stroke="#ffffff" stroke-width="36" stroke-linecap="round"/>
+  <path d="M140 137L147 205L78 165z" fill="#ffffff" stroke="#ffffff" stroke-width="8" stroke-linejoin="round"/>
+  <path d="M186 196l70 132 70-132" fill="none" stroke="#ffffff" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
