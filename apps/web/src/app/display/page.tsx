@@ -8,7 +8,7 @@ export default async function DisplayPage({ searchParams }: PageProps<"/display"
   const back = typeof params.back === "string" && params.back.startsWith("/") && !params.back.startsWith("//") ? params.back : null;
   const current = new Set(parseDisplay((await cookies()).get(DISPLAY_COOKIE)?.value));
   return (
-    <main className="mx-auto w-full max-w-2xl px-4 py-12">
+    <main className="mx-auto w-full max-w-2xl px-4 py-8 lg:px-8">
       {back && (
         <p>
           <Link href={back} className="underline">Go back</Link>

@@ -1,6 +1,5 @@
 import { schema, withOrganisation } from "@vicisrota/db";
 import { asc, desc, eq } from "drizzle-orm";
-import Link from "next/link";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
 import { CONCERN_LABEL, CONCERN_STATUS_LABEL } from "@/lib/concern-labels";
@@ -13,7 +12,7 @@ const dateTimeFmt = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "s
 const dateFmt = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 
 export default async function SafeguardingPage() {
-  const { organisationId, businessName, sector } = await requireManager();
+  const { organisationId, sector  } = await requireManager();
   const { concerns, actions, clients } = await withOrganisation(db, organisationId, async (tx) => ({
     concerns: await tx
       .select({ concern: schema.safeguardingConcern, clientName: schema.client.name })
@@ -62,11 +61,8 @@ export default async function SafeguardingPage() {
   };
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-12">
-      <p>
-        <Link href="/dashboard" className="underline">{businessName}</Link>
-      </p>
-      <h1 className="mt-2 text-2xl font-semibold">Safeguarding</h1>
+    <main className="mx-auto w-full max-w-3xl px-4 py-8 lg:px-8">
+      <h1 className="text-2xl font-semibold">Safeguarding</h1>
       <p className="mt-1">
         Concerns raised by staff and managers. What was reported cannot be changed or deleted. Everything you do about it is added to its
         record, so there is a clear history if it is ever reviewed.

@@ -26,7 +26,7 @@ export default async function RaiseConcernPage() {
   }));
 
   return (
-    <main className="mx-auto w-full max-w-2xl px-4 py-12">
+    <main className="mx-auto w-full max-w-2xl px-4 py-8 lg:px-8">
       <p>
         <Link href="/me" className="underline">Back to your shifts</Link> · {businessName}
       </p>

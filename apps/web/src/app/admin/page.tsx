@@ -62,7 +62,7 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
   if (ref) await recordPlatformAction(admin.id, "lookup_reference", null, { reference: ref, matches: matches.length });
 
   return (
-    <main className="mx-auto w-full max-w-4xl px-4 py-12">
+    <main className="mx-auto w-full max-w-4xl px-4 py-8 lg:px-8">
       <p>
         <Link href="/dashboard" className="underline">Dashboard</Link>
       </p>

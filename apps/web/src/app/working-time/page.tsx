@@ -31,7 +31,7 @@ const explain = (l: WorkingTimeLine) => {
 };
 
 export default async function WorkingTimePage() {
-  const { organisationId, businessName } = await requireManager();
+  const { organisationId } = await requireManager();
   const today = todayInUk();
   const { from, to } = referencePeriod(today);
   const { workers, entries, leave } = await withOrganisation(db, organisationId, async (tx) => ({
@@ -59,12 +59,8 @@ export default async function WorkingTimePage() {
   const needsAction = lines.filter((l) => l.status === "over").length;
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-12">
-      <p>
-        <Link href="/dashboard" className="underline">{businessName}</Link> · <Link href="/rota" className="underline">Rota</Link> ·{" "}
-        <Link href="/timesheets" className="underline">Timesheets</Link>
-      </p>
-      <h1 className="mt-2 text-2xl font-semibold">Working time records</h1>
+    <main className="mx-auto w-full max-w-3xl px-4 py-8 lg:px-8">
+      <h1 className="text-2xl font-semibold">Working time records</h1>
       <p className="mt-2 text-zinc-700 dark:text-zinc-300">
         Average weekly hours over the last {REFERENCE_WEEKS} whole weeks, {ukDate(from)} to {ukDate(to)}, from confirmed hours on{" "}
         <Link href="/timesheets" className="underline">Timesheets</Link>. Holiday, sickness and family leave are left out so they do not pull the

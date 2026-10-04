@@ -1,6 +1,5 @@
 import { schema, withOrganisation } from "@vicisrota/db";
 import { asc, desc } from "drizzle-orm";
-import Link from "next/link";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
 import { archiveAnnouncement } from "./actions";
@@ -9,7 +8,7 @@ import { AnnouncementForm } from "./forms";
 const when = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 
 export default async function AnnouncementsPage() {
-  const { organisationId, businessName } = await requireManager();
+  const { organisationId } = await requireManager();
   const { posts, reads, staff } = await withOrganisation(db, organisationId, async (tx) => ({
     posts: await tx.select().from(schema.announcement).orderBy(desc(schema.announcement.createdAt)).limit(50),
     reads: await tx.select().from(schema.announcementRead),
@@ -20,11 +19,8 @@ export default async function AnnouncementsPage() {
   const archived = posts.filter((p) => p.archivedAt);
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-12">
-      <p>
-        <Link href="/dashboard" className="underline">{businessName}</Link> · <Link href="/rota" className="underline">Rota</Link>
-      </p>
-      <h1 className="mt-2 text-2xl font-semibold">Announcements</h1>
+    <main className="mx-auto w-full max-w-3xl px-4 py-8 lg:px-8">
+      <h1 className="text-2xl font-semibold">Announcements</h1>
       <p className="mt-1">Messages for all staff. They appear at the top of each person&apos;s page until they have read them.</p>
 
       <section className="mt-8" aria-labelledby="new-heading">

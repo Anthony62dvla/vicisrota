@@ -17,7 +17,7 @@ const pounds = (pence: number) => `£${(pence / 100).toFixed(2)}`;
 const hoursText = (h: number) => `${Number.isInteger(h) ? h : h.toFixed(2).replace(/0$/, "")} hours`;
 
 export default async function TimesheetsPage({ searchParams }: PageProps<"/timesheets">) {
-  const { organisationId, businessName } = await requireManager();
+  const { organisationId } = await requireManager();
   const query = await searchParams;
   const today = todayInUk();
   const asked = parsePeriod(typeof query.from === "string" ? query.from : null, typeof query.to === "string" ? query.to : null, today);
@@ -103,12 +103,8 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
   const query$ = `from=${from}&to=${to}`;
 
   return (
-    <main className="mx-auto w-full max-w-4xl px-4 py-12">
-      <p>
-        <Link href="/dashboard" className="underline">{businessName}</Link> · <Link href="/rota" className="underline">Rota</Link> ·{" "}
-        <Link href="/leave" className="underline">Leave</Link>
-      </p>
-      <h1 className="mt-2 text-2xl font-semibold">Timesheets and pay</h1>
+    <main className="mx-auto w-full max-w-4xl px-4 py-8 lg:px-8">
+      <h1 className="text-2xl font-semibold">Timesheets and pay</h1>
       <p className="mt-1">
         Confirm the hours people actually worked. Pay is worked out from confirmed hours, not the rota. Clock times are never rounded, so
         nobody loses pay for minutes they worked.

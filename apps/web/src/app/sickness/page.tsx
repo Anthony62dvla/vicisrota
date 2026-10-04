@@ -15,7 +15,7 @@ const pounds = (p: number) => `£${(p / 100).toFixed(2)}`;
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 export default async function SicknessPage() {
-  const { organisationId, businessName } = await requireManager();
+  const { organisationId } = await requireManager();
   const today = todayInUk();
   const { workers, reported, sickness } = await withOrganisation(db, organisationId, async (tx) => ({
     workers: await tx.select({ id: schema.worker.id, name: schema.worker.fullName }).from(schema.worker).orderBy(asc(schema.worker.fullName)),
@@ -35,12 +35,8 @@ export default async function SicknessPage() {
   const rate = SSP_WEEKLY_RATES.findLast((r) => r.from <= today) ?? SSP_WEEKLY_RATES[0]!;
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-12">
-      <p>
-        <Link href="/dashboard" className="underline">{businessName}</Link> · <Link href="/rota" className="underline">Rota</Link> ·{" "}
-        <Link href="/leave" className="underline">Leave</Link> · <Link href="/timesheets" className="underline">Timesheets</Link>
-      </p>
-      <h1 className="mt-2 text-2xl font-semibold">Sickness</h1>
+    <main className="mx-auto w-full max-w-3xl px-4 py-8 lg:px-8">
+      <h1 className="text-2xl font-semibold">Sickness</h1>
       <p className="mt-2 text-zinc-700 dark:text-zinc-300">
         Record time off sick and see the Statutory Sick Pay each person is due. Sick pay goes into the payroll export.
       </p>

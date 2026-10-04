@@ -9,7 +9,7 @@ import { suggestionsFor } from "@/lib/role-suggestions";
 import { AddRoleForm, SuggestedRolesForm } from "./forms";
 
 export default async function RolesPage() {
-  const { organisationId, businessName, sector } = await requireManager();
+  const { organisationId, sector  } = await requireManager();
   const { roles, links, workers } = await withOrganisation(db, organisationId, async (tx) => ({
     roles: await tx.select().from(schema.jobRole).orderBy(asc(schema.jobRole.name)),
     links: await tx.select().from(schema.workerRole),
@@ -18,12 +18,8 @@ export default async function RolesPage() {
   const name = new Map(workers.map((w) => [w.id, w.name]));
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-12">
-      <p>
-        <Link href="/dashboard" className="underline">{businessName}</Link> · <Link href="/staff" className="underline">Staff</Link> ·{" "}
-        <Link href="/rota" className="underline">Rota</Link>
-      </p>
-      <h1 className="mt-2 text-2xl font-semibold">Job roles</h1>
+    <main className="mx-auto w-full max-w-3xl px-4 py-8 lg:px-8">
+      <h1 className="text-2xl font-semibold">Job roles</h1>
       <p className="mt-2 text-zinc-700 dark:text-zinc-300">
         Give shifts a role so everyone can see who is on the kitchen, the bar or the senior round. Open shifts are only offered to people set up
         for the role, and the rota warns if someone is put on a role they are not set up for. Roles are optional.

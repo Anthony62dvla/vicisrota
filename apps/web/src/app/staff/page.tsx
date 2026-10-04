@@ -9,7 +9,7 @@ import { AddWorkerForm } from "./add-worker-form";
 const pounds = (pence: number) => `£${(pence / 100).toFixed(2)}`;
 
 export default async function StaffPage() {
-  const { organisationId, businessName } = await requireManager();
+  const { organisationId } = await requireManager();
   const today = todayInUk();
   const { workers, rates, rtw } = await withOrganisation(db, organisationId, async (tx) => ({
     workers: await tx.select().from(schema.worker).orderBy(asc(schema.worker.fullName)),
@@ -20,11 +20,8 @@ export default async function StaffPage() {
     rtw.some((c) => c.workerId === workerId && c.checkedOn <= today && (!c.expiresOn || c.expiresOn >= today));
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-12">
-      <p>
-        <Link href="/dashboard" className="underline">{businessName}</Link> · <Link href="/roles" className="underline">Job roles</Link>
-      </p>
-      <h1 className="mt-2 text-2xl font-semibold">Staff</h1>
+    <main className="mx-auto w-full max-w-3xl px-4 py-8 lg:px-8">
+      <h1 className="text-2xl font-semibold">Staff</h1>
       {workers.length === 0 ? (
         <p className="mt-4">No staff yet. Add your first person below.</p>
       ) : (

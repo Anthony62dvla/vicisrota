@@ -1,6 +1,5 @@
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
-import Link from "next/link";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
 import { revokeKiosk, setLocationRule, setUpKiosk } from "./actions";
@@ -15,7 +14,7 @@ const RULES = [
 const dateFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 export default async function WorkplacesPage() {
-  const { organisationId, businessName } = await requireManager();
+  const { organisationId } = await requireManager();
   const { places, org, kiosks } = await withOrganisation(db, organisationId, async (tx) => ({
     places: await tx.select().from(schema.location).orderBy(asc(schema.location.name)),
     org: (await tx.select({ rule: schema.organisation.clockLocationRule }).from(schema.organisation).where(eq(schema.organisation.id, organisationId)))[0],
@@ -30,11 +29,8 @@ export default async function WorkplacesPage() {
   const mapped = places.filter((p) => p.latitude !== null);
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-12">
-      <p>
-        <Link href="/dashboard" className="underline">{businessName}</Link> · <Link href="/timesheets" className="underline">Timesheets</Link>
-      </p>
-      <h1 className="mt-2 text-2xl font-semibold">Workplaces and clocking in</h1>
+    <main className="mx-auto w-full max-w-3xl px-4 py-8 lg:px-8">
+      <h1 className="text-2xl font-semibold">Workplaces and clocking in</h1>
       <p className="mt-1">Where your staff work, whether phone clock-ins check they are there, and in-store clock-in tablets.</p>
 
       <section className="mt-8" aria-labelledby="places-heading">

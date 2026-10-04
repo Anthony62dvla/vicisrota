@@ -8,7 +8,7 @@ import { db } from "./db";
  * The signed-in user's first business and their role in it.
  * For now a user works in their first business; a business switcher comes later.
  */
-const firstMembership = async (userId: string) =>
+export const firstMembership = async (userId: string) =>
   (
     await db
       .select({

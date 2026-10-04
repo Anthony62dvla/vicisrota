@@ -12,7 +12,7 @@ const ukDate = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-
 const span = (a: string, b: string) => (a === b ? ukDate(a) : `${ukDate(a)} to ${ukDate(b)}`);
 
 export default async function LeavePage() {
-  const { organisationId, businessName } = await requireManager();
+  const { organisationId } = await requireManager();
   const today = todayInUk();
   const { workers, leave, year, balances } = await withOrganisation(db, organisationId, async (tx) => ({
     workers: await tx.select().from(schema.worker).orderBy(asc(schema.worker.fullName)),
@@ -30,12 +30,8 @@ export default async function LeavePage() {
     l.kind !== "annual" ? "" : l.hours != null ? ` · ${formatAmount(l.hours, "hours")}` : l.days != null ? ` · ${formatAmount(l.days, "days")}` : "";
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-12">
-      <p>
-        <Link href="/dashboard" className="underline">{businessName}</Link> · <Link href="/rota" className="underline">Rota</Link> ·{" "}
-        <Link href="/staff" className="underline">Staff</Link>
-      </p>
-      <h1 className="mt-2 text-2xl font-semibold">Leave and holiday</h1>
+    <main className="mx-auto w-full max-w-3xl px-4 py-8 lg:px-8">
+      <h1 className="text-2xl font-semibold">Leave and holiday</h1>
 
       {workers.length === 0 ? (
         <p className="mt-4">Add your staff first on the <Link href="/staff" className="underline">Staff page</Link>.</p>

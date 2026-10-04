@@ -7,8 +7,9 @@ import { db } from "@/lib/db";
 import { createBusiness } from "../actions";
 import { loadSetupSteps } from "@/lib/setup";
 import { isSuperadmin } from "@/lib/superadmin";
+import { managerNav } from "@/lib/nav";
+import { Icon } from "../icons";
 import { SetupChecklist } from "./setup-checklist";
-import { SignOutButton } from "./sign-out";
 
 const SECTOR_LABELS = { care: "Care provider", hospitality: "Hospitality", small_business: "Small business" } as const;
 
@@ -27,12 +28,16 @@ export default async function Dashboard() {
   const setup = managed ? await loadSetupSteps(managed.id) : null;
   const superadmin = await isSuperadmin(user.id);
 
+  const sections = managed ? managerNav(managed.sector, false).filter((sec) => sec.title) : [];
+
   return (
-    <main className="mx-auto w-full max-w-2xl px-4 py-12">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Hello, {user.name}</h1>
-        <SignOutButton />
-      </div>
+    <main className="mx-auto w-full max-w-4xl px-4 py-8 lg:px-8">
+      <h1 className="text-2xl font-semibold sm:text-3xl">Hello, {user.name}</h1>
+      {managed && (
+        <p className="mt-1 text-muted">
+          {managed.name} · {SECTOR_LABELS[managed.sector]}
+        </p>
+      )}
       {superadmin && (
         <p className="mt-2">
           <Link href="/admin" className="font-medium text-brand underline">VicisRota superadmin</Link>
@@ -42,39 +47,29 @@ export default async function Dashboard() {
       {businesses.length > 0 ? (
         <>
         {setup && <SetupChecklist steps={setup} />}
-        <nav className="mt-6 flex flex-wrap gap-4" aria-label="Main">
-          <Link href="/attendance" className="rounded-lg border border-zinc-400 px-4 py-2">Today</Link>
-          <Link href="/rota" className="rounded-lg border border-zinc-400 px-4 py-2">Rota</Link>
-          <Link href="/staff" className="rounded-lg border border-zinc-400 px-4 py-2">Staff</Link>
-          <Link href="/roles" className="rounded-lg border border-zinc-400 px-4 py-2">Job roles</Link>
-          <Link href="/leave" className="rounded-lg border border-zinc-400 px-4 py-2">Leave</Link>
-          <Link href="/sickness" className="rounded-lg border border-zinc-400 px-4 py-2">Sickness</Link>
-          <Link href="/timesheets" className="rounded-lg border border-zinc-400 px-4 py-2">Timesheets</Link>
-          <Link href="/working-time" className="rounded-lg border border-zinc-400 px-4 py-2">Working time</Link>
-          {businesses.some((b) => b.sector !== "care") && (
-            <Link href="/tips" className="rounded-lg border border-zinc-400 px-4 py-2">Tips</Link>
-          )}
-          {businesses.some((b) => b.sector === "care") && (
-            <Link href="/clients" className="rounded-lg border border-zinc-400 px-4 py-2">Clients</Link>
-          )}
-          <Link href="/workplaces" className="rounded-lg border border-zinc-400 px-4 py-2">Workplaces</Link>
-          <Link href="/announcements" className="rounded-lg border border-zinc-400 px-4 py-2">Announcements</Link>
-          <Link href="/lone-working" className="rounded-lg border border-zinc-400 px-4 py-2">Lone working</Link>
-          <Link href="/safeguarding" className="rounded-lg border border-zinc-400 px-4 py-2">Safeguarding</Link>
-        </nav>
-        <ul className="mt-6 space-y-3">
-          {businesses.map((b) => (
-            <li key={b.id} className="rounded-lg border border-zinc-300 p-4 dark:border-zinc-700">
-              <p className="font-medium">{b.name}</p>
-              <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                {SECTOR_LABELS[b.sector]} · {b.role}
-              </p>
-            </li>
+        <div className="mt-8 grid gap-6 sm:grid-cols-2">
+          {sections.map((sec, i) => (
+            <section key={sec.title} aria-labelledby={`sec-${i}`} className="rounded-xl border border-line bg-surface p-5 shadow-sm">
+              <h2 id={`sec-${i}`} className="text-sm font-semibold uppercase tracking-wider text-muted">{sec.title}</h2>
+              <ul className="mt-3 flex flex-col gap-1">
+                {sec.items.map((item) => (
+                  <li key={item.href}>
+                    <Link href={item.href} className="group flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-brand-soft">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-soft text-brand">
+                        <Icon name={item.icon} />
+                      </span>
+                      <span className="flex-1 font-medium">{item.label}</span>
+                      <Icon name="arrow" className="h-4 w-4 text-muted group-hover:text-brand" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
           ))}
-        </ul>
+        </div>
         </>
       ) : (
-        <form action={createBusiness} className="mt-6 flex flex-col gap-4">
+        <form action={createBusiness} className="mt-6 flex max-w-lg flex-col gap-4 rounded-xl border border-line bg-surface p-6 shadow-sm">
           <h2 className="text-lg font-semibold">Set up your business</h2>
           <label className="flex flex-col gap-1">
             <span className="font-medium">Business name</span>
@@ -88,7 +83,7 @@ export default async function Dashboard() {
               </label>
             ))}
           </fieldset>
-          <button type="submit" className="rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover">
+          <button type="submit" className="rounded-lg bg-brand px-4 py-2.5 font-medium text-on-brand hover:bg-brand-hover">
             Create business
           </button>
         </form>

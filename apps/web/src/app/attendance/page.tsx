@@ -30,7 +30,7 @@ const LABEL: Record<AttendanceState, string> = {
 };
 
 export default async function AttendancePage() {
-  const { organisationId, businessName } = await requireManager();
+  const { organisationId } = await requireManager();
   const { now, rows, lateAlertMinutes, contacts } = await withOrganisation(db, organisationId, async (tx) => {
     const now = new Date().getTime();
     return {
@@ -47,22 +47,9 @@ export default async function AttendancePage() {
   const working = rows.filter((r) => r.state === "in" || r.state === "on_break").length;
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-12">
+    <main className="mx-auto w-full max-w-3xl px-4 py-8 lg:px-8">
       <AutoRefresh seconds={60} />
-      <p>
-        <Link href="/dashboard" className="underline">
-          {businessName}
-        </Link>{" "}
-        ·{" "}
-        <Link href="/rota" className="underline">
-          Rota
-        </Link>{" "}
-        ·{" "}
-        <Link href="/timesheets" className="underline">
-          Timesheets
-        </Link>
-      </p>
-      <h1 className="mt-2 text-2xl font-semibold">Today</h1>
+      <h1 className="text-2xl font-semibold">Today</h1>
       <p className="mt-1">
         Who is working today and whether they have clocked in. People who have not clocked in are shown first. This page updates every minute. Last
         updated {time(now)}.
