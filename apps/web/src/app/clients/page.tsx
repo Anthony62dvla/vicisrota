@@ -1,7 +1,6 @@
 import { addDays, weekStart } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, asc, eq, gte, isNotNull, lt, ne } from "drizzle-orm";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
@@ -14,7 +13,7 @@ import { AddClientForm } from "./forms";
 const CONTINUITY_LIMIT = 4;
 
 export default async function ClientsPage() {
-  const { organisationId, businessName, sector } = await requireManager();
+  const { organisationId, sector  } = await requireManager();
   if (sector !== "care") redirect("/dashboard");
   const monday = weekStart(todayInUk());
   const { start, end } = periodBounds(monday, addDays(monday, 6));
@@ -31,11 +30,8 @@ export default async function ClientsPage() {
   const visitCount = (clientId: string) => visits.filter((v) => v.clientId === clientId).length;
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-12">
-      <p>
-        <Link href="/dashboard" className="underline">{businessName}</Link> · <Link href="/rota" className="underline">Rota</Link>
-      </p>
-      <h1 className="mt-2 text-2xl font-semibold">Clients</h1>
+    <main className="mx-auto w-full max-w-3xl px-4 py-8 lg:px-8">
+      <h1 className="text-2xl font-semibold">Clients</h1>
       <p className="mt-1">The people you visit. Add a visit from the rota by choosing who it is for.</p>
 
       <section className="mt-8" aria-labelledby="list-heading">

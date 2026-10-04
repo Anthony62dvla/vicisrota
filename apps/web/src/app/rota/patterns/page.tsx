@@ -12,7 +12,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export default async function PatternsPage({ searchParams }: PageProps<"/rota/patterns">) {
-  const { organisationId, businessName } = await requireManager();
+  const { organisationId } = await requireManager();
   const requested = (await searchParams).week;
   const thisWeek = weekStart(todayInUk());
   const week = weekStart(typeof requested === "string" && DATE.test(requested) ? requested : thisWeek);
@@ -29,9 +29,9 @@ export default async function PatternsPage({ searchParams }: PageProps<"/rota/pa
   const roleName = new Map(roles.map((r) => [r.id, r.name]));
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-12">
+    <main className="mx-auto w-full max-w-3xl px-4 py-8 lg:px-8">
       <p>
-        <Link href="/dashboard" className="underline">{businessName}</Link> · <Link href={`/rota?week=${week}`} className="underline">Rota</Link>
+        <Link href={`/rota?week=${week}`} className="text-sm text-muted underline">Back to the rota</Link>
       </p>
       <h1 className="mt-2 text-2xl font-semibold">Rota patterns</h1>
       <p className="mt-2">

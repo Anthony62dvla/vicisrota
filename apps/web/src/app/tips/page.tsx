@@ -52,11 +52,8 @@ export default async function TipsPage({ searchParams }: PageProps<"/tips">) {
   const overdue = data.allocations.filter((a) => !a.paidAt && a.payBy < today);
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-12">
-      <p>
-        <Link href="/dashboard" className="underline">{businessName}</Link> · <Link href="/timesheets" className="underline">Timesheets</Link>
-      </p>
-      <h1 className="mt-2 text-2xl font-semibold">Tips</h1>
+    <main className="mx-auto w-full max-w-3xl px-4 py-8 lg:px-8">
+      <h1 className="text-2xl font-semibold">Tips</h1>
       <p className="mt-1">
         By law, all tips and service charges go to staff, shared fairly and paid by the end of the following month. Records are kept for{" "}
         {TIP_RECORD_YEARS} years.

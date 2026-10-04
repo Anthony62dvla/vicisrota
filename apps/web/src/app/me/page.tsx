@@ -11,7 +11,6 @@ import { loadLoneShifts } from "@/lib/lone-working";
 import { SHORT_NOTICE_HOURS } from "@/lib/notices";
 import { todayInUk } from "@/lib/rota";
 import { loadSickness } from "@/lib/sickness";
-import { SignOutButton } from "../dashboard/sign-out";
 import { addMyUnavailable, markNoticesSeen, readAnnouncement, removeMyUnavailable, savePreferences, setCoverRequest, withdrawClaim, withdrawRequest } from "./actions";
 import { formatUkMobile } from "@vicisrota/messaging";
 import { ClockButtons, LoneCheckIn, PickUpList, PinForm, ReportSickForm, TextSettingsForm, TimeOffForm } from "./forms";
@@ -185,14 +184,9 @@ export default async function MyPage() {
   const updatedAt = `${timeFmt.format(data.now)} on ${shortDate(londonParts(data.now).date)}`;
 
   return (
-    <main className={`mx-auto w-full max-w-2xl px-4 py-12 ${largeText ? "text-lg" : ""}`}>
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Hello, {user.name}</h1>
-          <p className="text-zinc-600 dark:text-zinc-400">{businessName}</p>
-        </div>
-        <SignOutButton />
-      </div>
+    <main className={`mx-auto w-full max-w-2xl px-4 py-8 lg:px-8 ${largeText ? "text-lg" : ""}`}>
+      <h1 className="text-2xl font-semibold">Hello, {user.name}</h1>
+      <p className="text-zinc-600 dark:text-zinc-400">{businessName}</p>
 
       <OfflineNotice updatedAt={updatedAt} />
 

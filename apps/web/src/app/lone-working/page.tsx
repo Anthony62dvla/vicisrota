@@ -1,7 +1,6 @@
 import { formatUkMobile } from "@vicisrota/messaging";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { asc, desc, eq } from "drizzle-orm";
-import Link from "next/link";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
 import { loadLoneShifts, URGENCY } from "@/lib/lone-working";
@@ -15,7 +14,7 @@ const dayFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", wee
 const STATE_LABEL = { help: "Asked for help", overdue: "Missed check-in", ok: "Checked in", not_started: "Not started yet", finished: "Finished safely" } as const;
 
 export default async function LoneWorkingPage() {
-  const { organisationId, businessName } = await requireManager();
+  const { organisationId } = await requireManager();
   const { now, shifts, contacts, texts } = await withOrganisation(db, organisationId, async (tx) => {
     const now = new Date().getTime();
     return {
@@ -30,12 +29,9 @@ export default async function LoneWorkingPage() {
   const urgent = shifts.filter((s) => s.status.state === "help" || s.status.state === "overdue").length;
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-12">
+    <main className="mx-auto w-full max-w-3xl px-4 py-8 lg:px-8">
       <AutoRefresh seconds={60} />
-      <p>
-        <Link href="/dashboard" className="underline">{businessName}</Link> · <Link href="/rota" className="underline">Rota</Link>
-      </p>
-      <h1 className="mt-2 text-2xl font-semibold">Lone working</h1>
+      <h1 className="text-2xl font-semibold">Lone working</h1>
       <p className="mt-1">
         People working alone check in at the start, at set times, and when they finish. Anyone who asks for help or misses a check-in by
         more than 15 minutes is shown first. This page updates every minute. Last updated {timeFmt.format(new Date(now))}.

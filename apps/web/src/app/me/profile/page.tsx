@@ -6,7 +6,7 @@ export default async function WorkProfilePage() {
   const { worker, businessName } = await requireStaff();
   const largeText = !!worker.preferences.largeText;
   return (
-    <main className={`mx-auto w-full max-w-2xl px-4 py-12 ${largeText ? "text-lg" : ""}`}>
+    <main className={`mx-auto w-full max-w-2xl px-4 py-8 lg:px-8 ${largeText ? "text-lg" : ""}`}>
       <p>
         <Link href="/me" className="underline">Back to my shifts</Link>
       </p>

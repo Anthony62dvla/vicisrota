@@ -18,7 +18,7 @@ const DBS_LABEL = { basic: "Basic", standard: "Standard", enhanced: "Enhanced", 
 const ukDate = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" });
 
 export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]">) {
-  const { organisationId, businessName } = await requireManager();
+  const { organisationId } = await requireManager();
   const { id } = await params;
   if (!UUID.test(id)) notFound();
   const today = todayInUk();
@@ -57,10 +57,9 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
   const hasValidRtw = rtw.some((c) => c.checkedOn <= today && (!c.expiresOn || c.expiresOn >= today));
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-12">
+    <main className="mx-auto w-full max-w-3xl px-4 py-8 lg:px-8">
       <p>
-        <Link href="/dashboard" className="underline">{businessName}</Link> ·{" "}
-        <Link href="/staff" className="underline">Staff</Link>
+        <Link href="/staff" className="text-sm text-muted underline">All staff</Link>
       </p>
       <h1 className="mt-2 text-2xl font-semibold">{worker.fullName}</h1>
 

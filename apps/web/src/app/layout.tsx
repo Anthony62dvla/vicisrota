@@ -1,9 +1,9 @@
 import { BRAND } from "@/lib/brand";
 import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
-import Link from "next/link";
 import { DISPLAY_COOKIE, parseDisplay } from "@/lib/display";
 import "./globals.css";
+import { AppShell } from "./app-shell";
 import { ServiceWorker } from "./service-worker";
 
 export const metadata: Metadata = {
@@ -23,10 +23,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en-GB" className="h-full antialiased" {...flags}>
       <body className="min-h-full flex flex-col">
-        <div className="flex-1">{children}</div>
-        <footer className="mx-auto w-full max-w-3xl px-4 pb-6 text-sm">
-          <Link href="/display" className="underline">Display settings</Link>
-        </footer>
+        <AppShell>{children}</AppShell>
         <ServiceWorker />
       </body>
     </html>
