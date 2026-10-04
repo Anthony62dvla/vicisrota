@@ -101,6 +101,8 @@ Until then, texts are written to the log and not sent. Send me the provider's AP
 
 **Turning on error tracking.** Paste your Sentry DSN into `SENTRY_DSN` in `app.env`, and into `NEXT_PUBLIC_SENTRY_DSN` in `.env`, then run `./update.sh`.
 
+**Turning on the support assistant.** Customers report problems from **Report a problem**, and you answer them from **Open support inbox** in the superadmin area. To have the assistant suggest a triage and a reply for each report, create an API key at https://platform.claude.com, paste it into `ANTHROPIC_API_KEY` in `app.env`, then run `./update.sh`. Nothing is sent to a customer until you send it.
+
 **Backups.**
 
 - A backup of the database is saved every night at about 02:30 to `/opt/vicisrota/deploy/backups`, and the last 30 are kept.

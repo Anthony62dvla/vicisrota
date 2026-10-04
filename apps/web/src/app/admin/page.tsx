@@ -20,6 +20,7 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
   const ref = String((await searchParams).ref ?? "").trim().toUpperCase();
 
   const orgs = await db.select().from(schema.organisation).orderBy(desc(schema.organisation.createdAt));
+  const [openReports] = await db.select({ n: count() }).from(schema.supportReport).where(inArray(schema.supportReport.status, ["new", "triaged"]));
   const ids = orgs.map((o) => o.id);
   const [owners, ownerLinks] = ids.length
     ? await Promise.all([
@@ -71,6 +72,19 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
         Customer businesses, onboarding and error references. Only counts and progress are shown: never staff names, shifts, sickness,
         adjustments or safeguarding concerns. Everything you do here is recorded.
       </p>
+
+      <section className="mt-8 flex flex-wrap items-center gap-4 rounded-xl border border-line bg-surface p-5 shadow-sm" aria-labelledby="support-heading">
+        <div className="flex-1">
+          <h2 id="support-heading" className="text-lg font-semibold">Support</h2>
+          <p className="text-sm text-muted">
+            {openReports?.n ? `${openReports.n} open ${openReports.n === 1 ? "report" : "reports"} from customers.` : "No open reports."} Reports
+            show what the customer chose to write.
+          </p>
+        </div>
+        <Link href="/admin/support" className="rounded-lg bg-brand px-4 py-2 font-medium text-on-brand hover:bg-brand-hover">
+          Open support inbox
+        </Link>
+      </section>
 
       <section className="mt-8" aria-labelledby="ref-heading">
         <h2 id="ref-heading" className="text-lg font-semibold">Find an error reference</h2>

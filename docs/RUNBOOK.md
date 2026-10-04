@@ -102,3 +102,12 @@ VicisRota runs on one Hostinger VPS with Docker Compose. The setup files are in 
 - **Scheduler:** the `scheduler` service calls `/api/cron/alerts` every 5 minutes with `CRON_SECRET`.
 - **Backups:** the `backup` service takes a nightly `pg_dump` into `deploy/backups` (keeps 30). Restore with `deploy/restore.sh <file>`.
 - **Logs:** `docker compose logs --tail=100 web` from `deploy/`.
+
+## Support reports and the triage assistant
+
+Managers and staff report problems at `/help`. The error page links there with its reference filled in. Reports live in `support_report`, a platform-level table filtered in code: reporters see only their own, and superadmins see all at `/admin/support`.
+
+- **Triage:** "Ask the assistant to triage" calls Claude (`lib/support.ts`, model `claude-opus-5-5`, structured output, server-side fallback). It runs only when `ANTHROPIC_API_KEY` is set.
+- **What the assistant sees:** only the report text, with emails and phone numbers masked, plus the page, error reference, reporter role and sector. It never sees staff records.
+- **Suggestions only:** the assistant's reply is a draft. A superadmin edits it and sends it, and every triage, reply and close is recorded in `platform_audit`.
+- **Safeguarding:** a report that sounds like a safeguarding concern is flagged in red, and the draft reply points the reporter to their organisation's procedure, or 999 in an emergency.

@@ -877,3 +877,45 @@ export const rotaPatternShift = pgTable(
     check("rota_pattern_shift_week", sql`${t.weekIndex} between 0 and 3 and ${t.weekday} between 0 and 6`),
   ],
 );
+
+export const supportStatus = pgEnum("support_status", ["new", "triaged", "replied", "closed"]);
+
+/** What the support assistant suggests for a report. A suggestion only: a VicisRota person decides and replies. */
+export type SupportTriage = {
+  summary: string;
+  likelyCause: string;
+  area: string;
+  urgency: "low" | "normal" | "high" | "urgent";
+  /** True when the report sounds like someone may be at risk, so it is pointed to safeguarding, not support. */
+  possibleSafeguarding: boolean;
+  nextSteps: string[];
+  suggestedReply: string;
+  model: string;
+};
+
+/**
+ * A problem reported to VicisRota by a manager or member of staff. Platform-level, like platform_audit:
+ * reporters only ever see their own reports (filtered by user in code) and superadmins see them all.
+ */
+export const supportReport = pgTable(
+  "support_report",
+  {
+    id: id(),
+    organisationId: uuid("organisation_id").references(() => organisation.id, { onDelete: "set null" }),
+    reporterUserId: text("reporter_user_id").references(() => user.id, { onDelete: "set null" }),
+    /** "manager" or "worker", so replies can be pitched right. */
+    reporterRole: text("reporter_role").notNull(),
+    /** The page they were on, e.g. /rota. */
+    page: text("page"),
+    /** The reference shown on an error page, which matches the server log. */
+    errorRef: text("error_ref"),
+    what: text("what").notNull(),
+    status: supportStatus("status").notNull().default("new"),
+    triage: jsonb("triage").$type<SupportTriage>(),
+    triagedAt: timestamp("triaged_at", { withTimezone: true }),
+    reply: text("reply"),
+    repliedAt: timestamp("replied_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("support_report_created_idx").on(t.createdAt), index("support_report_reporter_idx").on(t.reporterUserId)],
+);
