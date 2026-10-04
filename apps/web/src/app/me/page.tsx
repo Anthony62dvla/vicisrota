@@ -267,7 +267,7 @@ export default async function MyPage() {
                 {n.noticeHours < SHORT_NOTICE_HOURS && n.kind !== "given_to_you" && (
                   <span className="block text-sm text-zinc-600 dark:text-zinc-400">
                     Short notice: {n.kind === "added" ? "added" : "changed"} {n.noticeHours < 48 ? `${n.noticeHours} hours` : `${Math.floor(n.noticeHours / 24)} days`} before the
-                    shift. Speak to your manager if this causes you a problem.
+                    shift. If this is hard to fit around, it is fine to tell your manager.
                   </span>
                 )}
               </li>
