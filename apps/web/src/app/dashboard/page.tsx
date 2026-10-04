@@ -43,6 +43,7 @@ export default async function Dashboard() {
         <>
         {setup && <SetupChecklist steps={setup} />}
         <nav className="mt-6 flex flex-wrap gap-4" aria-label="Main">
+          <Link href="/attendance" className="rounded-lg border border-zinc-400 px-4 py-2">Today</Link>
           <Link href="/rota" className="rounded-lg border border-zinc-400 px-4 py-2">Rota</Link>
           <Link href="/staff" className="rounded-lg border border-zinc-400 px-4 py-2">Staff</Link>
           <Link href="/roles" className="rounded-lg border border-zinc-400 px-4 py-2">Job roles</Link>

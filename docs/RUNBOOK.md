@@ -70,3 +70,10 @@ VicisRota staff use `/admin` to see every customer business (counts and setup pr
 ## Job roles
 
 Roles (`job_role`, with `worker_role` for who can work each) are optional. A shift can have one role (`shift.role_id`). The rota warns (rule `roles.job-role`, never blocks) when someone is put on a role they are not set up for. Staff only see, and can only ask for, open shifts with no role or a role they hold. Ready-made UK roles for each sector live in `apps/web/src/lib/role-suggestions.ts`; add to that list to offer more. Removing a role leaves its shifts in place without a role.
+
+## Today board and late texts
+
+`/attendance` ("Today" on the dashboard) shows every published shift today and whether the person has clocked in, refreshing every minute. Only a clock-in counts as arriving; approved leave or sickness on the day explains an empty clock. The states come from `attendance()` in `packages/compliance/src/clock.ts`.
+
+- **Late texts** are off by default. A manager picks 10, 15, 30 or 60 minutes (`organisation.late_alert_minutes`). The `/api/cron/alerts` job then texts the alert contacts once per shift (dedupe key `late:<shift id>`) when nobody has clocked in by then, or at the end of a shorter shift. Nothing is sent for shifts that ended more than 30 minutes ago, so turning texts on never texts about old shifts.
+- **"Why did I get a late text?"** Look in `sms_message` for purpose `late` and the shift id in the dedupe key, then `clock_event` for that shift. A text with a clock-in just after it is normal: the person was late.

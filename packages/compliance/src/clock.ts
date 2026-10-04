@@ -99,3 +99,38 @@ export const placeCheck = (position: { latitude: number; longitude: number; accu
     within: nearest.distance <= nearest.workplace.radiusMetres + allowance,
   };
 };
+
+/** Someone is "starting now" rather than late for the first few minutes of a shift. */
+export const LATE_GRACE_MINUTES = 5;
+
+export type AttendanceState = "upcoming" | "starting" | "late" | "missed" | "in" | "on_break" | "finished" | "on_leave";
+
+/**
+ * Where someone is with a rostered shift, for the "Today" board and late alerts. Only a clock-in
+ * counts as arriving, so this is only meaningful for businesses whose staff clock in.
+ */
+export const attendance = (summary: ClockSummary, shift: { start: number; end: number }, now: number, onLeave = false) => {
+  const minutesLate = summary.state === "not_in" ? Math.max(0, Math.floor((Math.min(now, shift.end) - shift.start) / MIN)) : summary.lateMinutes;
+  let state: AttendanceState;
+  if (summary.state === "in") state = "in";
+  else if (summary.state === "on_break") state = "on_break";
+  else if (summary.state === "out") state = "finished";
+  // Approved leave or sickness explains an empty clock; clocking in anyway still shows above.
+  else if (onLeave) state = "on_leave";
+  else if (now < shift.start) state = "upcoming";
+  else if (now >= shift.end) state = "missed";
+  else state = minutesLate < LATE_GRACE_MINUTES ? "starting" : "late";
+  return { state, minutesLate };
+};
+
+/** Late alerts go out for this long after a shift ends, so turning alerts on does not text about old shifts. */
+export const LATE_ALERT_WINDOW_AFTER_END_MINUTES = 30;
+
+/**
+ * Whether the alert contacts should be told nobody has clocked in: `afterMinutes` past the start
+ * (or at the end, for a shift shorter than that), and not long after it ended.
+ */
+export const lateAlertDue = (state: AttendanceState, shift: { start: number; end: number }, now: number, afterMinutes: number) =>
+  (state === "late" || state === "missed") &&
+  now >= Math.min(shift.start + afterMinutes * MIN, shift.end) &&
+  now < shift.end + LATE_ALERT_WINDOW_AFTER_END_MINUTES * MIN;

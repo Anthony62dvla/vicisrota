@@ -1,6 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
-import { overdueAlert } from "@vicisrota/messaging";
+import { lateAlertDue } from "@vicisrota/compliance";
+import { lateAlert, overdueAlert } from "@vicisrota/messaging";
 import { schema, withOrganisation } from "@vicisrota/db";
+import { loadAttendance } from "@/lib/attendance";
 import { db } from "@/lib/db";
 import { log } from "@/lib/log";
 import { loadLoneShifts } from "@/lib/lone-working";
@@ -18,7 +20,8 @@ const authorised = (header: string | null) => {
 
 /**
  * Run every few minutes by a scheduler. Texts each business's alert contacts about anyone working
- * alone who has missed a check-in. Each missed check-in is texted once (see textAlertContacts).
+ * alone who has missed a check-in, and, where the business has turned it on, about anyone who has not
+ * clocked in for a shift. Each missed check-in and each late shift is texted once (see textAlertContacts).
  */
 export async function GET(request: Request) {
   if (!process.env.CRON_SECRET) return Response.json({ error: "CRON_SECRET is not set" }, { status: 503 });
@@ -26,8 +29,11 @@ export async function GET(request: Request) {
 
   const now = Date.now();
   // The organisation table is not tenant-scoped; everything after this is read inside each business.
-  const businesses = await db.select({ id: schema.organisation.id, name: schema.organisation.name }).from(schema.organisation);
+  const businesses = await db
+    .select({ id: schema.organisation.id, name: schema.organisation.name, lateAlertMinutes: schema.organisation.lateAlertMinutes })
+    .from(schema.organisation);
   let overdue = 0;
+  let late = 0;
   let texts = 0;
   for (const business of businesses) {
     const shifts = await withOrganisation(db, business.id, (tx) =>
@@ -50,7 +56,30 @@ export async function GET(request: Request) {
         `overdue:${shift.id}:${status.dueAt}`,
       );
     }
+
+    if (business.lateAlertMinutes === null) continue;
+    // Late texts stop half an hour after a shift ends, so only shifts still running or just finished matter.
+    const rows = await withOrganisation(db, business.id, (tx) =>
+      loadAttendance(tx, { from: new Date(now - 3_600_000), to: new Date(now), now }),
+    );
+    for (const r of rows) {
+      const shift = { start: r.shift.startsAt.getTime(), end: r.shift.endsAt.getTime() };
+      if (!lateAlertDue(r.state, shift, now, business.lateAlertMinutes)) continue;
+      late++;
+      texts += await textAlertContacts(
+        business.id,
+        "late",
+        lateAlert({
+          business: business.name,
+          person: r.workerName,
+          shift: `${timeFmt.format(r.shift.startsAt)} to ${timeFmt.format(r.shift.endsAt)}`,
+          where: [r.roleName, r.place].filter(Boolean).join(", ") || null,
+          link: appUrl("/attendance"),
+        }),
+        `late:${r.shift.id}`,
+      );
+    }
   }
-  await log("info", "alert check ran", { businesses: businesses.length, overdue, texts });
-  return Response.json({ businesses: businesses.length, overdue, texts });
+  await log("info", "alert check ran", { businesses: businesses.length, overdue, late, texts });
+  return Response.json({ businesses: businesses.length, overdue, late, texts });
 }

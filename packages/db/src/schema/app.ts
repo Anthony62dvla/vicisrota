@@ -64,6 +64,8 @@ export const organisation = pgTable("organisation", {
   tippingPolicy: text("tipping_policy"),
   /** Whether phone clock-ins check the person is at a workplace: not at all, noted for the manager, or required. */
   clockLocationRule: clockLocationRule("clock_location_rule").notNull().default("off"),
+  /** Text the alert contacts when nobody has clocked in this many minutes after a shift starts. Null is off. */
+  lateAlertMinutes: smallint("late_alert_minutes"),
   createdAt: createdAt(),
 });
 

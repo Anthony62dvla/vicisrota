@@ -27,6 +27,13 @@ export const overdueAlert = (a: { business: string; person: string; what: string
     ),
   );
 
+export const lateAlert = (a: { business: string; person: string; shift: string; where?: string | null; link: string }) =>
+  fit(
+    plain(
+      `${a.business}: ${a.person} has not clocked in for their shift ${a.shift}${a.where ? ` (${a.where})` : ""}. Please check the shift is covered and they are OK. ${a.link}`,
+    ),
+  );
+
 export const inviteText = (a: { business: string; link: string; days: number }) =>
   fit(plain(`${a.business} has invited you to VicisRota to see your shifts and ask for time off. Set up your login here (works once, for ${a.days} days): ${a.link}`));
 
