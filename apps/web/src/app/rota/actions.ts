@@ -31,6 +31,8 @@ export async function addShift(_: FormState, form: FormData): Promise<FormState>
   const clientId = String(form.get("clientId") ?? "") || null;
   const roleId = String(form.get("roleId") ?? "") || null;
   const travelMinutes = Number(form.get("travelMinutes") ?? 0);
+  const note = String(form.get("note") ?? "").trim() || null;
+  if (note && note.length > 500) return { error: "Keep the note for the person under 500 characters." };
   if (!DATE.test(date)) return { error: "Choose the day." };
   if (!TIME.test(start) || !TIME.test(end)) return { error: "Enter a start and finish time." };
   if (!(breakMinutes >= 0 && breakMinutes <= 240)) return { error: "Enter a break between 0 and 240 minutes." };
@@ -66,7 +68,7 @@ export async function addShift(_: FormState, form: FormData): Promise<FormState>
     }
     const [shift] = await tx
       .insert(schema.shift)
-      .values({ organisationId, workerId, clientId, roleId, travelMinutes, loneWorking, checkInMinutes, startsAt: new Date(startsAt), endsAt: new Date(endsAt) })
+      .values({ organisationId, workerId, clientId, roleId, travelMinutes, loneWorking, checkInMinutes, note, startsAt: new Date(startsAt), endsAt: new Date(endsAt) })
       .returning({ id: schema.shift.id });
     if (breakMinutes > 0) {
       // Place the break in the middle of the shift; exact break times can be edited later.
@@ -88,7 +90,7 @@ export async function addShift(_: FormState, form: FormData): Promise<FormState>
       action: "create",
       entity: "shift",
       entityId: shift!.id,
-      data: { workerId, date, start, end, breakMinutes, requires, clientId, roleId, travelMinutes, loneWorking, checkInMinutes },
+      data: { workerId, date, start, end, breakMinutes, requires, clientId, roleId, travelMinutes, loneWorking, checkInMinutes, note: !!note },
     });
   });
   if (error) return { error };
@@ -283,6 +285,7 @@ export async function copyPreviousWeek(_: FormState, form: FormData): Promise<Fo
           locationId: s.locationId,
           clientId: s.clientId,
           roleId: s.roleId,
+          note: s.note,
           travelMinutes: s.travelMinutes,
           loneWorking: s.loneWorking,
           checkInMinutes: s.checkInMinutes,

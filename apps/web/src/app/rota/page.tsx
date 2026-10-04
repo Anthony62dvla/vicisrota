@@ -187,6 +187,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
                             <p>{timeFmt.format(s.startsAt)}–{timeFmt.format(s.endsAt)}</p>
                             {s.roleId && roleById.has(s.roleId) && <RoleBadge name={roleById.get(s.roleId)!.name} colour={roleById.get(s.roleId)!.colour} />}
                             {s.clientId && <p className="text-xs font-medium">{clientName.get(s.clientId) ?? "Visit"}</p>}
+                            {s.note && <p className="line-clamp-2 text-xs" title={s.note}>{s.note}</p>}
                             {s.travelMinutes > 0 && <p className="text-xs text-zinc-600 dark:text-zinc-400">{s.travelMinutes} min travel before</p>}
                             <p className="text-xs text-zinc-600 dark:text-zinc-400">
                               {s.status === "published" ? "Published" : "Draft"}

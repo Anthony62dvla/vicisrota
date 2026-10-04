@@ -1,5 +1,7 @@
 "use client";
 
+import { BEFORE_CHOICES } from "@vicisrota/compliance";
+import { beforeLabel } from "@/lib/reminders";
 import { useActionState, useState, useTransition } from "react";
 import { askToPickUp, clock, loneCheckIn, reportSick, requestTimeOff, saveTextSettings, setClockPin, type FormState } from "./actions";
 
@@ -195,7 +197,17 @@ export function PinForm({ hasPin }: { hasPin: boolean }) {
   );
 }
 
-export function TextSettingsForm({ mobile, textChanges }: { mobile: string | null; textChanges: boolean }) {
+export function TextSettingsForm({
+  mobile,
+  textChanges,
+  remindEvening,
+  remindBeforeMinutes,
+}: {
+  mobile: string | null;
+  textChanges: boolean;
+  remindEvening: boolean;
+  remindBeforeMinutes: number | null;
+}) {
   const [state, action, pending] = useActionState<FormState, FormData>(saveTextSettings, {});
   const v = state.values;
   return (
@@ -215,6 +227,22 @@ export function TextSettingsForm({ mobile, textChanges }: { mobile: string | nul
           </span>
         </span>
       </label>
+      <fieldset className="flex flex-col gap-2">
+        <legend className="font-medium">Shift reminders</legend>
+        <span className="text-sm text-zinc-600 dark:text-zinc-400">Choose none, one or both. Each reminder says when your shift is and any note about it.</span>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" name="remindEvening" defaultChecked={v ? v.remindEvening === "on" : remindEvening} /> The evening before, at 6pm
+        </label>
+        <label className="flex flex-col gap-1">
+          <span>Shortly before it starts</span>
+          <select name="remindBefore" defaultValue={v ? v.remindBefore : String(remindBeforeMinutes ?? "")} className={`${input} max-w-xs`}>
+            <option value="">No reminder</option>
+            {BEFORE_CHOICES.map((m) => (
+              <option key={m} value={m}>{beforeLabel(m)} before</option>
+            ))}
+          </select>
+        </label>
+      </fieldset>
       <button type="submit" disabled={pending} className="self-start rounded-lg border border-zinc-400 px-4 py-2 disabled:opacity-60">Save</button>
     </form>
   );

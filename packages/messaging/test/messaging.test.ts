@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { formatUkMobile, helpAlert, httpSender, inviteText, lateAlert, normaliseUkMobile, overdueAlert, rotaChangeText, senderFromEnv, SMS_MAX } from "../src";
+import { formatUkMobile, helpAlert, httpSender, inviteText, lateAlert, reminderText, normaliseUkMobile, overdueAlert, rotaChangeText, senderFromEnv, SMS_MAX } from "../src";
 
 describe("UK mobile numbers", () => {
   it("accepts common formats", () => {
@@ -58,6 +58,11 @@ describe("alert texts", () => {
   it("say what was missed and what to do", () => {
     expect(overdueAlert({ business: "Oak House", person: "Priya", what: "has not checked in at the start of their shift", due: "09:00", where: "Edith Jones, AB1 2CD", link: "L" })).toBe(
       "Oak House: Priya has not checked in at the start of their shift (due 09:00), Edith Jones, AB1 2CD. Please check they are safe. If you cannot reach them and are worried, call 999. L",
+    );
+  });
+  it("remind people of a shift in one plain sentence", () => {
+    expect(reminderText({ business: "Corner Bakery", when: "tomorrow, Tue 6 Oct, 08:00 to 16:00", detail: "Baker", note: "Delivery at 10", link: "L" })).toBe(
+      "Reminder from Corner Bakery: your shift tomorrow, Tue 6 Oct, 08:00 to 16:00, Baker. Note: Delivery at 10. Details: L",
     );
   });
   it("say who has not clocked in and for which shift", () => {

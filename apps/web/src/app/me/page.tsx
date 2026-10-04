@@ -62,6 +62,23 @@ export default async function MyPage() {
           .from(schema.client)
           .where(inArray(schema.client.id, clientIds))
       : [];
+    // Who else is working at the same time, so nobody walks in not knowing who they will be with.
+    // First names and roles only.
+    const colleagues = shifts.length
+      ? await tx
+          .select({ startsAt: schema.shift.startsAt, endsAt: schema.shift.endsAt, roleId: schema.shift.roleId, name: schema.worker.fullName })
+          .from(schema.shift)
+          .innerJoin(schema.worker, eq(schema.shift.workerId, schema.worker.id))
+          .where(
+            and(
+              eq(schema.shift.status, "published"),
+              ne(schema.shift.workerId, worker.id),
+              lt(schema.shift.startsAt, shifts.at(-1)!.endsAt),
+              gt(schema.shift.endsAt, shifts[0]!.startsAt),
+            ),
+          )
+          .orderBy(asc(schema.shift.startsAt))
+      : [];
     const available = await tx
       .select()
       .from(schema.shift)
@@ -136,7 +153,7 @@ export default async function MyPage() {
       .limit(20);
     const sick = (await loadSickness(tx, addDays(today, 366), [worker.id])).get(worker.id);
     const sickPay = new Map((sick?.records ?? []).filter((r) => !r.ssp.oldRules && r.ssp.pence > 0).map((r) => [r.id, r.ssp.pence]));
-    return { roles, sickPay, announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
+    return { colleagues, roles, sickPay, announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
   });
 
   const days = new Map<string, typeof data.shifts>();
@@ -304,6 +321,17 @@ export default async function MyPage() {
                       {client?.postcode && <p className="text-sm">{client.postcode}</p>}
                       {s.travelMinutes > 0 && <p className="text-sm">Allow {s.travelMinutes} minutes to travel from your previous visit.</p>}
                       {client?.visitNotes && <p className="mt-1 rounded-md bg-zinc-100 p-2 text-sm dark:bg-zinc-900">{client.visitNotes}</p>}
+                      {s.note && <p className="mt-1 rounded-md bg-brand-soft p-2 text-sm whitespace-pre-line">{s.note}</p>}
+                      {(() => {
+                        const withYou = [
+                          ...new Set(
+                            data.colleagues
+                              .filter((c) => c.startsAt < s.endsAt && c.endsAt > s.startsAt)
+                              .map((c) => `${c.name.split(" ")[0]}${c.roleId && roleName.has(c.roleId) ? ` (${roleName.get(c.roleId)})` : ""}`),
+                          ),
+                        ];
+                        return withYou.length > 0 && <p className="text-sm">Working with you: {withYou.join(", ")}</p>;
+                      })()}
                       {s.startsAt.getTime() > data.now && (
                         <form action={setCoverRequest} className="mt-1">
                           <input type="hidden" name="shiftId" value={s.id} />
@@ -478,8 +506,13 @@ export default async function MyPage() {
       </section>
 
       <section className="mt-10" aria-labelledby="texts-heading">
-        <h2 id="texts-heading" className="text-lg font-semibold">Texts about your rota</h2>
-        <TextSettingsForm mobile={worker.mobile ? formatUkMobile(worker.mobile) : null} textChanges={!!worker.preferences.textChanges} />
+        <h2 id="texts-heading" className="text-lg font-semibold">Texts and reminders</h2>
+        <TextSettingsForm
+          mobile={worker.mobile ? formatUkMobile(worker.mobile) : null}
+          textChanges={!!worker.preferences.textChanges}
+          remindEvening={!!worker.preferences.remindEvening}
+          remindBeforeMinutes={worker.preferences.remindBeforeMinutes ?? null}
+        />
       </section>
 
       <section className="mt-10" aria-labelledby="install-heading">

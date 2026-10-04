@@ -142,8 +142,11 @@ export const worker = pgTable(
      * is true; it is never shown on the rota, in warnings or in the audit trail.
      */
     workProfile: jsonb("work_profile").$type<WorkProfile>().notNull().default({}),
-    /** How the person likes their own pages shown (calm mode, larger text), and whether they want rota changes texted. */
-    preferences: jsonb("preferences").$type<{ calm?: boolean; largeText?: boolean; textChanges?: boolean }>().notNull().default({}),
+    /** How the person likes their own pages shown (calm mode, larger text), and which texts they asked for (rota changes, shift reminders). */
+    preferences: jsonb("preferences")
+      .$type<{ calm?: boolean; largeText?: boolean; textChanges?: boolean; remindEvening?: boolean; remindBeforeMinutes?: number | null }>()
+      .notNull()
+      .default({}),
     createdAt: createdAt(),
   },
   (t) => [
@@ -190,6 +193,8 @@ export const shift = pgTable(
     /** Working alone: the person checks in at the start, every check_in_minutes, and at the end. */
     loneWorking: boolean("lone_working").notNull().default(false),
     checkInMinutes: smallint("check_in_minutes").notNull().default(60),
+    /** What to expect, written by the manager for the person on the shift, for example "Delivery at 10". */
+    note: text("note"),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     createdAt: createdAt(),
   },

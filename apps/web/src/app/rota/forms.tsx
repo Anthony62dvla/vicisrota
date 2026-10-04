@@ -106,6 +106,14 @@ export function AddShiftForm({
           </label>
         </>
       )}
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">What to expect (optional)</span>
+        <span className="text-sm text-zinc-600 dark:text-zinc-400">
+          Anything that helps the person know what the shift will be like, for example &ldquo;Delivery at 10, please help unload&rdquo;. They see it
+          with their shift.
+        </span>
+        <textarea name="note" rows={2} maxLength={500} className={input} />
+      </label>
       <fieldset className="flex flex-col gap-2">
         <legend className="font-medium">Working alone</legend>
         <label className="flex items-center gap-2">

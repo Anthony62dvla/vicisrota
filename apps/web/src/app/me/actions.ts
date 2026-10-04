@@ -1,6 +1,7 @@
 "use server";
 
-import { addDays, type LeaveKind } from "@vicisrota/compliance";
+import { addDays, BEFORE_CHOICES, type LeaveKind } from "@vicisrota/compliance";
+import { beforeLabel } from "@/lib/reminders";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, eq, gt, gte, inArray, isNull, lte } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -333,17 +334,23 @@ export async function setClockPin(_: FormState, form: FormData): Promise<FormSta
   return { ok: "PIN saved. Use it on the clock-in tablet at work." };
 }
 
-/** The person's own mobile number, and whether they want a text when their rota changes. */
+/** The person's own mobile number, and which texts they want: rota changes and shift reminders. */
 export async function saveTextSettings(_: FormState, form: FormData): Promise<FormState> {
   const { user, organisationId, worker } = await requireStaff();
   const raw = String(form.get("mobile") ?? "").trim();
   const mobile = raw ? normaliseUkMobile(raw) : null;
   const textChanges = form.get("textChanges") === "on";
-  const values = { mobile: raw, textChanges: textChanges ? "on" : "" };
+  const remindEvening = form.get("remindEvening") === "on";
+  const before = String(form.get("remindBefore") ?? "");
+  const remindBeforeMinutes = (BEFORE_CHOICES as readonly number[]).includes(Number(before)) ? Number(before) : null;
+  const values = { mobile: raw, textChanges: textChanges ? "on" : "", remindEvening: remindEvening ? "on" : "", remindBefore: before };
   if (raw && !mobile) return { error: "Enter a UK mobile number, for example 07700 900123.", values };
-  if (textChanges && !mobile) return { error: "Add your mobile number to get texts.", values };
+  if ((textChanges || remindEvening || remindBeforeMinutes) && !mobile) return { error: "Add your mobile number to get texts.", values };
   await withOrganisation(db, organisationId, async (tx) => {
-    await tx.update(schema.worker).set({ mobile, preferences: { ...worker.preferences, textChanges } }).where(eq(schema.worker.id, worker.id));
+    await tx
+      .update(schema.worker)
+      .set({ mobile, preferences: { ...worker.preferences, textChanges, remindEvening, remindBeforeMinutes } })
+      .where(eq(schema.worker.id, worker.id));
     await tx.insert(schema.auditEvent).values({
       organisationId,
       actorUserId: user.id,
@@ -351,11 +358,16 @@ export async function saveTextSettings(_: FormState, form: FormData): Promise<Fo
       action: "text_settings",
       entity: "worker",
       entityId: worker.id,
-      data: { textChanges, hasMobile: !!mobile },
+      data: { textChanges, remindEvening, remindBeforeMinutes, hasMobile: !!mobile },
     });
   });
   revalidatePath("/me");
-  return { ok: textChanges ? "Saved. We will text you when your rota changes." : "Saved. You will not get texts about your rota." };
+  const chosen = [
+    textChanges && "when your rota changes",
+    remindEvening && "the evening before each shift",
+    remindBeforeMinutes && `${beforeLabel(remindBeforeMinutes)} before each shift`,
+  ].filter(Boolean);
+  return { ok: chosen.length ? `Saved. We will text you ${chosen.join(", and ")}.` : "Saved. You will not get texts about your rota." };
 }
 
 /** Adds a weekly time the person cannot work. Managers see it, and the rota check warns about clashes. */

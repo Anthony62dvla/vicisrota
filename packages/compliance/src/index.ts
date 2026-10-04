@@ -17,3 +17,4 @@ export * from "./planning";
 export * from "./ssp";
 export * from "./workingTimeReport";
 export * from "./rules/roles";
+export * from "./reminders";

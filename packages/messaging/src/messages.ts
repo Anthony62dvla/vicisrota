@@ -34,6 +34,16 @@ export const lateAlert = (a: { business: string; person: string; shift: string; 
     ),
   );
 
+/** A reminder the person asked for. Kept to the facts they need, with nothing about who else is working. */
+export const reminderText = (a: { business: string; when: string; detail?: string | null; note?: string | null; link: string }) => {
+  const note = a.note ? plain(a.note).slice(0, 100) : "";
+  return fit(
+    plain(
+      `Reminder from ${a.business}: your shift ${a.when}${a.detail ? `, ${a.detail}` : ""}.${note ? ` Note: ${note}${/[.!?]$/.test(note) ? "" : "."}` : ""} Details: ${a.link}`,
+    ),
+  );
+};
+
 export const inviteText = (a: { business: string; link: string; days: number }) =>
   fit(plain(`${a.business} has invited you to VicisRota to see your shifts and ask for time off. Set up your login here (works once, for ${a.days} days): ${a.link}`));
 
