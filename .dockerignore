@@ -1,0 +1,11 @@
+# Keep the image small and free of secrets: dependencies are installed fresh inside it.
+**/node_modules
+**/.next
+.git
+**/.env
+**/.env.*
+!**/.env.example
+deploy/app.env
+deploy/backups
+deploy/.env
+*.log

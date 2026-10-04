@@ -91,3 +91,14 @@ Roles (`job_role`, with `worker_role` for who can work each) are optional. A shi
 ## Rota patterns
 
 `/rota/patterns` (linked from the rota) saves one to four planned weeks as a pattern (`rota_pattern`, `rota_pattern_shift`) and fills up to 12 weeks ahead from it as drafts. Times are kept as UK wall-clock times (`packages/compliance/src/patterns.ts`), so 22:00 to 08:00 stays that way when the clocks change. Rotations repeat in order, and "Start with week N" carries one on. Filling skips any shift already on the rota for the same person at the same time, so it is safe to press twice. A shift that falls on someone's approved leave or sickness is added as an open shift instead. Removing a person, role or client later turns their pattern shifts into open ones. Nothing is published until the manager checks and publishes each week, so every rota rule still applies.
+
+## Running it live
+
+VicisRota runs on one Hostinger VPS with Docker Compose. The setup files are in `deploy/`, and the step-by-step guide is [DEPLOY.md](DEPLOY.md).
+
+- **Install:** run `deploy/install.sh` as root on Ubuntu 24.04. It creates `deploy/.env` with random secrets, which is never committed.
+- **Update:** run `deploy/update.sh`. It pulls `main`, rebuilds, and applies migrations through the `migrate` service before `web` starts.
+- **Database role:** the app connects as `vicisrota`, which is NOSUPERUSER and NOBYPASSRLS (`deploy/initdb/01-app-role.sh`), so forced row-level security applies. Never point `DATABASE_URL` at the `postgres` admin role.
+- **Scheduler:** the `scheduler` service calls `/api/cron/alerts` every 5 minutes with `CRON_SECRET`.
+- **Backups:** the `backup` service takes a nightly `pg_dump` into `deploy/backups` (keeps 30). Restore with `deploy/restore.sh <file>`.
+- **Logs:** `docker compose logs --tail=100 web` from `deploy/`.
