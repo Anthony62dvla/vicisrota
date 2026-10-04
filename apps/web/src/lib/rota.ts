@@ -26,7 +26,7 @@ export const loadComplianceContext = async (
   const { from } = weekBounds(addDays(weekStart, -7 * HISTORY_WEEKS));
   const { to } = weekBounds(weekStart);
 
-  const [[organisation], workers, rates, shifts, checks, qualifications, held, leave] = await Promise.all([
+  const [[organisation], workers, rates, shifts, checks, qualifications, held, leave, unavailable] = await Promise.all([
     tx
       .select({ requiresEnhancedDbs: schema.organisation.requiresEnhancedDbs, paysTravelTime: schema.organisation.paysTravelTime })
       .from(schema.organisation)
@@ -50,6 +50,7 @@ export const loadComplianceContext = async (
           gte(schema.leaveRequest.endsOn, addDays(weekStart, -7 * HISTORY_WEEKS)),
         ),
       ),
+    tx.select().from(schema.workerUnavailability),
   ]);
   const assigned = shifts
     .map((s) => (s.id === assume?.shiftId ? { ...s, workerId: assume.workerId } : s))
@@ -91,6 +92,9 @@ export const loadComplianceContext = async (
           achievedOn: h.achievedOn ?? undefined,
           expiresOn: h.expiresOn ?? undefined,
         })),
+      unavailable: unavailable.filter((u) => u.workerId === w.id).map((u) => ({ weekday: u.weekday, from: u.startsAt, to: u.endsAt })),
+      // The note explaining why stays out of the rota check.
+      adjustments: { maxShiftHours: w.adjustments.maxShiftHours, earliestStart: w.adjustments.earliestStart, latestFinish: w.adjustments.latestFinish },
     })),
     payRates: rates.map((r) => ({ workerId: r.workerId, hourlyPence: r.hourlyPence, effectiveFrom: r.effectiveFrom })),
     shifts: assigned.map((s) => ({

@@ -2,7 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDb, withOrganisation, type Database } from "../src/client";
 import { runMigrations } from "../src/migrate";
-import { auditEvent, clockEvent, loneWorkCheck, client, safeguardingAction, safeguardingConcern, shiftClaim, tip, tipAllocation, tipShare, leaveRequest, timeEntry, organisation, qualification, shift, worker, workerCheck } from "../src/schema";
+import { auditEvent, clockEvent, loneWorkCheck, client, safeguardingAction, safeguardingConcern, shiftClaim, tip, tipAllocation, tipShare, leaveRequest, timeEntry, organisation, qualification, shift, worker, workerCheck, workerUnavailability } from "../src/schema";
 
 // Needs a disposable Postgres database, connected as a non-superuser (superusers bypass row-level security).
 // Example: TEST_DATABASE_URL=postgres://vicisrota:vicisrota@localhost:5433/vicisrota_test
@@ -173,6 +173,28 @@ describe.skipIf(!url)("database", () => {
     );
     await expect(withOrganisation(db, cafe, (tx) => tx.update(clockEvent).set({ place: "at_work" }).where(eq(clockEvent.id, event!.id)))).rejects.toThrow();
     expect(await withOrganisation(db, careHome, (tx) => tx.select().from(clockEvent))).toEqual([]);
+  });
+
+  it("protects every business table with row-level security, except the few filtered by hand", async () => {
+    // These have no policy on purpose and every query on them filters by business in code.
+    const filteredInCode = ["membership", "invitation", "kiosk_device"];
+    const rows = (await db.execute(sql`
+      select c.relname as name, c.relrowsecurity as enabled, c.relforcerowsecurity as forced
+      from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'public' and c.relkind = 'r'
+        and exists (select 1 from information_schema.columns k where k.table_schema = 'public' and k.table_name = c.relname and k.column_name = 'organisation_id')
+    `)) as unknown as { name: string; enabled: boolean; forced: boolean }[];
+    const unprotected = rows.filter((r) => !(r.enabled && r.forced) && !filteredInCode.includes(r.name)).map((r) => r.name);
+    expect(rows.length).toBeGreaterThan(20);
+    expect(unprotected).toEqual([]);
+  });
+
+  it("keeps availability private and refuses impossible times", async () => {
+    const [jo] = await withOrganisation(db, cafe, (tx) => tx.insert(worker).values({ organisationId: cafe, fullName: "Jo", dateOfBirth: "1990-01-01" }).returning());
+    await withOrganisation(db, cafe, (tx) => tx.insert(workerUnavailability).values({ organisationId: cafe, workerId: jo!.id, weekday: 1, startsAt: "15:00", endsAt: "24:00" }));
+    expect(await withOrganisation(db, careHome, (tx) => tx.select().from(workerUnavailability))).toEqual([]);
+    for (const bad of [{ weekday: 8, startsAt: "09:00", endsAt: "10:00" }, { weekday: 1, startsAt: "17:00", endsAt: "15:00" }, { weekday: 1, startsAt: "9am", endsAt: "10:00" }])
+      await expect(withOrganisation(db, cafe, (tx) => tx.insert(workerUnavailability).values({ organisationId: cafe, workerId: jo!.id, ...bad }))).rejects.toThrow();
   });
 
   it("shows nothing when no business is set", async () => {

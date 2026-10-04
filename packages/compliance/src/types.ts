@@ -15,6 +15,24 @@ export interface Worker {
   checks?: Check[];
   /** Training and qualifications held. */
   qualifications?: Qualification[];
+  /** Regular weekly times the person has said they cannot work, e.g. caring, study or another job. */
+  unavailable?: Unavailable[];
+  /** Adjustments agreed with the person, e.g. because of a disability or neurodivergence. */
+  adjustments?: Adjustments;
+}
+
+/** A weekly time someone cannot work, in UK time. weekday: 1 = Monday to 7 = Sunday. to may be "24:00". */
+export interface Unavailable {
+  weekday: number;
+  from: string;
+  to: string;
+}
+
+/** Shift patterns agreed with the person. Times are UK wall-clock "HH:MM". */
+export interface Adjustments {
+  maxShiftHours?: number;
+  earliestStart?: string;
+  latestFinish?: string;
 }
 
 export type CheckKind = "right_to_work" | "dbs";

@@ -4,6 +4,7 @@ import { schema, withOrganisation, type Transaction } from "@vicisrota/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { addUnavailable, parseSlot, removeUnavailable } from "@/lib/availability";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
 import { hashInviteToken, INVITE_DAYS, newInviteToken } from "@/lib/invite";
@@ -237,6 +238,66 @@ export async function setMobile(_: FormState, form: FormData): Promise<FormState
       entityId: workerId,
     });
     return { ok: mobile ? `Mobile number saved for ${worker.name}.` : `Mobile number removed for ${worker.name}.` };
+  });
+  revalidatePath(`/staff/${workerId}`);
+  return result;
+}
+
+export async function addStaffUnavailable(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  const slot = parseSlot(form);
+  if ("error" in slot) return { error: slot.error, values: Object.fromEntries([...form.entries()].map(([k, v]) => [k, String(v)])) };
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
+    const worker = await findWorker(tx, workerId);
+    if (!worker) return { error: "That person could not be found." };
+    await addUnavailable(tx, { organisationId, workerId, actorUserId: user.id, requestId: await requestId(), slot });
+    return { ok: `Added for ${worker.name}.` };
+  });
+  revalidatePath(`/staff/${workerId}`);
+  return result;
+}
+
+export async function removeStaffUnavailable(form: FormData) {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  const id = String(form.get("id") ?? "");
+  await withOrganisation(db, organisationId, async (tx) =>
+    removeUnavailable(tx, { organisationId, workerId, actorUserId: user.id, requestId: await requestId(), id }),
+  );
+  revalidatePath(`/staff/${workerId}`);
+}
+
+const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** Adjustments agreed with the person. Checked on every rota; the note is never shown on the rota. */
+export async function saveAdjustments(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  const values = Object.fromEntries([...form.entries()].map(([k, v]) => [k, String(v)]));
+  const max = values.maxShiftHours?.trim() ? Number(values.maxShiftHours) : undefined;
+  const earliestStart = values.earliestStart || undefined;
+  const latestFinish = values.latestFinish || undefined;
+  const note = values.note?.trim().slice(0, 1000) || undefined;
+  if (max !== undefined && !(max >= 1 && max <= 24)) return { error: "Enter a longest shift between 1 and 24 hours, or leave it empty.", values };
+  if ((earliestStart && !TIME.test(earliestStart)) || (latestFinish && !TIME.test(latestFinish))) return { error: "Enter times like 09:00.", values };
+  if (earliestStart && latestFinish && latestFinish <= earliestStart) return { error: "The finish time must be after the start time.", values };
+  const adjustments = { maxShiftHours: max, earliestStart, latestFinish, note };
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
+    const worker = await findWorker(tx, workerId);
+    if (!worker) return { error: "That person could not be found." };
+    await tx.update(schema.worker).set({ adjustments: JSON.parse(JSON.stringify(adjustments)) }).where(eq(schema.worker.id, workerId));
+    await tx.insert(schema.auditEvent).values({
+      organisationId,
+      actorUserId: user.id,
+      requestId: await requestId(),
+      action: "set_adjustments",
+      entity: "worker",
+      entityId: workerId,
+      // The note can describe health, so the audit trail only records that one exists.
+      data: { maxShiftHours: max ?? null, earliestStart: earliestStart ?? null, latestFinish: latestFinish ?? null, hasNote: !!note },
+    });
+    return { ok: `Adjustments saved for ${worker.name}. Every rota is now checked against them.` };
   });
   revalidatePath(`/staff/${workerId}`);
   return result;

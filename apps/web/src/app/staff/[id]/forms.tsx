@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { addCheck, addTraining, inviteStaff, setMobile, updateHolidaySettings, type FormState, type InviteState } from "./actions";
+import { addCheck, addTraining, inviteStaff, saveAdjustments, setMobile, updateHolidaySettings, type FormState, type InviteState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 const button = "rounded-lg bg-zinc-900 px-4 py-2 text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900";
@@ -172,6 +172,37 @@ export function MobileForm({ workerId, mobile }: { workerId: string; mobile: str
       <button type="submit" disabled={pending} className="self-start rounded-lg border border-zinc-400 px-4 py-2">
         {pending ? "Saving…" : "Save number"}
       </button>
+    </form>
+  );
+}
+
+export function AdjustmentsForm({ workerId, current }: { workerId: string; current: { maxShiftHours?: number; earliestStart?: string; latestFinish?: string; note?: string } }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(saveAdjustments, {});
+  const v = state.values;
+  return (
+    <form key={JSON.stringify(v ?? {})} action={action} className="mt-3 flex max-w-xl flex-col gap-3">
+      <input type="hidden" name="workerId" value={workerId} />
+      <Message state={state} />
+      <div className="flex flex-wrap gap-4">
+        <label className="flex flex-col gap-1">
+          <span className="font-medium">Longest shift (hours)</span>
+          <input name="maxShiftHours" inputMode="decimal" defaultValue={v?.maxShiftHours ?? current.maxShiftHours ?? ""} className={`${input} w-28`} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="font-medium">Start no earlier than</span>
+          <input name="earliestStart" type="time" defaultValue={v?.earliestStart ?? current.earliestStart ?? ""} className={input} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="font-medium">Finish by</span>
+          <input name="latestFinish" type="time" defaultValue={v?.latestFinish ?? current.latestFinish ?? ""} className={input} />
+        </label>
+      </div>
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">What was agreed and why (optional)</span>
+        <span className="text-sm text-zinc-600 dark:text-zinc-400">Only managers and this person can see this. It is never shown on the rota.</span>
+        <textarea name="note" rows={3} defaultValue={v?.note ?? current.note ?? ""} className={input} />
+      </label>
+      <button type="submit" disabled={pending} className={`${button} self-start`}>{pending ? "Saving…" : "Save adjustments"}</button>
     </form>
   );
 }

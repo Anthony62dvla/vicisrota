@@ -11,10 +11,12 @@ import { loadLoneShifts } from "@/lib/lone-working";
 import { SHORT_NOTICE_HOURS } from "@/lib/notices";
 import { todayInUk } from "@/lib/rota";
 import { SignOutButton } from "../dashboard/sign-out";
-import { markNoticesSeen, savePreferences, setCoverRequest, withdrawClaim, withdrawRequest } from "./actions";
+import { addMyUnavailable, markNoticesSeen, removeMyUnavailable, savePreferences, setCoverRequest, withdrawClaim, withdrawRequest } from "./actions";
 import { formatUkMobile } from "@vicisrota/messaging";
 import { ClockButtons, LoneCheckIn, PickUpList, PinForm, TextSettingsForm, TimeOffForm } from "./forms";
 import { OfflineNotice } from "./offline-notice";
+import { AvailabilityEditor } from "../availability-editor";
+import { adjustmentLines } from "@/lib/availability-labels";
 
 const MINUTE = 60_000;
 /** How far ahead staff can see published shifts. */
@@ -110,7 +112,12 @@ export default async function MyPage() {
     const mappedWorkplaces = await tx.select({ id: schema.location.id }).from(schema.location).where(isNotNull(schema.location.latitude));
     const checksLocation = locationRule?.rule !== "off" && mappedWorkplaces.length > 0;
     const hasKiosk = (await tx.select({ id: schema.kioskDevice.id }).from(schema.kioskDevice).where(and(eq(schema.kioskDevice.organisationId, organisationId), isNull(schema.kioskDevice.revokedAt))).limit(1)).length > 0;
-    return { now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
+    const unavailable = await tx
+      .select()
+      .from(schema.workerUnavailability)
+      .where(eq(schema.workerUnavailability.workerId, worker.id))
+      .orderBy(asc(schema.workerUnavailability.weekday), asc(schema.workerUnavailability.startsAt));
+    return { unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
   });
 
   const days = new Map<string, typeof data.shifts>();
@@ -362,6 +369,21 @@ export default async function MyPage() {
       <section className="mt-10" aria-labelledby="ask-heading">
         <h2 id="ask-heading" className="text-lg font-semibold">Ask for time off</h2>
         <TimeOffForm unit={unit} kinds={LEAVE_KINDS.map((k) => ({ value: k, label: LEAVE_LABEL[k] }))} />
+      </section>
+      <section className="mt-10" aria-labelledby="availability-heading">
+        <h2 id="availability-heading" className="text-lg font-semibold">Times you can&apos;t work</h2>
+        <p className="mt-1">For example school runs, caring, study or another job. Your manager is warned before giving you a shift at these times.</p>
+        <AvailabilityEditor slots={data.unavailable} add={addMyUnavailable} remove={removeMyUnavailable} you />
+        {adjustmentLines(worker.adjustments).length > 0 && (
+          <>
+            <h3 className="mt-6 font-medium">Adjustments agreed with you</h3>
+            <ul className="mt-1 list-disc pl-6">
+              {adjustmentLines(worker.adjustments).map((l) => <li key={l}>{l}</li>)}
+            </ul>
+            {worker.adjustments.note && <p className="mt-2 text-zinc-700 dark:text-zinc-300">{worker.adjustments.note}</p>}
+            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">Your manager is warned about any shift that does not fit these. If something needs to change, talk to them.</p>
+          </>
+        )}
       </section>
       </More>
 

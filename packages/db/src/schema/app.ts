@@ -114,6 +114,11 @@ export const worker = pgTable(
     /** UK mobile in E.164 form, for texting an invitation and, if they ask, rota changes. */
     mobile: text("mobile"),
     /** How the person likes their own pages shown (calm mode, larger text), and whether they want rota changes texted. */
+    /**
+     * Adjustments agreed with the person, checked on every rota (Equality Act 2010, s. 20).
+     * note says why in their own words and is shown only to them and managers, never on the rota.
+     */
+    adjustments: jsonb("adjustments").$type<{ maxShiftHours?: number; earliestStart?: string; latestFinish?: string; note?: string }>().notNull().default({}),
     preferences: jsonb("preferences").$type<{ calm?: boolean; largeText?: boolean; textChanges?: boolean }>().notNull().default({}),
     createdAt: createdAt(),
   },
@@ -575,6 +580,27 @@ export const rotaNotice = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("rota_notice_worker_idx").on(t.workerId, t.createdAt)],
+);
+
+/** Regular weekly times someone cannot work, in UK time. weekday: 1 = Monday to 7 = Sunday; ends_at may be "24:00". */
+export const workerUnavailability = pgTable(
+  "worker_unavailability",
+  {
+    id: id(),
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    weekday: smallint("weekday").notNull(),
+    startsAt: text("starts_at").notNull(),
+    endsAt: text("ends_at").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("worker_unavailability_worker_idx").on(t.workerId),
+    check("worker_unavailability_weekday", sql`${t.weekday} between 1 and 7`),
+    check("worker_unavailability_times", sql`${t.startsAt} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' and ${t.endsAt} ~ '^(([01][0-9]|2[0-3]):[0-5][0-9]|24:00)$' and ${t.endsAt} > ${t.startsAt}`),
+  ],
 );
 
 /** People texted when someone working alone asks for help or misses a check-in. They must agree to receive these texts. */

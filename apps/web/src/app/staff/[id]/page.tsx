@@ -6,9 +6,10 @@ import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
 import { formatAmount, loadBalances } from "@/lib/leave";
 import { todayInUk } from "@/lib/rota";
-import { removeTraining } from "./actions";
+import { AvailabilityEditor } from "../../availability-editor";
+import { addStaffUnavailable, removeStaffUnavailable, removeTraining } from "./actions";
 import { formatUkMobile } from "@vicisrota/messaging";
-import { AddCheckForm, AddTrainingForm, HolidaySettingsForm, InviteForm, MobileForm } from "./forms";
+import { AddCheckForm, AddTrainingForm, AdjustmentsForm, HolidaySettingsForm, InviteForm, MobileForm } from "./forms";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DBS_LABEL = { basic: "Basic", standard: "Standard", enhanced: "Enhanced", enhanced_barred: "Enhanced with barred list" };
@@ -36,11 +37,16 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
       login: worker.userId
         ? (await tx.select({ email: schema.user.email }).from(schema.user).where(eq(schema.user.id, worker.userId)))[0]
         : undefined,
+      unavailable: await tx
+        .select()
+        .from(schema.workerUnavailability)
+        .where(eq(schema.workerUnavailability.workerId, id))
+        .orderBy(asc(schema.workerUnavailability.weekday), asc(schema.workerUnavailability.startsAt)),
       known: (await tx.select({ name: schema.qualification.name }).from(schema.qualification).orderBy(asc(schema.qualification.name))).map((q) => q.name),
     };
   });
   if (!data) notFound();
-  const { worker, checks, training, known, holiday, login } = data;
+  const { worker, checks, training, known, holiday, login, unavailable } = data;
   const balance = holiday.balances.get(worker.id)!;
   const rtw = checks.filter((c) => c.kind === "right_to_work");
   const dbs = checks.filter((c) => c.kind === "dbs");
@@ -72,6 +78,24 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
             <InviteForm workerId={worker.id} name={worker.fullName} mobile={worker.mobile ? formatUkMobile(worker.mobile) : null} />
           </>
         )}
+      </section>
+
+      <section id="availability" className="mt-8 scroll-mt-4">
+        <h2 className="text-lg font-semibold">Times they can&apos;t work</h2>
+        <p className="mt-1 text-zinc-600 dark:text-zinc-400">
+          {worker.userId ? `${worker.fullName} can also add these on their own page.` : "Add these with them, for example school runs, caring or another job."} The rota check
+          warns if a shift clashes.
+        </p>
+        <AvailabilityEditor slots={unavailable} add={addStaffUnavailable} remove={removeStaffUnavailable} workerId={worker.id} you={false} />
+      </section>
+
+      <section id="adjustments" className="mt-8 scroll-mt-4">
+        <h2 className="text-lg font-semibold">Agreed adjustments</h2>
+        <p className="mt-1 text-zinc-600 dark:text-zinc-400">
+          Changes agreed with {worker.fullName} so they can work well, for example because of a disability, neurodivergence or a health condition. The rota
+          check warns about any shift that does not fit. {worker.fullName} can see what is recorded here.
+        </p>
+        <AdjustmentsForm workerId={worker.id} current={worker.adjustments} />
       </section>
 
       <section id="right-to-work" className="mt-8 scroll-mt-4">

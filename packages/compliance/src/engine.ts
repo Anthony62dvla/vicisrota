@@ -1,3 +1,4 @@
+import { agreedAdjustments, unavailableTimes } from "./rules/availability";
 import { enhancedDbs, requiredTraining, rightToWork } from "./rules/checks";
 import { noShiftDuringLeave } from "./rules/leave";
 import { minimumWage } from "./rules/minimumWage";
@@ -6,7 +7,7 @@ import { dailyRest, restBreak, weeklyAverage48, weeklyRest, youngWorkerHours, yo
 import type { Context, Finding, Rule } from "./types";
 
 export const ALL_RULES: Rule[] = [restBreak, dailyRest, weeklyRest, weeklyAverage48, youngWorkerHours, youngWorkerNight, minimumWage,
-  rightToWork, enhancedDbs, requiredTraining, noShiftDuringLeave, travelTimeMinimumWage];
+  rightToWork, enhancedDbs, requiredTraining, noShiftDuringLeave, travelTimeMinimumWage, unavailableTimes, agreedAdjustments];
 
 export interface Evaluation {
   asOf: string;

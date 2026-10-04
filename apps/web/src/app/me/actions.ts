@@ -4,6 +4,7 @@ import type { LeaveKind } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { addUnavailable, parseSlot, removeUnavailable } from "@/lib/availability";
 import { requireStaff } from "@/lib/business";
 import { checkAssignment } from "@/lib/claims";
 import { recordClock } from "@/lib/clock";
@@ -312,4 +313,25 @@ export async function saveTextSettings(_: FormState, form: FormData): Promise<Fo
   });
   revalidatePath("/me");
   return { ok: textChanges ? "Saved. We will text you when your rota changes." : "Saved. You will not get texts about your rota." };
+}
+
+/** Adds a weekly time the person cannot work. Managers see it, and the rota check warns about clashes. */
+export async function addMyUnavailable(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId, worker } = await requireStaff();
+  const slot = parseSlot(form);
+  if ("error" in slot) return { error: slot.error, values: Object.fromEntries([...form.entries()].map(([k, v]) => [k, String(v)])) };
+  await withOrganisation(db, organisationId, async (tx) =>
+    addUnavailable(tx, { organisationId, workerId: worker.id, actorUserId: user.id, requestId: await requestId(), slot }),
+  );
+  revalidatePath("/me");
+  return { ok: "Added. Your manager will be warned before giving you a shift at that time." };
+}
+
+export async function removeMyUnavailable(form: FormData) {
+  const { user, organisationId, worker } = await requireStaff();
+  const id = String(form.get("id") ?? "");
+  await withOrganisation(db, organisationId, async (tx) =>
+    removeUnavailable(tx, { organisationId, workerId: worker.id, actorUserId: user.id, requestId: await requestId(), id }),
+  );
+  revalidatePath("/me");
 }
