@@ -1,0 +1,110 @@
+# VicisRota on one server. Start with ./install.sh; update with ./update.sh.
+# .env (made by install.sh) holds the domain and secrets; app.env holds optional settings.
+name: vicisrota
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?}
+      POSTGRES_DB: postgres
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d vicisrota"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Applies any new database changes, then exits. The web server waits for it.
+  migrate:
+    build: { context: .., dockerfile: deploy/Dockerfile, target: tools }
+    image: vicisrota-tools
+    command: ["npm", "run", "migrate", "-w", "@vicisrota/db"]
+    environment:
+      DATABASE_URL: postgres://vicisrota:${APP_DB_PASSWORD}@db:5432/vicisrota
+    depends_on:
+      db: { condition: service_healthy }
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: web
+      args:
+        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+    image: vicisrota-web
+    restart: unless-stopped
+    # Optional settings you can change: text messages (SMS_*) and error tracking (SENTRY_*).
+    env_file: app.env
+    environment:
+      DATABASE_URL: postgres://vicisrota:${APP_DB_PASSWORD}@db:5432/vicisrota
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?}
+      BETTER_AUTH_URL: https://${DOMAIN}
+      APP_URL: https://${DOMAIN}
+      CRON_SECRET: ${CRON_SECRET:?}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  # HTTPS certificates from Let's Encrypt, renewed automatically.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      DOMAIN: ${DOMAIN:?}
+      ACME_EMAIL: ${ACME_EMAIL:?}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [web]
+
+  # Every 5 minutes: lone-working alerts, late texts and shift reminders.
+  scheduler:
+    image: curlimages/curl:8.11.1
+    restart: unless-stopped
+    environment:
+      CRON_SECRET: ${CRON_SECRET:?}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        sleep 30
+        while true; do
+          curl -fsS -m 120 -H "Authorization: Bearer $$CRON_SECRET" http://web:3000/api/cron/alerts || echo "alert check failed"
+          sleep 300
+        done
+    depends_on: [web]
+
+  # A database backup every night at about 02:30 UK time, keeping the last 30.
+  backup:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      TZ: Europe/London
+    volumes:
+      - ./backups:/backups
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          if [ "$$(date +%H%M)" = "0230" ]; then
+            f=/backups/vicisrota-$$(date +%Y-%m-%d).sql.gz
+            pg_dump -h db -U postgres -d vicisrota | gzip > "$$f.tmp" && mv "$$f.tmp" "$$f" && echo "backup saved: $$f"
+            ls -1t /backups/vicisrota-*.sql.gz | tail -n +31 | xargs -r rm --
+            sleep 60
+          fi
+          sleep 30
+        done
+    depends_on:
+      db: { condition: service_healthy }
+
+volumes:
+  db-data:
+  caddy-data:
+  caddy-config:

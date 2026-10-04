@@ -69,36 +69,59 @@ export const restBreak: Rule = {
   },
 };
 
+/**
+ * Daily rest is 11 consecutive hours (12 for under-18s) in each 24-hour period, not between every pair of
+ * shifts: split shifts and runs of care visits are lawful if the day still has one long enough rest.
+ * Each 24-hour period starting at a shift is checked for its longest unbroken rest.
+ */
 export const dailyRest: Rule = {
   id: "wtr.daily-rest",
-  version: 1,
-  title: "Rest between shifts",
+  version: 2,
+  title: "Daily rest",
   legalRef: `${WTR}, reg 10`,
   effectiveFrom: "1998-10-01",
   check(ctx) {
-    return perWorker(ctx, (worker, shifts) =>
-      shifts.slice(1).flatMap((next, i): Finding[] => {
-        const prev = shifts[i]!;
-        const young = isYoungWorker(worker, shiftDate(next));
+    return perWorker(ctx, (worker, shifts) => {
+      const findings = new Map<string, Finding>();
+      for (const first of shifts) {
+        const from = ms(first.start);
+        const to = from + 24 * HOUR;
+        const young = isYoungWorker(worker, shiftDate(first));
         const required = (young ? 12 : 11) * HOUR;
-        const gap = ms(next.start) - ms(prev.end);
-        if (gap >= required) return [];
-        return [
-          {
-            ruleId: this.id,
-            ruleVersion: this.version,
-            severity: "block",
-            workerId: worker.id,
-            shiftIds: [prev.id, next.id],
-            message: `${worker.name} gets ${fmtHours(gap)} rest between shifts; ${fmtHours(required)} is required${
-              young ? " for under-18s" : ""
-            }.`,
-            evidence: { restHours: gap / HOUR, requiredHours: required / HOUR, young },
-            legalRef: this.legalRef,
-          },
-        ];
-      }),
-    );
+        const inWindow = shifts.filter((s) => ms(s.start) < to && ms(s.end) > from);
+        // Longest stretch with no work inside the window, and the shifts either side of it. Shifts are
+        // sorted by start; overlaps are merged.
+        let busyUntil = from;
+        let lastShift: Shift | undefined;
+        let longest = 0;
+        let around: Shift[] = [];
+        for (const s of inWindow) {
+          const gap = ms(s.start) - busyUntil;
+          if (gap > longest) [longest, around] = [gap, lastShift ? [lastShift, s] : [s]];
+          if (Math.min(ms(s.end), to) >= busyUntil) [busyUntil, lastShift] = [Math.min(ms(s.end), to), s];
+        }
+        if (to - busyUntil > longest) [longest, around] = [to - busyUntil, inWindow];
+        if (longest >= required) continue;
+        // Several windows can find the same short rest; report it once, against the shifts either side.
+        const shiftIds = around.map((s) => s.id);
+        const key = shiftIds.join(",");
+        if (findings.has(key)) continue;
+        const when = londonParts(from);
+        findings.set(key, {
+          ruleId: this.id,
+          ruleVersion: this.version,
+          severity: "block",
+          workerId: worker.id,
+          shiftIds,
+          message: `${worker.name} gets at most ${fmtHours(longest)} unbroken rest in the 24 hours from ${when.date} ${String(when.hour).padStart(2, "0")}:${String(when.minute).padStart(2, "0")}; ${fmtHours(required)} is required${
+            young ? " for under-18s" : ""
+          }.`,
+          evidence: { restHours: longest / HOUR, requiredHours: required / HOUR, young, windowStart: new Date(from).toISOString() },
+          legalRef: this.legalRef,
+        });
+      }
+      return [...findings.values()];
+    });
   },
 };
 

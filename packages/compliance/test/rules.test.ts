@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  distanceMetres,
+  placeCheck,
+  clockSummary,
+  nextClockActions,
+  type ClockKind,
+  loneWorkStatus,
+  type LoneCheckKind,
   dailyRest,
   evaluate,
   irregularHoursAccrual,
@@ -11,13 +18,26 @@ import {
   weeklyRest,
   youngWorkerHours,
   youngWorkerNight,
+  enhancedDbs,
+  requiredTraining,
+  rightToWork,
+  annualEntitlementDays,
+  leaveYear,
+  noShiftDuringLeave,
+  payrollSummary,
+  allocateTips,
+  tipsPayBy,
+  travelTimeMinimumWage,
+  toCsv,
+  csvCell,
   type Context,
   type Shift,
   type Worker,
 } from "../src/index";
 
-const adult: Worker = { id: "amy", name: "Amy", dateOfBirth: "1990-05-01" };
-const teen: Worker = { id: "tom", name: "Tom", dateOfBirth: "2009-06-15" }; // 17 in October 2026
+const rtw = [{ kind: "right_to_work" as const, checkedOn: "2026-01-05" }];
+const adult: Worker = { id: "amy", name: "Amy", dateOfBirth: "1990-05-01", checks: rtw };
+const teen: Worker = { id: "tom", name: "Tom", dateOfBirth: "2009-06-15", checks: rtw }; // 17 in October 2026
 
 const shift = (id: string, workerId: string, start: string, end: string, breaks: Shift["breaks"] = []): Shift => ({
   id,
@@ -91,6 +111,30 @@ describe("daily rest (WTR reg 10)", () => {
       ]),
     );
     expect(f?.evidence).toMatchObject({ restHours: 11.5, requiredHours: 12 });
+  });
+
+  it("allows split shifts and runs of visits when the day still has 11 hours' rest", () => {
+    const findings = dailyRest.check(
+      ctx([
+        shift("v1", "amy", "2026-10-05T08:00:00+01:00", "2026-10-05T09:00:00+01:00"),
+        shift("v2", "amy", "2026-10-05T09:20:00+01:00", "2026-10-05T10:20:00+01:00"),
+        shift("v3", "amy", "2026-10-05T17:00:00+01:00", "2026-10-05T21:00:00+01:00"),
+        shift("v4", "amy", "2026-10-06T08:00:00+01:00", "2026-10-06T09:00:00+01:00"),
+      ]),
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it("blocks a split shift that leaves less than 11 hours' rest before the next morning", () => {
+    const findings = dailyRest.check(
+      ctx([
+        shift("lunch", "amy", "2026-10-05T11:00:00+01:00", "2026-10-05T15:00:00+01:00"),
+        shift("dinner", "amy", "2026-10-05T18:00:00+01:00", "2026-10-05T23:00:00+01:00"),
+        shift("breakfast", "amy", "2026-10-06T07:00:00+01:00", "2026-10-06T11:00:00+01:00"),
+      ]),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ shiftIds: ["dinner", "breakfast"], evidence: { restHours: 8 } });
   });
 });
 
@@ -228,5 +272,377 @@ describe("engine", () => {
       }),
     );
     expect(result).toMatchObject({ publishable: true, findings: [] });
+  });
+});
+
+describe("UK time helpers", () => {
+  it("reads rota times as UK local time in summer and winter", async () => {
+    const { londonDateTime } = await import("../src/index");
+    expect(new Date(londonDateTime("2026-07-01", "09:30")).toISOString()).toBe("2026-07-01T08:30:00.000Z");
+    expect(new Date(londonDateTime("2026-12-01", "09:30")).toISOString()).toBe("2026-12-01T09:30:00.000Z");
+  });
+
+  it("rejects an impossible time", async () => {
+    const { londonDateTime } = await import("../src/index");
+    expect(() => londonDateTime("2026-07-01", "25:00")).toThrow();
+  });
+});
+
+describe("right to work", () => {
+  const monday = shift("s", "amy", "2026-10-05T09:00:00+01:00", "2026-10-05T13:00:00+01:00");
+
+  it("blocks a shift with no check on file", () => {
+    const [f] = rightToWork.check(ctx([monday], { workers: [{ ...adult, checks: [] }] }));
+    expect(f?.severity).toBe("block");
+  });
+
+  it("blocks a check done after the shift date", () => {
+    const late = { ...adult, checks: [{ kind: "right_to_work" as const, checkedOn: "2026-10-06" }] };
+    expect(rightToWork.check(ctx([monday], { workers: [late] }))[0]?.severity).toBe("block");
+  });
+
+  it("blocks once time-limited permission has ended", () => {
+    const expired = { ...adult, checks: [{ kind: "right_to_work" as const, checkedOn: "2025-01-01", expiresOn: "2026-10-01" }] };
+    expect(rightToWork.check(ctx([monday], { workers: [expired] }))[0]?.severity).toBe("block");
+  });
+
+  it("warns when a follow-up check is due within 28 days", () => {
+    const soon = { ...adult, checks: [{ kind: "right_to_work" as const, checkedOn: "2025-01-01", expiresOn: "2026-10-20" }] };
+    const [f] = rightToWork.check(ctx([monday], { workers: [soon] }));
+    expect(f).toMatchObject({ severity: "warn", evidence: { expiresOn: "2026-10-20" } });
+  });
+
+  it("passes an open-ended check", () => {
+    expect(rightToWork.check(ctx([monday]))).toEqual([]);
+  });
+});
+
+describe("enhanced DBS for care", () => {
+  const monday = shift("s", "amy", "2026-10-05T09:00:00+01:00", "2026-10-05T13:00:00+01:00");
+  const care = { settings: { requireEnhancedDbs: true } };
+
+  it("is not required outside care", () => {
+    expect(enhancedDbs.check(ctx([monday]))).toEqual([]);
+  });
+
+  it("blocks without an enhanced check with barred list", () => {
+    const basic = { ...adult, checks: [...rtw, { kind: "dbs" as const, checkedOn: "2026-01-01", dbsLevel: "enhanced" as const }] };
+    expect(enhancedDbs.check(ctx([monday], { ...care, workers: [basic] }))[0]?.severity).toBe("block");
+  });
+
+  it("passes with an enhanced check with barred list", () => {
+    const ok = { ...adult, checks: [...rtw, { kind: "dbs" as const, checkedOn: "2026-01-01", dbsLevel: "enhanced_barred" as const }] };
+    expect(enhancedDbs.check(ctx([monday], { ...care, workers: [ok] }))).toEqual([]);
+  });
+});
+
+describe("training a shift needs", () => {
+  const meds = { id: "q-meds", name: "medication competency" };
+  const medsShift = { ...shift("s", "amy", "2026-10-05T09:00:00+01:00", "2026-10-05T13:00:00+01:00"), requiredQualifications: [meds] };
+
+  it("blocks when the person does not hold it", () => {
+    const [f] = requiredTraining.check(ctx([medsShift]));
+    expect(f?.message).toBe("Amy does not have medication competency, which this shift needs.");
+  });
+
+  it("blocks when it has expired", () => {
+    const lapsed = { ...adult, qualifications: [{ ...meds, expiresOn: "2026-09-30" }] };
+    const [f] = requiredTraining.check(ctx([medsShift], { workers: [lapsed] }));
+    expect(f?.message).toBe("Amy's medication competency expired on 2026-09-30, and this shift needs it.");
+  });
+
+  it("passes when current", () => {
+    const current = { ...adult, qualifications: [{ ...meds, expiresOn: "2027-09-30" }] };
+    expect(requiredTraining.check(ctx([medsShift], { workers: [current] }))).toEqual([]);
+  });
+});
+
+describe("leave", () => {
+  const tuesday = shift("s", "amy", "2026-10-06T09:00:00+01:00", "2026-10-06T17:00:00+01:00");
+  const holiday = { workerId: "amy", kind: "annual" as const, startsOn: "2026-10-06", endsOn: "2026-10-09" };
+
+  it("blocks a shift during approved holiday", () => {
+    const [f] = noShiftDuringLeave.check(ctx([tuesday], { leave: [{ ...holiday, status: "approved" }] }));
+    expect(f).toMatchObject({ severity: "block", evidence: { date: "2026-10-06" } });
+    expect(f?.message).toContain("approved holiday");
+  });
+
+  it("warns about a shift during leave that has only been requested", () => {
+    const [f] = noShiftDuringLeave.check(ctx([tuesday], { leave: [{ ...holiday, status: "requested" }] }));
+    expect(f?.severity).toBe("warn");
+  });
+
+  it("catches an overnight shift that runs into the first day of leave", () => {
+    const night = shift("n", "amy", "2026-10-05T22:00:00+01:00", "2026-10-06T06:00:00+01:00");
+    expect(noShiftDuringLeave.check(ctx([night], { leave: [{ ...holiday, status: "approved" }] }))).toHaveLength(1);
+  });
+
+  it("allows a shift that ends at midnight before leave starts", () => {
+    const evening = shift("e", "amy", "2026-10-05T16:00:00+01:00", "2026-10-06T00:00:00+01:00");
+    expect(noShiftDuringLeave.check(ctx([evening], { leave: [{ ...holiday, status: "approved" }] }))).toEqual([]);
+  });
+
+  it("ignores other people's leave", () => {
+    expect(noShiftDuringLeave.check(ctx([tuesday], { leave: [{ ...holiday, workerId: "tom", status: "approved" }] }))).toEqual([]);
+  });
+});
+
+describe("holiday entitlement", () => {
+  it("finds the leave year for January and April starts", () => {
+    expect(leaveYear("2026-10-03")).toEqual({ start: "2026-01-01", end: "2026-12-31" });
+    expect(leaveYear("2026-02-10", 4)).toEqual({ start: "2025-04-01", end: "2026-03-31" });
+  });
+
+  it("gives a full year's leave to someone already employed", () => {
+    expect(annualEntitlementDays({ daysWorkedPerWeek: 5, year: leaveYear("2026-10-03"), employmentStart: "2024-03-01" })).toBe(28);
+    expect(annualEntitlementDays({ daysWorkedPerWeek: 3, year: leaveYear("2026-10-03") })).toBe(16.8);
+  });
+
+  it("pro-rates a part-year starter and rounds up to the next half day", () => {
+    // 1 July to 31 December is 184 of 365 days: 28 x 184 / 365 = 14.1, rounded up to 14.5.
+    expect(annualEntitlementDays({ daysWorkedPerWeek: 5, year: leaveYear("2026-10-03"), employmentStart: "2026-07-01" })).toBe(14.5);
+  });
+});
+
+describe("payroll", () => {
+  const rates = [
+    { workerId: "amy", hourlyPence: 1300, effectiveFrom: "2026-04-01" },
+    { workerId: "amy", hourlyPence: 1400, effectiveFrom: "2026-10-07" },
+  ];
+  const entries = [
+    shift("a", "amy", "2026-10-05T09:00:00+01:00", "2026-10-05T17:00:00+01:00", [
+      { start: "2026-10-05T12:00:00+01:00", end: "2026-10-05T12:30:00+01:00" },
+    ]),
+    shift("b", "amy", "2026-10-07T09:00:00+01:00", "2026-10-07T13:00:00+01:00"),
+  ];
+
+  it("pays each piece of work at the rate in force that day", () => {
+    const [amy] = payrollSummary({ from: "2026-10-05", to: "2026-10-11", workers: [adult], entries, payRates: rates });
+    // 7.5h at £13 + 4h at £14 = £97.50 + £56 = £153.50
+    expect(amy).toMatchObject({ hours: 11.5, travelHours: 0, grossPence: 15350, ratesPence: [1300, 1400], holidayHoursAccrued: null, findings: [] });
+  });
+
+  it("builds up holiday hours for irregular-hours workers", () => {
+    const [amy] = payrollSummary({ from: "2026-10-05", to: "2026-10-11", workers: [{ ...adult, irregularHours: true }], entries, payRates: rates });
+    expect(amy?.holidayHoursAccrued).toBe(1.39); // 11.5 x 12.07%
+  });
+
+  it("flags pay below the minimum wage", () => {
+    const low = [{ workerId: "amy", hourlyPence: 1100, effectiveFrom: "2026-04-01" }];
+    const [amy] = payrollSummary({ from: "2026-10-05", to: "2026-10-11", workers: [adult], entries, payRates: low });
+    expect(amy?.findings[0]?.ruleId).toBe("nmw.hourly-rate");
+  });
+
+  it("counts leave in the period", () => {
+    const [amy] = payrollSummary({
+      from: "2026-10-05",
+      to: "2026-10-11",
+      workers: [adult],
+      entries: [],
+      payRates: rates,
+      leave: [
+        { workerId: "amy", kind: "annual", status: "approved", startsOn: "2026-10-08", endsOn: "2026-10-09", days: 2 },
+        { workerId: "amy", kind: "sick", status: "approved", startsOn: "2026-10-01", endsOn: "2026-10-06" },
+        { workerId: "amy", kind: "annual", status: "requested", startsOn: "2026-10-10", endsOn: "2026-10-10", days: 1 },
+      ],
+    });
+    expect(amy).toMatchObject({ holidayDays: 2, sickDays: 2, otherLeaveDays: 0 });
+  });
+});
+
+describe("CSV export", () => {
+  it("quotes commas and stops spreadsheet formulas", () => {
+    expect(toCsv([["Smith, Jo", "=HYPERLINK(\"x\")", 12.5, null]])).toBe('"Smith, Jo","\'=HYPERLINK(""x"")",12.5,\r\n');
+  });
+
+  it("keeps negative numbers as numbers", () => {
+    expect(csvCell(-2)).toBe("-2");
+  });
+});
+
+describe("travel between care visits", () => {
+  // Three 1-hour visits on Monday with 20 minutes' travel before the second and third.
+  const visits = (travel: number): Shift[] => [
+    { ...shift("v1", "amy", "2026-10-05T08:00:00+01:00", "2026-10-05T09:00:00+01:00") },
+    { ...shift("v2", "amy", "2026-10-05T09:20:00+01:00", "2026-10-05T10:20:00+01:00"), travelMinutesBefore: travel },
+    { ...shift("v3", "amy", "2026-10-05T10:40:00+01:00", "2026-10-05T11:40:00+01:00"), travelMinutesBefore: travel },
+  ];
+  const rate = (pence: number) => [{ workerId: "amy", hourlyPence: pence, effectiveFrom: "2026-04-01" }];
+
+  it("blocks when unpaid travel pulls pay below the minimum", () => {
+    // £13.00 x 3h = £39.00 for 3h 40m of work: £10.64 an hour, below £12.71.
+    const [f] = travelTimeMinimumWage.check(ctx(visits(20), { payRates: rate(1300) }));
+    expect(f).toMatchObject({ severity: "block", evidence: { travelMinutes: 40, paidPence: 3900, effectiveRatePence: 1064 } });
+    expect(f?.shiftIds).toEqual(["v1", "v2", "v3"]);
+  });
+
+  it("passes when the hourly rate covers the travel", () => {
+    // £15.60 x 3h = £46.80 for 3h 40m: £12.76 an hour.
+    expect(travelTimeMinimumWage.check(ctx(visits(20), { payRates: rate(1560) }))).toEqual([]);
+  });
+
+  it("passes when the business pays travel time", () => {
+    expect(travelTimeMinimumWage.check(ctx(visits(20), { payRates: rate(1300), settings: { paysTravelTime: true } }))).toEqual([]);
+  });
+
+  it("ignores shifts with no travel", () => {
+    expect(travelTimeMinimumWage.check(ctx(visits(0), { payRates: rate(1300) }))).toEqual([]);
+  });
+});
+
+describe("payroll with travel between visits", () => {
+  const visits: Shift[] = [
+    shift("v1", "amy", "2026-10-05T08:00:00+01:00", "2026-10-05T09:00:00+01:00"),
+    { ...shift("v2", "amy", "2026-10-05T09:30:00+01:00", "2026-10-05T10:30:00+01:00"), travelMinutesBefore: 30 },
+  ];
+  const payRates = [{ workerId: "amy", hourlyPence: 1300, effectiveFrom: "2026-04-01" }];
+
+  it("pays travel at the hourly rate when the business pays travel time", () => {
+    const [amy] = payrollSummary({ from: "2026-10-05", to: "2026-10-11", workers: [adult], entries: visits, payRates, paysTravelTime: true });
+    expect(amy).toMatchObject({ hours: 2, travelHours: 0.5, grossPence: 3250, findings: [] });
+  });
+
+  it("flags unpaid travel that pulls pay below the minimum", () => {
+    const [amy] = payrollSummary({ from: "2026-10-05", to: "2026-10-11", workers: [adult], entries: visits, payRates });
+    expect(amy?.grossPence).toBe(2600);
+    expect(amy?.findings.map((f) => f.ruleId)).toEqual(["nmw.travel-between-visits"]);
+  });
+});
+
+describe("tips", () => {
+  it("shares tips by hours worked and hands out every penny", () => {
+    const shares = allocateTips(10000, [
+      { workerId: "a", hours: 10 },
+      { workerId: "b", hours: 20 },
+      { workerId: "c", hours: 0 },
+    ]);
+    expect(shares).toEqual([
+      { workerId: "a", hours: 10, pence: 3333 },
+      { workerId: "b", hours: 20, pence: 6667 },
+    ]);
+  });
+
+  it("never loses or invents pennies", () => {
+    const shares = allocateTips(1001, [
+      { workerId: "a", hours: 7.5 },
+      { workerId: "b", hours: 7.5 },
+      { workerId: "c", hours: 7.5 },
+    ]);
+    expect(shares.reduce((s, x) => s + x.pence, 0)).toBe(1001);
+    expect(shares.map((s) => s.pence).sort()).toEqual([333, 334, 334]);
+  });
+
+  it("can share equally", () => {
+    expect(allocateTips(900, [{ workerId: "a", hours: 2 }, { workerId: "b", hours: 40 }], "equal").map((s) => s.pence)).toEqual([450, 450]);
+  });
+
+  it("must be paid by the end of the following month", () => {
+    expect(tipsPayBy("2026-10-03")).toBe("2026-11-30");
+    expect(tipsPayBy("2026-11-15")).toBe("2026-12-31");
+    expect(tipsPayBy("2026-12-31")).toBe("2027-01-31");
+    expect(tipsPayBy("2027-01-31")).toBe("2027-02-28");
+  });
+});
+
+describe("lone working check-ins", () => {
+  const H = 3_600_000;
+  const M = 60_000;
+  const base = { start: 10 * H, end: 14 * H, intervalMinutes: 60 };
+  const at = (kind: LoneCheckKind, t: number) => ({ kind, at: t });
+
+  it("waits for the shift to start, then allows the grace period", () => {
+    expect(loneWorkStatus({ ...base, checks: [], now: 9 * H }).state).toBe("not_started");
+    expect(loneWorkStatus({ ...base, checks: [], now: 10 * H + 10 * M }).state).toBe("ok");
+    const late = loneWorkStatus({ ...base, checks: [], now: 10 * H + 16 * M });
+    expect(late.state).toBe("overdue");
+    expect(late.reason).toMatch(/start/);
+  });
+
+  it("expects a check-in each interval after the last one", () => {
+    const checks = [at("start", 10 * H), at("ok", 11 * H)];
+    expect(loneWorkStatus({ ...base, checks, now: 12 * H + 10 * M })).toEqual({ state: "ok", dueAt: 12 * H });
+    expect(loneWorkStatus({ ...base, checks, now: 12 * H + 16 * M }).state).toBe("overdue");
+    // The manager reached them: the clock restarts from then.
+    expect(loneWorkStatus({ ...base, checks: [...checks, at("resolved", 12 * H + 20 * M)], now: 12 * H + 30 * M })).toEqual({ state: "ok", dueAt: 13 * H + 20 * M });
+  });
+
+  it("expects a check-out at the end of the shift", () => {
+    const checks = [at("start", 10 * H), at("ok", 13 * H + 30 * M)];
+    expect(loneWorkStatus({ ...base, checks, now: 14 * H }).dueAt).toBe(14 * H);
+    const missed = loneWorkStatus({ ...base, checks, now: 14 * H + 20 * M });
+    expect(missed.state).toBe("overdue");
+    expect(missed.reason).toMatch(/end/);
+    expect(loneWorkStatus({ ...base, checks: [...checks, at("finished", 14 * H)], now: 20 * H }).state).toBe("finished");
+  });
+
+  it("keeps a call for help open until a manager deals with it", () => {
+    const help = [at("start", 10 * H), at("help", 10 * H + 30 * M)];
+    expect(loneWorkStatus({ ...base, checks: help, now: 11 * H }).state).toBe("help");
+    // Saying "I'm OK" afterwards does not close it: someone must check.
+    expect(loneWorkStatus({ ...base, checks: [...help, at("ok", 10 * H + 40 * M)], now: 11 * H }).state).toBe("help");
+    expect(loneWorkStatus({ ...base, checks: [...help, at("resolved", 10 * H + 45 * M)], now: 11 * H }).state).toBe("ok");
+  });
+});
+
+describe("clocking in and out", () => {
+  const H = 3_600_000;
+  const M = 60_000;
+  const shift = { start: 9 * H, end: 17 * H };
+  const e = (kind: ClockKind, at: number) => ({ kind, at });
+
+  it("follows a normal day with a break", () => {
+    const events = [e("in", 9 * H - 3 * M), e("break_start", 12 * H), e("break_end", 12 * H + 30 * M), e("out", 17 * H + 10 * M)];
+    expect(clockSummary(events, shift, 18 * H)).toEqual({
+      state: "out",
+      clockedIn: 9 * H - 3 * M,
+      clockedOut: 17 * H + 10 * M,
+      breakMinutes: 30,
+      lateMinutes: 0,
+      leftEarlyMinutes: 0,
+      stayedLateMinutes: 10,
+    });
+  });
+
+  it("shows lateness, leaving early, and a break still running", () => {
+    expect(clockSummary([e("in", 9 * H + 7 * M)], shift, 10 * H)).toMatchObject({ state: "in", lateMinutes: 7 });
+    expect(clockSummary([e("in", 9 * H), e("break_start", 12 * H)], shift, 12 * H + 20 * M)).toMatchObject({ state: "on_break", breakMinutes: 20 });
+    expect(clockSummary([e("in", 9 * H), e("out", 16 * H + 30 * M)], shift, 17 * H)).toMatchObject({ leftEarlyMinutes: 30, stayedLateMinutes: 0 });
+  });
+
+  it("ignores taps that make no sense, such as a double clock-in", () => {
+    const events = [e("in", 9 * H), e("in", 9 * H + 5 * M), e("break_end", 10 * H), e("out", 17 * H), e("in", 17 * H + 1 * M)];
+    expect(clockSummary(events, shift, 18 * H)).toMatchObject({ state: "out", clockedIn: 9 * H, clockedOut: 17 * H, breakMinutes: 0 });
+  });
+
+  it("offers only the buttons that make sense", () => {
+    expect(nextClockActions("not_in")).toEqual(["in"]);
+    expect(nextClockActions("in")).toEqual(["break_start", "out"]);
+    expect(nextClockActions("on_break")).toEqual(["break_end"]);
+    expect(nextClockActions("out")).toEqual([]);
+  });
+});
+
+describe("clocking in at work", () => {
+  // Two points in central Manchester about 1.1 km apart.
+  const shop = { id: "shop", latitude: 53.4808, longitude: -2.2426, radiusMetres: 150 };
+  const station = { latitude: 53.4774, longitude: -2.2309 };
+
+  it("measures distance", () => {
+    expect(distanceMetres(shop, shop)).toBe(0);
+    expect(Math.round(distanceMetres(shop, station) / 100)).toBe(9);
+  });
+
+  it("allows for some phone inaccuracy, but not much", () => {
+    const near = { latitude: 53.4808, longitude: -2.2426 + 0.003, accuracyMetres: 10 }; // about 200 m east
+    expect(placeCheck(near, [shop])).toMatchObject({ workplaceId: "shop", within: false });
+    expect(placeCheck({ ...near, accuracyMetres: 80 }, [shop])).toMatchObject({ within: true });
+    // A wildly inaccurate fix cannot stretch the radius without limit.
+    expect(placeCheck({ ...station, accuracyMetres: 5000 }, [shop])).toMatchObject({ within: false });
+  });
+
+  it("picks the nearest workplace and has nothing to check without one", () => {
+    const other = { id: "depot", latitude: 53.4775, longitude: -2.231, radiusMetres: 100 };
+    expect(placeCheck({ ...station, accuracyMetres: 5 }, [shop, other])).toMatchObject({ workplaceId: "depot", within: true });
+    expect(placeCheck({ ...station, accuracyMetres: 5 }, [])).toBeNull();
   });
 });

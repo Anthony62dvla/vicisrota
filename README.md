@@ -7,17 +7,25 @@ UK staff scheduling with employment law built in, for small businesses, care pro
 | Path | What it is |
 | --- | --- |
 | `packages/compliance` | The UK compliance engine: versioned, dated rules with worked test cases |
-| `apps/web` | Manager web app (Next.js) |
+| `packages/messaging` | Text messages: UK mobile numbers, a provider-neutral SMS sender and alert wording |
+| `packages/db` | Postgres schema, migrations and row-level security (Drizzle) |
+| `apps/web` | Manager web app (Next.js, Better Auth sign-in, Sentry error tracking) |
+| `docs/RUNBOOK.md` | How to find and fix a reported fault |
 
 ## Commands
 
 ```sh
 npm install
-npm test          # compliance rule tests
+cp apps/web/.env.example apps/web/.env.local   # then fill in DATABASE_URL and BETTER_AUTH_SECRET
+DATABASE_URL=... npm run migrate -w @vicisrota/db
+npm run dev --workspace @vicisrota/web
+
+npm test          # compliance rules; database tests run when TEST_DATABASE_URL is set
 npm run typecheck
 npm run lint
-npm run dev --workspace @vicisrota/web
 ```
+
+The app must connect as a normal (non-superuser) Postgres role, because superusers bypass row-level security.
 
 ## Compliance rules
 

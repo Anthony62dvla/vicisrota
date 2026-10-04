@@ -95,3 +95,10 @@ export const weekStart = (date: LocalDate): LocalDate => {
 /** Milliseconds of overlap between [aStart, aEnd) and [bStart, bEnd). */
 export const overlap = (aStart: number, aEnd: number, bStart: number, bEnd: number): number =>
   Math.max(0, Math.min(aEnd, bEnd) - Math.max(aStart, bStart));
+
+/** A UK wall-clock date and "HH:MM" time as an instant, e.g. for times typed into the rota. */
+export const londonDateTime = (date: LocalDate, time: string): number => {
+  const [h, m] = time.split(":").map(Number) as [number, number];
+  if (!(h >= 0 && h < 24 && m >= 0 && m < 60)) throw new Error(`Invalid time: ${time}`);
+  return londonInstant(date, h) + m * MINUTE;
+};

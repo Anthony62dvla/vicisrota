@@ -1,0 +1,1 @@
+ALTER TABLE "organisation" ADD COLUMN "late_alert_minutes" smallint;

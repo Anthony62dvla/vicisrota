@@ -1,4 +1,5 @@
 import { evaluate, type Context } from "@vicisrota/compliance";
+import Link from "next/link";
 
 // A sample week used to show the compliance engine working end to end.
 // Replaced by real rota data once the database lands.
@@ -24,7 +25,10 @@ export default function Home() {
   return (
     <main className="mx-auto w-full max-w-2xl px-4 py-12">
       <h1 className="text-2xl font-semibold">VicisRota</h1>
-      <p className="mt-2 text-zinc-600 dark:text-zinc-400">Sample rota check, week of {result.asOf}</p>
+      <p className="mt-2">
+        <Link href="/sign-in" className="underline">Sign in</Link> or <Link href="/sign-up" className="underline">create an account</Link>
+      </p>
+      <p className="mt-6 text-zinc-600 dark:text-zinc-400">Sample rota check, week of {result.asOf}</p>
       <p className="mt-6 font-medium">
         {result.publishable ? "This rota can be published." : "This rota cannot be published yet."}
       </p>

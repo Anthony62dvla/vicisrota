@@ -11,6 +11,49 @@ export interface Worker {
   optedOutOf48HourLimit?: boolean;
   /** Apprentice in the first year, or under 19 (NMW apprentice rate). */
   apprenticeRateApplies?: boolean;
+  /** Right to work and DBS checks on file. */
+  checks?: Check[];
+  /** Training and qualifications held. */
+  qualifications?: Qualification[];
+  /** Regular weekly times the person has said they cannot work, e.g. caring, study or another job. */
+  unavailable?: Unavailable[];
+  /** Adjustments agreed with the person, e.g. because of a disability or neurodivergence. */
+  adjustments?: Adjustments;
+  /** Ids of the job roles the person is set up to work, e.g. Chef or Senior carer. */
+  roles?: string[] | undefined;
+}
+
+/** A weekly time someone cannot work, in UK time. weekday: 1 = Monday to 7 = Sunday. to may be "24:00". */
+export interface Unavailable {
+  weekday: number;
+  from: string;
+  to: string;
+}
+
+/** Shift patterns agreed with the person. Times are UK wall-clock "HH:MM". */
+export interface Adjustments {
+  maxShiftHours?: number;
+  earliestStart?: string;
+  latestFinish?: string;
+}
+
+export type CheckKind = "right_to_work" | "dbs";
+/** enhanced_barred = enhanced DBS with a children's and/or adults' barred list check. */
+export type DbsLevel = "basic" | "standard" | "enhanced" | "enhanced_barred";
+
+export interface Check {
+  kind: CheckKind;
+  checkedOn: LocalDate;
+  /** For time-limited permission to work, the date a follow-up check is due. */
+  expiresOn?: LocalDate;
+  dbsLevel?: DbsLevel;
+}
+
+export interface Qualification {
+  id: string;
+  name: string;
+  achievedOn?: LocalDate;
+  expiresOn?: LocalDate;
 }
 
 export interface Break {
@@ -24,6 +67,12 @@ export interface Shift {
   start: Instant;
   end: Instant;
   breaks?: Break[];
+  /** Training the person on this shift must hold, e.g. medication competency. */
+  requiredQualifications?: { id: string; name: string }[];
+  /** The job role the shift is for, if the business uses roles. */
+  role?: { id: string; name: string } | undefined;
+  /** Care visits: minutes travelling from the previous visit. Travel between visits is working time for the minimum wage. */
+  travelMinutesBefore?: number;
 }
 
 export interface PayRate {
@@ -52,6 +101,18 @@ export interface Finding {
   legalRef: string;
 }
 
+export type LeaveKind = "annual" | "sick" | "family" | "unpaid" | "compassionate" | "other";
+export type LeaveStatus = "requested" | "approved";
+
+/** Time off, whole days from startsOn to endsOn inclusive (UK dates). */
+export interface Leave {
+  workerId: string;
+  kind: LeaveKind;
+  status: LeaveStatus;
+  startsOn: LocalDate;
+  endsOn: LocalDate;
+}
+
 export interface Context {
   /** The date the rota is being checked on; selects which rule versions apply. */
   asOf: LocalDate;
@@ -59,6 +120,14 @@ export interface Context {
   /** All shifts for the period under check, plus enough history for averaging. */
   shifts: Shift[];
   payRates?: PayRate[];
+  /** Approved and requested leave. Declined and cancelled leave is left out. */
+  leave?: Leave[];
+  settings?: {
+    /** Care providers: every shift is regulated activity needing an enhanced DBS with barred list check. */
+    requireEnhancedDbs?: boolean;
+    /** Travel between care visits is paid at the hourly rate, so it cannot pull pay below the minimum. */
+    paysTravelTime?: boolean;
+  };
 }
 
 export interface Rule {
