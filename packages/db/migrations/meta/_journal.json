@@ -183,6 +183,13 @@
       "when": 1791068012891,
       "tag": "0025_clock_location_and_kiosk",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1791094960792,
+      "tag": "0026_staff_mobile",
+      "breakpoints": true
     }
   ]
 }

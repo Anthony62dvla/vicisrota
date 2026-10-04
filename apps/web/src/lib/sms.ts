@@ -12,23 +12,25 @@ export const smsConfigured = () => process.env.SMS_PROVIDER === "http";
 
 export const appUrl = (path: string) => `${(process.env.APP_URL ?? process.env.BETTER_AUTH_URL ?? "").replace(/\/$/, "")}${path}`;
 
+type Text = { to: string; body: string; /** What is kept in the log, when the text holds something secret such as a sign-in link. */ logBody?: string };
+
 /**
- * Texts every active alert contact of a business. Each text is logged before it is sent, under a
- * dedupe key, so an alert is never sent twice to the same person even if two checks run at once.
- * Returns how many were sent successfully.
+ * Sends texts for a business. Each text is logged before it is sent, under a dedupe key, so the same
+ * text is never sent twice to the same number even if two requests run at once. Returns how many
+ * were sent successfully.
  */
-export const textAlertContacts = async (organisationId: string, purpose: string, body: string, dedupeKey: string): Promise<number> => {
-  const reserved = await withOrganisation(db, organisationId, async (tx) => {
-    const contacts = await tx.select().from(schema.alertContact).where(eq(schema.alertContact.active, true));
-    if (!contacts.length) return [];
-    return tx
+export const sendTexts = async (organisationId: string, purpose: string, texts: Text[], dedupeKey: string | null = null): Promise<number> => {
+  if (!texts.length) return 0;
+  const reserved = await withOrganisation(db, organisationId, (tx) =>
+    tx
       .insert(schema.smsMessage)
-      .values(contacts.map((c) => ({ organisationId, to: c.phone, purpose, body, provider: getSender().name, ok: false, dedupeKey })))
+      .values(texts.map((t) => ({ organisationId, to: t.to, purpose, body: t.logBody ?? t.body, provider: getSender().name, ok: false, dedupeKey })))
       .onConflictDoNothing()
-      .returning({ id: schema.smsMessage.id, to: schema.smsMessage.to });
-  });
+      .returning({ id: schema.smsMessage.id, to: schema.smsMessage.to }),
+  );
   let sent = 0;
   for (const row of reserved) {
+    const body = texts.find((t) => t.to === row.to)!.body;
     const result = await getSender().send(row.to, body);
     if (result.ok) sent++;
     else await log("error", "text message failed", { organisationId, purpose, error: result.error });
@@ -40,4 +42,10 @@ export const textAlertContacts = async (organisationId: string, purpose: string,
     );
   }
   return sent;
+};
+
+/** Texts every active alert contact of a business, once per dedupe key. */
+export const textAlertContacts = async (organisationId: string, purpose: string, body: string, dedupeKey: string): Promise<number> => {
+  const contacts = await withOrganisation(db, organisationId, (tx) => tx.select().from(schema.alertContact).where(eq(schema.alertContact.active, true)));
+  return sendTexts(organisationId, purpose, contacts.map((c) => ({ to: c.phone, body })), dedupeKey);
 };

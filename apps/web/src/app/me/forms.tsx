@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { askToPickUp, clock, loneCheckIn, requestTimeOff, setClockPin, type FormState } from "./actions";
+import { askToPickUp, clock, loneCheckIn, requestTimeOff, saveTextSettings, setClockPin, type FormState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 
@@ -191,6 +191,31 @@ export function PinForm({ hasPin }: { hasPin: boolean }) {
         </label>
       </div>
       <button type="submit" disabled={pending} className="self-start rounded-lg border border-zinc-400 px-4 py-2 disabled:opacity-60">Save PIN</button>
+    </form>
+  );
+}
+
+export function TextSettingsForm({ mobile, textChanges }: { mobile: string | null; textChanges: boolean }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(saveTextSettings, {});
+  const v = state.values;
+  return (
+    <form key={JSON.stringify(v ?? {})} action={action} className="mt-2 flex flex-col gap-3">
+      {state.error && <p role="alert" className="rounded-lg border border-red-400 p-3">{state.error}</p>}
+      {state.ok && <p role="status" className="rounded-lg border border-green-600 p-3">{state.ok}</p>}
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Your mobile number</span>
+        <input name="mobile" type="tel" autoComplete="tel" defaultValue={v ? v.mobile : (mobile ?? "")} placeholder="07700 900123" className={`${input} max-w-xs`} />
+      </label>
+      <label className="flex items-start gap-2">
+        <input type="checkbox" name="textChanges" defaultChecked={v ? v.textChanges === "on" : textChanges} className="mt-1" />
+        <span>
+          Text me when my rota changes
+          <span className="block text-sm text-zinc-600 dark:text-zinc-400">
+            When shifts are published, cancelled or swapped. Nothing else, and you can turn it off here at any time.
+          </span>
+        </span>
+      </label>
+      <button type="submit" disabled={pending} className="self-start rounded-lg border border-zinc-400 px-4 py-2 disabled:opacity-60">Save</button>
     </form>
   );
 }

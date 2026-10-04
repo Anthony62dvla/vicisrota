@@ -7,7 +7,8 @@ import { revalidatePath } from "next/cache";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
 import { log } from "@/lib/log";
-import { notify } from "@/lib/notices";
+import { notify, type Notice } from "@/lib/notices";
+import { textRotaChanges } from "@/lib/rota-texts";
 import { requestId } from "@/lib/request";
 import { checkAssignment } from "@/lib/claims";
 import { loadComplianceContext, weekBounds } from "@/lib/rota";
@@ -91,16 +92,16 @@ export async function addShift(_: FormState, form: FormData): Promise<FormState>
 }
 
 export async function cancelShift(form: FormData) {
-  const { user, organisationId } = await requireManager();
+  const { user, organisationId, businessName } = await requireManager();
   const shiftId = String(form.get("shiftId") ?? "");
-  await withOrganisation(db, organisationId, async (tx) => {
+  const notices = await withOrganisation(db, organisationId, async (tx) => {
     const [cancelled] = await tx
       .update(schema.shift)
       .set({ status: "cancelled" })
       .where(eq(schema.shift.id, shiftId))
       .returning({ workerId: schema.shift.workerId, startsAt: schema.shift.startsAt, endsAt: schema.shift.endsAt, publishedAt: schema.shift.publishedAt });
     // Staff only knew about it if it had been published.
-    if (cancelled?.publishedAt) await notify(tx, organisationId, [{ ...cancelled, shiftId, kind: "cancelled" }]);
+    const notices = cancelled?.publishedAt ? await notify(tx, organisationId, [{ ...cancelled, shiftId, kind: "cancelled" }]) : [];
     await tx.insert(schema.auditEvent).values({
       organisationId,
       actorUserId: user.id,
@@ -109,12 +110,14 @@ export async function cancelShift(form: FormData) {
       entity: "shift",
       entityId: shiftId,
     });
+    return notices;
   });
+  await textRotaChanges(organisationId, businessName, notices);
   revalidatePath("/rota");
 }
 
 export async function checkAndPublish(_: FormState, form: FormData): Promise<FormState> {
-  const { user, organisationId } = await requireManager();
+  const { user, organisationId, businessName } = await requireManager();
   const weekStart = String(form.get("weekStart") ?? "");
   if (!DATE.test(weekStart)) return { error: "Choose a week." };
   const reference = await requestId();
@@ -141,6 +144,7 @@ export async function checkAndPublish(_: FormState, form: FormData): Promise<For
     });
 
     let published = 0;
+    let notices: Notice[] = [];
     if (publishable) {
       const rows = await tx
         .update(schema.shift)
@@ -148,7 +152,7 @@ export async function checkAndPublish(_: FormState, form: FormData): Promise<For
         .where(and(eq(schema.shift.status, "draft"), gte(schema.shift.startsAt, from), lt(schema.shift.startsAt, to)))
         .returning({ id: schema.shift.id, workerId: schema.shift.workerId, startsAt: schema.shift.startsAt, endsAt: schema.shift.endsAt });
       published = rows.length;
-      await notify(tx, organisationId, rows.map((r) => ({ ...r, shiftId: r.id, kind: "added" as const })));
+      notices = await notify(tx, organisationId, rows.map((r) => ({ ...r, shiftId: r.id, kind: "added" as const })));
       await tx.insert(schema.auditEvent).values({
         organisationId,
         actorUserId: user.id,
@@ -159,10 +163,12 @@ export async function checkAndPublish(_: FormState, form: FormData): Promise<For
         data: { shiftIds: rows.map((r) => r.id) },
       });
     }
-    return { publishable, blocking: findings.filter((f) => f.severity === "block").length, published };
+    return { publishable, blocking: findings.filter((f) => f.severity === "block").length, published, notices };
   });
 
-  await log("info", "rota checked", { organisationId, weekStart, ...result });
+  const { notices, ...summary } = result;
+  await log("info", "rota checked", { organisationId, weekStart, ...summary });
+  await textRotaChanges(organisationId, businessName, notices);
   revalidatePath("/rota");
   if (!result.publishable)
     return { error: `This rota cannot be published yet: ${result.blocking} problem${result.blocking === 1 ? "" : "s"} to fix. See the list below.` };
@@ -171,11 +177,11 @@ export async function checkAndPublish(_: FormState, form: FormData): Promise<For
 
 /** Approves or declines a request to pick up a shift. Approving re-runs the checks first. */
 export async function decideClaim(_: FormState, form: FormData): Promise<FormState> {
-  const { user, organisationId } = await requireManager();
+  const { user, organisationId, businessName } = await requireManager();
   const claimId = String(form.get("claimId") ?? "");
   const approve = form.get("decision") === "approve";
 
-  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState & { notices?: Notice[] }> => {
     const [claim] = await tx
       .select({ claim: schema.shiftClaim, name: schema.worker.fullName })
       .from(schema.shiftClaim)
@@ -212,13 +218,15 @@ export async function decideClaim(_: FormState, form: FormData): Promise<FormSta
       .set({ status: "declined", decidedByUserId: user.id, decidedAt: new Date() })
       .where(and(eq(schema.shiftClaim.shiftId, shiftId), eq(schema.shiftClaim.status, "requested")));
     const times = { shiftId, startsAt: check.shift.startsAt, endsAt: check.shift.endsAt };
-    await notify(tx, organisationId, [
+    const notices = await notify(tx, organisationId, [
       { ...times, workerId, kind: "given_to_you" },
       { ...times, workerId: previous, kind: "taken_by_colleague" },
     ]);
     await audit("approve", { previousWorkerId: previous });
-    return { ok: `${claim.name} now has this shift.` };
+    return { ok: `${claim.name} now has this shift.`, notices };
   });
+  const { notices = [], ...state } = result;
+  await textRotaChanges(organisationId, businessName, notices);
   revalidatePath("/rota");
-  return result;
+  return state;
 }

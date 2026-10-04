@@ -9,7 +9,7 @@ import { checkAssignment } from "@/lib/claims";
 import { recordClock } from "@/lib/clock";
 import { hashPin, pinProblem } from "@/lib/pin";
 import { db } from "@/lib/db";
-import { helpAlert } from "@vicisrota/messaging";
+import { helpAlert, normaliseUkMobile } from "@vicisrota/messaging";
 import { LEAVE_KINDS, LEAVE_LABEL } from "@/lib/leave";
 import { log } from "@/lib/log";
 import { requestId } from "@/lib/request";
@@ -18,7 +18,8 @@ import { todayInUk } from "@/lib/rota";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-export type FormState = { error?: string; ok?: string };
+/** values: what was typed, sent back on an error so the form is not cleared. */
+export type FormState = { error?: string; ok?: string; values?: Record<string, string> };
 
 export async function requestTimeOff(_: FormState, form: FormData): Promise<FormState> {
   const { user, organisationId, worker } = await requireStaff();
@@ -243,7 +244,8 @@ export async function markNoticesSeen() {
 
 export async function savePreferences(form: FormData) {
   const { organisationId, worker } = await requireStaff();
-  const preferences = { calm: form.get("calm") === "on", largeText: form.get("largeText") === "on" };
+  // Keep the text setting, which is saved by its own form.
+  const preferences = { ...worker.preferences, calm: form.get("calm") === "on", largeText: form.get("largeText") === "on" };
   await withOrganisation(db, organisationId, (tx) => tx.update(schema.worker).set({ preferences }).where(eq(schema.worker.id, worker.id)));
   revalidatePath("/me");
 }
@@ -285,4 +287,29 @@ export async function setClockPin(_: FormState, form: FormData): Promise<FormSta
   });
   revalidatePath("/me");
   return { ok: "PIN saved. Use it on the clock-in tablet at work." };
+}
+
+/** The person's own mobile number, and whether they want a text when their rota changes. */
+export async function saveTextSettings(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId, worker } = await requireStaff();
+  const raw = String(form.get("mobile") ?? "").trim();
+  const mobile = raw ? normaliseUkMobile(raw) : null;
+  const textChanges = form.get("textChanges") === "on";
+  const values = { mobile: raw, textChanges: textChanges ? "on" : "" };
+  if (raw && !mobile) return { error: "Enter a UK mobile number, for example 07700 900123.", values };
+  if (textChanges && !mobile) return { error: "Add your mobile number to get texts.", values };
+  await withOrganisation(db, organisationId, async (tx) => {
+    await tx.update(schema.worker).set({ mobile, preferences: { ...worker.preferences, textChanges } }).where(eq(schema.worker.id, worker.id));
+    await tx.insert(schema.auditEvent).values({
+      organisationId,
+      actorUserId: user.id,
+      requestId: await requestId(),
+      action: "text_settings",
+      entity: "worker",
+      entityId: worker.id,
+      data: { textChanges, hasMobile: !!mobile },
+    });
+  });
+  revalidatePath("/me");
+  return { ok: textChanges ? "Saved. We will text you when your rota changes." : "Saved. You will not get texts about your rota." };
 }

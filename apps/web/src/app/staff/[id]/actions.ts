@@ -8,12 +8,15 @@ import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
 import { hashInviteToken, INVITE_DAYS, newInviteToken } from "@/lib/invite";
 import { requestId } from "@/lib/request";
+import { appUrl, sendTexts, smsConfigured } from "@/lib/sms";
+import { formatUkMobile, inviteText, normaliseUkMobile } from "@vicisrota/messaging";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const DBS_LEVELS = ["basic", "standard", "enhanced", "enhanced_barred"] as const;
 type DbsLevel = (typeof DBS_LEVELS)[number];
 
-export type FormState = { error?: string; ok?: string };
+/** values: what was typed, sent back on an error so the form is not cleared. */
+export type FormState = { error?: string; ok?: string; values?: Record<string, string> };
 
 const optionalDate = (value: FormDataEntryValue | null) => {
   const s = String(value ?? "");
@@ -165,14 +168,15 @@ export type InviteState = FormState & { link?: string };
 
 /** Creates a fresh invitation link for a member of staff; any earlier unused link stops working. */
 export async function inviteStaff(_: InviteState, form: FormData): Promise<InviteState> {
-  const { user, organisationId } = await requireManager();
+  const { user, organisationId, businessName } = await requireManager();
   const workerId = String(form.get("workerId") ?? "");
+  const byText = form.get("byText") === "on";
   const token = newInviteToken();
 
-  const result = await withOrganisation(db, organisationId, async (tx): Promise<InviteState> => {
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<InviteState & { mobile?: string | null }> => {
     const worker = await findWorker(tx, workerId);
     if (!worker) return { error: "That person could not be found." };
-    const [linked] = await tx.select({ userId: schema.worker.userId }).from(schema.worker).where(eq(schema.worker.id, workerId));
+    const [linked] = await tx.select({ userId: schema.worker.userId, mobile: schema.worker.mobile }).from(schema.worker).where(eq(schema.worker.id, workerId));
     if (linked?.userId) return { error: `${worker.name} already has a login.` };
     await tx
       .update(schema.invitation)
@@ -195,11 +199,45 @@ export async function inviteStaff(_: InviteState, form: FormData): Promise<Invit
       action: "invite",
       entity: "worker",
       entityId: workerId,
-      data: { invitationId: row!.id },
+      data: { invitationId: row!.id, byText: byText && !!linked?.mobile },
     });
-    return { ok: `Send this link to ${worker.name}. It works once, for ${INVITE_DAYS} days.` };
+    return { ok: `Send this link to ${worker.name}. It works once, for ${INVITE_DAYS} days.`, mobile: linked?.mobile };
   });
   if (result.error) return result;
   const origin = (await headers()).get("origin") ?? process.env.BETTER_AUTH_URL ?? "";
-  return { ...result, link: `${origin}/join/${token}` };
+  const link = `${origin}/join/${token}`;
+  if (!byText || !result.mobile) return { ok: result.ok, link };
+
+  const body = inviteText({ business: businessName, link, days: INVITE_DAYS });
+  // The link signs someone in, so the text log keeps a placeholder instead.
+  const sent = await sendTexts(organisationId, "invite", [{ to: result.mobile, body, logBody: body.replace(link, appUrl("/join/<link>")) }]);
+  const number = formatUkMobile(result.mobile);
+  if (!smsConfigured()) return { link, ok: `Texts are not switched on yet, so nothing was sent to ${number}. Copy the link below and send it yourself.` };
+  if (!sent) return { link, error: `The text to ${number} could not be sent. Copy the link below and send it another way.` };
+  return { link, ok: `Link texted to ${number}. It works once, for ${INVITE_DAYS} days. You can also copy it below.` };
+}
+
+/** Saves or clears the person's mobile number, used to text them their invitation. */
+export async function setMobile(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  const raw = String(form.get("mobile") ?? "").trim();
+  const mobile = raw ? normaliseUkMobile(raw) : null;
+  if (raw && !mobile) return { error: "Enter a UK mobile number, for example 07700 900123.", values: { mobile: raw } };
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
+    const worker = await findWorker(tx, workerId);
+    if (!worker) return { error: "That person could not be found." };
+    await tx.update(schema.worker).set({ mobile }).where(eq(schema.worker.id, workerId));
+    await tx.insert(schema.auditEvent).values({
+      organisationId,
+      actorUserId: user.id,
+      requestId: await requestId(),
+      action: mobile ? "set_mobile" : "clear_mobile",
+      entity: "worker",
+      entityId: workerId,
+    });
+    return { ok: mobile ? `Mobile number saved for ${worker.name}.` : `Mobile number removed for ${worker.name}.` };
+  });
+  revalidatePath(`/staff/${workerId}`);
+  return result;
 }

@@ -5,7 +5,7 @@ export const SHORT_NOTICE_HOURS = 7 * 24;
 
 type NoticeKind = (typeof schema.noticeKind.enumValues)[number];
 
-/** Records that someone's published rota changed, so they see it on their home page. */
+/** Records that someone's published rota changed, so they see it on their home page. Returns the notices made. */
 export const notify = async (
   tx: Transaction,
   organisationId: string,
@@ -15,5 +15,14 @@ export const notify = async (
   const rows = items
     .filter((i): i is typeof i & { workerId: string } => !!i.workerId && i.startsAt.getTime() > now)
     .map((i) => ({ ...i, organisationId, noticeHours: Math.floor((i.startsAt.getTime() - now) / 3_600_000) }));
-  if (rows.length) await tx.insert(schema.rotaNotice).values(rows);
+  if (!rows.length) return [];
+  return tx.insert(schema.rotaNotice).values(rows).returning({
+    id: schema.rotaNotice.id,
+    workerId: schema.rotaNotice.workerId,
+    kind: schema.rotaNotice.kind,
+    startsAt: schema.rotaNotice.startsAt,
+    endsAt: schema.rotaNotice.endsAt,
+  });
 };
+
+export type Notice = Awaited<ReturnType<typeof notify>>[number];

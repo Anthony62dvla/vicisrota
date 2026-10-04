@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { formatUkMobile, helpAlert, httpSender, normaliseUkMobile, overdueAlert, senderFromEnv, SMS_MAX } from "../src";
+import { formatUkMobile, helpAlert, httpSender, inviteText, normaliseUkMobile, overdueAlert, rotaChangeText, senderFromEnv, SMS_MAX } from "../src";
 
 describe("UK mobile numbers", () => {
   it("accepts common formats", () => {
@@ -59,5 +59,20 @@ describe("alert texts", () => {
     expect(overdueAlert({ business: "Oak House", person: "Priya", what: "has not checked in at the start of their shift", due: "09:00", where: "Edith Jones, AB1 2CD", link: "L" })).toBe(
       "Oak House: Priya has not checked in at the start of their shift (due 09:00), Edith Jones, AB1 2CD. Please check they are safe. If you cannot reach them and are worried, call 999. L",
     );
+  });
+});
+
+describe("staff texts", () => {
+  it("invite says who, why and how long the link works", () => {
+    expect(inviteText({ business: "Corner Bakery", link: "https://vicisrota.app/join/abc", days: 7 })).toBe(
+      "Corner Bakery has invited you to VicisRota to see your shifts and ask for time off. Set up your login here (works once, for 7 days): https://vicisrota.app/join/abc",
+    );
+  });
+  it("rota changes are listed one per line, with a count when there are many", () => {
+    const changes = ["Mon 5 Oct 08:00-14:00", "Tue 6 Oct 08:00-14:00", "Wed 7 Oct 08:00-14:00", "Thu 8 Oct 08:00-14:00"].map((when) => ({ kind: "added" as const, when }));
+    const text = rotaChangeText({ business: "Corner Bakery", changes, link: "L" });
+    expect(text).toBe("Corner Bakery: your rota has changed.\nNew shift: Mon 5 Oct 08:00-14:00\nNew shift: Tue 6 Oct 08:00-14:00\nNew shift: Wed 7 Oct 08:00-14:00\nand 1 more.\nSee your shifts: L");
+    expect(rotaChangeText({ business: "B", changes: [{ kind: "cancelled", when: "Fri 9 Oct 18:00-23:00" }], link: "L" })).toContain("Cancelled: Fri 9 Oct 18:00-23:00");
+    expect(rotaChangeText({ business: "B".repeat(400), changes, link: "L" }).length).toBeLessThanOrEqual(SMS_MAX);
   });
 });

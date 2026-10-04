@@ -26,3 +26,26 @@ export const overdueAlert = (a: { business: string; person: string; what: string
       `${a.business}: ${a.person} ${a.what} (due ${a.due})${a.where ? `, ${a.where}` : ""}. Please check they are safe. If you cannot reach them and are worried, call 999. ${a.link}`,
     ),
   );
+
+export const inviteText = (a: { business: string; link: string; days: number }) =>
+  fit(plain(`${a.business} has invited you to VicisRota to see your shifts and ask for time off. Set up your login here (works once, for ${a.days} days): ${a.link}`));
+
+export type RotaChangeKind = "added" | "cancelled" | "given_to_you" | "taken_by_colleague";
+const CHANGE_LABEL: Record<RotaChangeKind, string> = {
+  added: "New shift",
+  cancelled: "Cancelled",
+  given_to_you: "Now yours",
+  taken_by_colleague: "Covered by a colleague",
+};
+
+/**
+ * One text per person per change to their rota. Lists up to three changes plainly, one per line,
+ * then says how many more there are, so the text never gets cut off part way through a shift.
+ */
+export const rotaChangeText = (a: { business: string; changes: { kind: RotaChangeKind; when: string }[]; link: string }) => {
+  const shown = a.changes.slice(0, 3).map((c) => `${CHANGE_LABEL[c.kind]}: ${c.when}`);
+  const more = a.changes.length - shown.length;
+  const lines = [`${a.business}: your rota has changed.`, ...shown, ...(more > 0 ? [`and ${more} more.`] : []), `See your shifts: ${a.link}`];
+  // Newlines are kept: they make a list far easier to read on a phone.
+  return fit(lines.map(plain).join("\n"));
+};

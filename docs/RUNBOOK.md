@@ -28,6 +28,7 @@ row-level security list (see `packages/db/migrations/0001_row_level_security.sql
 - Missed check-ins are found by `GET /api/cron/alerts`, which a scheduler must call every 5 minutes with `Authorization: Bearer $CRON_SECRET`. Calls for help are texted straight away and do not depend on the scheduler.
 - Every text is recorded in `sms_message` before it is sent, with `ok`, the provider's reference and any error. Managers see the last 10 under "Recent texts" on the Lone working page. A failed send is also logged at error level ("text message failed").
 - If alerts stop arriving: check "Recent texts" for errors, check the provider account has credit, and check the scheduler is calling the alerts route (the log line "alert check ran" appears on each call).
+- The same provider texts invitation links (when a manager ticks "Text the link") and rota changes to staff who turned on "Text me when my rota changes" on their own page. Invitation texts are logged with the link replaced by `<link>`, because the link signs someone in. A failed rota text is logged ("rota change texts failed" or "text message failed") and never undoes the rota change.
 
 ## Phone app and offline shifts
 

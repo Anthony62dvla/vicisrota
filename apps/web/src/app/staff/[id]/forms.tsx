@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { addCheck, addTraining, inviteStaff, updateHolidaySettings, type FormState, type InviteState } from "./actions";
+import { addCheck, addTraining, inviteStaff, setMobile, updateHolidaySettings, type FormState, type InviteState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 const button = "rounded-lg bg-zinc-900 px-4 py-2 text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900";
@@ -126,7 +126,8 @@ export function HolidaySettingsForm({
   );
 }
 
-export function InviteForm({ workerId, name }: { workerId: string; name: string }) {
+/** mobile is shown formatted, e.g. "07700 900123", or null when none is saved. */
+export function InviteForm({ workerId, name, mobile }: { workerId: string; name: string; mobile: string | null }) {
   const [state, action, pending] = useActionState<InviteState, FormData>(inviteStaff, {});
   const [copied, setCopied] = useState(false);
   return (
@@ -145,8 +146,31 @@ export function InviteForm({ workerId, name }: { workerId: string; name: string 
           </button>
         </div>
       )}
+      {mobile && (
+        <label className="flex items-center gap-2">
+          <input type="checkbox" name="byText" defaultChecked /> Text the link to {mobile}
+        </label>
+      )}
       <button type="submit" disabled={pending} className={`${button} self-start`}>
         {pending ? "Creating link…" : state.link ? "Create a new link" : `Invite ${name} to log in`}
+      </button>
+    </form>
+  );
+}
+
+export function MobileForm({ workerId, mobile }: { workerId: string; mobile: string | null }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(setMobile, {});
+  return (
+    <form key={state.values?.mobile ?? ""} action={action} className="mt-3 flex max-w-xl flex-col gap-3">
+      <input type="hidden" name="workerId" value={workerId} />
+      <Message state={state} />
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">UK mobile</span>
+        <span className="text-sm text-zinc-600 dark:text-zinc-400">Used to text them their invitation. Leave empty to remove it.</span>
+        <input name="mobile" type="tel" autoComplete="off" defaultValue={state.values?.mobile ?? mobile ?? ""} placeholder="07700 900123" className={`${input} max-w-xs`} />
+      </label>
+      <button type="submit" disabled={pending} className="self-start rounded-lg border border-zinc-400 px-4 py-2">
+        {pending ? "Saving…" : "Save number"}
       </button>
     </form>
   );

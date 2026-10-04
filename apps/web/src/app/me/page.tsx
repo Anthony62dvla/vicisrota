@@ -12,7 +12,8 @@ import { SHORT_NOTICE_HOURS } from "@/lib/notices";
 import { todayInUk } from "@/lib/rota";
 import { SignOutButton } from "../dashboard/sign-out";
 import { markNoticesSeen, savePreferences, setCoverRequest, withdrawClaim, withdrawRequest } from "./actions";
-import { ClockButtons, LoneCheckIn, PickUpList, PinForm, TimeOffForm } from "./forms";
+import { formatUkMobile } from "@vicisrota/messaging";
+import { ClockButtons, LoneCheckIn, PickUpList, PinForm, TextSettingsForm, TimeOffForm } from "./forms";
 import { OfflineNotice } from "./offline-notice";
 
 const MINUTE = 60_000;
@@ -379,6 +380,11 @@ export default async function MyPage() {
           <PinForm hasPin={!!worker.pinHash} />
         </section>
       )}
+
+      <section className="mt-10" aria-labelledby="texts-heading">
+        <h2 id="texts-heading" className="text-lg font-semibold">Texts about your rota</h2>
+        <TextSettingsForm mobile={worker.mobile ? formatUkMobile(worker.mobile) : null} textChanges={!!worker.preferences.textChanges} />
+      </section>
 
       <section className="mt-10" aria-labelledby="install-heading">
         <h2 id="install-heading" className="text-lg font-semibold">Put VicisRota on your phone</h2>

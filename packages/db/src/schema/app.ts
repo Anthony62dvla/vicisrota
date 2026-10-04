@@ -111,8 +111,10 @@ export const worker = pgTable(
     pinHash: text("pin_hash"),
     pinFailures: smallint("pin_failures").notNull().default(0),
     pinLockedUntil: timestamp("pin_locked_until", { withTimezone: true }),
-    /** How the person likes their own pages shown: calm mode (fewer things at once) and larger text. */
-    preferences: jsonb("preferences").$type<{ calm?: boolean; largeText?: boolean }>().notNull().default({}),
+    /** UK mobile in E.164 form, for texting an invitation and, if they ask, rota changes. */
+    mobile: text("mobile"),
+    /** How the person likes their own pages shown (calm mode, larger text), and whether they want rota changes texted. */
+    preferences: jsonb("preferences").$type<{ calm?: boolean; largeText?: boolean; textChanges?: boolean }>().notNull().default({}),
     createdAt: createdAt(),
   },
   (t) => [

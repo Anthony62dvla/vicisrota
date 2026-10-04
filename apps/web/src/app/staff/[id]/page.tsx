@@ -7,7 +7,8 @@ import { db } from "@/lib/db";
 import { formatAmount, loadBalances } from "@/lib/leave";
 import { todayInUk } from "@/lib/rota";
 import { removeTraining } from "./actions";
-import { AddCheckForm, AddTrainingForm, HolidaySettingsForm, InviteForm } from "./forms";
+import { formatUkMobile } from "@vicisrota/messaging";
+import { AddCheckForm, AddTrainingForm, HolidaySettingsForm, InviteForm, MobileForm } from "./forms";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DBS_LABEL = { basic: "Basic", standard: "Standard", enhanced: "Enhanced", enhanced_barred: "Enhanced with barred list" };
@@ -53,6 +54,11 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
       </p>
       <h1 className="mt-2 text-2xl font-semibold">{worker.fullName}</h1>
 
+      <section id="mobile" className="mt-8 scroll-mt-4">
+        <h2 className="text-lg font-semibold">Mobile number</h2>
+        <MobileForm workerId={worker.id} mobile={worker.mobile ? formatUkMobile(worker.mobile) : null} />
+      </section>
+
       <section id="login" className="mt-8 scroll-mt-4">
         <h2 className="text-lg font-semibold">Login</h2>
         {login ? (
@@ -63,7 +69,7 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
               Give {worker.fullName} their own login to see their shifts, add them to their phone calendar and ask for time off.
               They only ever see their own information.
             </p>
-            <InviteForm workerId={worker.id} name={worker.fullName} />
+            <InviteForm workerId={worker.id} name={worker.fullName} mobile={worker.mobile ? formatUkMobile(worker.mobile) : null} />
           </>
         )}
       </section>
