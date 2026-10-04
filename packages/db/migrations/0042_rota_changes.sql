@@ -1,0 +1,1 @@
+ALTER TYPE "public"."notice_kind" ADD VALUE 'changed' BEFORE 'cancelled';

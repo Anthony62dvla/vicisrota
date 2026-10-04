@@ -19,8 +19,60 @@ const MINUTE = 60_000;
 
 export type FormState = { error?: string; ok?: string };
 
-export async function addShift(_: FormState, form: FormData): Promise<FormState> {
-  const { user, organisationId } = await requireManager();
+type Shift = typeof schema.shift.$inferSelect;
+type Tx = Parameters<Parameters<typeof withOrganisation>[2]>[0];
+
+/** Thrown inside a transaction to undo a change that would break the law on a published rota. */
+class Refused extends Error {}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/**
+ * Runs after a shift is added, edited or moved, inside the same transaction. A published shift must stay
+ * legal, so a change that breaks a rule is undone. A draft is saved either way, and the reply says what
+ * to fix before publishing, so problems show while the rota is being built rather than at the end.
+ * People on a published shift are told when it changes.
+ */
+const afterChange = async (tx: Tx, organisationId: string, before: Shift | null, after: Shift) => {
+  const check = after.workerId ? await checkAssignment(tx, organisationId, after.id, after.workerId) : null;
+  const blocks = check?.blocks ?? [];
+  const warnings = check?.warnings ?? [];
+  if (after.status === "published" && blocks.length) throw new Refused(`This shift is published, so the change was not saved: ${blocks.map((f) => f.message).join(" ")}`);
+
+  let notices: Notice[] = [];
+  if (after.status === "published" && before) {
+    const times = { shiftId: after.id, startsAt: after.startsAt, endsAt: after.endsAt };
+    if (before.workerId !== after.workerId) {
+      notices = await notify(tx, organisationId, [
+        { ...times, workerId: after.workerId, kind: "added" },
+        { ...times, workerId: before.workerId, kind: after.workerId ? "taken_by_colleague" : "cancelled" },
+      ]);
+    } else if (before.startsAt.getTime() !== after.startsAt.getTime() || before.endsAt.getTime() !== after.endsAt.getTime()) {
+      notices = await notify(tx, organisationId, [{ ...times, workerId: after.workerId, kind: "changed" }]);
+    }
+  }
+  if (after.workerId && before?.workerId !== after.workerId) {
+    // Anyone who asked to pick this shift up is told it has gone.
+    await tx
+      .update(schema.shiftClaim)
+      .set({ status: "declined", decidedAt: new Date() })
+      .where(and(eq(schema.shiftClaim.shiftId, after.id), eq(schema.shiftClaim.status, "requested")));
+  }
+  const problems = [...blocks.map((f) => `Must fix: ${f.message}`), ...warnings.map((f) => `Check: ${f.message}`)];
+  return { notices, problems, checked: !!check, published: after.status === "published" };
+};
+
+const savedMessage = (what: string, change: { problems: string[]; checked: boolean; published: boolean }) =>
+  change.problems.length
+    ? `${what} ${plural(change.problems.length, "thing")} to look at${change.published ? "" : " before publishing"}: ${change.problems.join(" ")}`
+    : change.checked
+      ? `${what} No problems found.`
+      : what;
+
+/** Adds a shift, or edits one when the form has a shiftId. */
+export async function saveShift(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId, businessName } = await requireManager();
+  const shiftId = String(form.get("shiftId") ?? "") || null;
   // Empty means an open shift that staff can ask to pick up.
   const workerId = String(form.get("workerId") ?? "") || null;
   const date = String(form.get("date") ?? "");
@@ -48,54 +100,143 @@ export async function addShift(_: FormState, form: FormData): Promise<FormState>
   if (endsAt <= startsAt) endsAt = londonDateTime(addDays(date, 1), end);
   if (breakMinutes * MINUTE >= endsAt - startsAt) return { error: "The break is longer than the shift." };
 
-  const error = await withOrganisation(db, organisationId, async (tx) => {
-    // Foreign keys skip row-level security, so confirm the person and training belong to this business.
-    if (workerId) {
-      const [worker] = await tx.select({ id: schema.worker.id }).from(schema.worker).where(eq(schema.worker.id, workerId));
-      if (!worker) return "That person could not be found.";
-    }
-    if (clientId) {
-      const [found] = await tx.select({ id: schema.client.id }).from(schema.client).where(eq(schema.client.id, clientId));
-      if (!found) return "That client could not be found.";
-    }
-    if (roleId) {
-      const [found] = await tx.select({ id: schema.jobRole.id }).from(schema.jobRole).where(eq(schema.jobRole.id, roleId));
-      if (!found) return "That job role could not be found.";
-    }
-    if (requires.length) {
-      const known = await tx.select({ id: schema.qualification.id }).from(schema.qualification).where(inArray(schema.qualification.id, requires));
-      if (known.length !== requires.length) return "Some of the training chosen could not be found.";
-    }
-    const [shift] = await tx
-      .insert(schema.shift)
-      .values({ organisationId, workerId, clientId, roleId, travelMinutes, loneWorking, checkInMinutes, note, startsAt: new Date(startsAt), endsAt: new Date(endsAt) })
-      .returning({ id: schema.shift.id });
-    if (breakMinutes > 0) {
-      // Place the break in the middle of the shift; exact break times can be edited later.
-      const breakStart = startsAt + Math.round((endsAt - startsAt - breakMinutes * MINUTE) / 2 / MINUTE) * MINUTE;
-      await tx.insert(schema.shiftBreak).values({
+  let result: FormState & { notices?: Notice[] };
+  try {
+    result = await withOrganisation(db, organisationId, async (tx): Promise<FormState & { notices?: Notice[] }> => {
+      // Foreign keys skip row-level security, so confirm the person and training belong to this business.
+      if (workerId) {
+        const [worker] = await tx.select({ id: schema.worker.id }).from(schema.worker).where(eq(schema.worker.id, workerId));
+        if (!worker) return { error: "That person could not be found." };
+      }
+      if (clientId) {
+        const [found] = await tx.select({ id: schema.client.id }).from(schema.client).where(eq(schema.client.id, clientId));
+        if (!found) return { error: "That client could not be found." };
+      }
+      if (roleId) {
+        const [found] = await tx.select({ id: schema.jobRole.id }).from(schema.jobRole).where(eq(schema.jobRole.id, roleId));
+        if (!found) return { error: "That job role could not be found." };
+      }
+      if (requires.length) {
+        const known = await tx.select({ id: schema.qualification.id }).from(schema.qualification).where(inArray(schema.qualification.id, requires));
+        if (known.length !== requires.length) return { error: "Some of the training chosen could not be found." };
+      }
+      const values = { workerId, clientId, roleId, travelMinutes, loneWorking, checkInMinutes, note, startsAt: new Date(startsAt), endsAt: new Date(endsAt) };
+      let before: Shift | null = null;
+      let after: Shift;
+      if (shiftId) {
+        [before = null] = await tx.select().from(schema.shift).where(and(eq(schema.shift.id, shiftId), ne(schema.shift.status, "cancelled")));
+        if (!before) return { error: "That shift no longer exists. It may have been cancelled." };
+        [after] = (await tx.update(schema.shift).set(values).where(eq(schema.shift.id, shiftId)).returning()) as [Shift];
+        await tx.delete(schema.shiftBreak).where(eq(schema.shiftBreak.shiftId, shiftId));
+        await tx.delete(schema.shiftRequirement).where(eq(schema.shiftRequirement.shiftId, shiftId));
+      } else {
+        [after] = (await tx.insert(schema.shift).values({ organisationId, ...values }).returning()) as [Shift];
+      }
+      if (breakMinutes > 0) {
+        // Place the break in the middle of the shift.
+        const breakStart = startsAt + Math.round((endsAt - startsAt - breakMinutes * MINUTE) / 2 / MINUTE) * MINUTE;
+        await tx.insert(schema.shiftBreak).values({
+          organisationId,
+          shiftId: after.id,
+          startsAt: new Date(breakStart),
+          endsAt: new Date(breakStart + breakMinutes * MINUTE),
+        });
+      }
+      if (requires.length) {
+        await tx.insert(schema.shiftRequirement).values(requires.map((qualificationId) => ({ organisationId, shiftId: after.id, qualificationId })));
+      }
+      const change = await afterChange(tx, organisationId, before, after);
+      await tx.insert(schema.auditEvent).values({
         organisationId,
-        shiftId: shift!.id,
-        startsAt: new Date(breakStart),
-        endsAt: new Date(breakStart + breakMinutes * MINUTE),
+        actorUserId: user.id,
+        requestId: await requestId(),
+        action: before ? "update" : "create",
+        entity: "shift",
+        entityId: after.id,
+        data: { workerId, date, start, end, breakMinutes, requires, clientId, roleId, travelMinutes, loneWorking, checkInMinutes, note: !!note },
       });
-    }
-    if (requires.length) {
-      await tx.insert(schema.shiftRequirement).values(requires.map((qualificationId) => ({ organisationId, shiftId: shift!.id, qualificationId })));
-    }
-    await tx.insert(schema.auditEvent).values({
-      organisationId,
-      actorUserId: user.id,
-      requestId: await requestId(),
-      action: "create",
-      entity: "shift",
-      entityId: shift!.id,
-      data: { workerId, date, start, end, breakMinutes, requires, clientId, roleId, travelMinutes, loneWorking, checkInMinutes, note: !!note },
+      const what = before
+        ? change.notices.length
+          ? "Shift saved. The people affected have been told."
+          : "Shift saved."
+        : `${clientId ? "Visit" : workerId ? "Shift" : "Open shift"} added as a draft.`;
+      return { ok: savedMessage(what, change), notices: change.notices };
     });
-  });
-  if (error) return { error };
+  } catch (error) {
+    if (error instanceof Refused) return { error: error.message };
+    throw error;
+  }
+  const { notices = [], ...state } = result;
+  await textRotaChanges(organisationId, businessName, notices);
   revalidatePath("/rota");
-  return { ok: `${clientId ? "Visit" : workerId ? "Shift" : "Open shift"} added as a draft.` };
+  return state;
+}
+
+const wallClock = (d: Date) => {
+  const p = londonParts(d.getTime());
+  return `${String(p.hour).padStart(2, "0")}:${String(p.minute).padStart(2, "0")}`;
+};
+
+/**
+ * Moves a shift to another person or day, keeping its times, length, breaks and everything else. An
+ * empty workerId makes it an open shift. Used by dragging on the rota and by "Give this shift to".
+ */
+export async function moveShift(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId, businessName } = await requireManager();
+  const shiftId = String(form.get("shiftId") ?? "");
+  const workerId = String(form.get("workerId") ?? "") || null;
+  const date = String(form.get("date") ?? "");
+  if (!DATE.test(date)) return { error: "Choose the day." };
+
+  let result: FormState & { notices?: Notice[] };
+  try {
+    result = await withOrganisation(db, organisationId, async (tx): Promise<FormState & { notices?: Notice[] }> => {
+      const [before] = await tx.select().from(schema.shift).where(and(eq(schema.shift.id, shiftId), ne(schema.shift.status, "cancelled")));
+      if (!before) return { error: "That shift no longer exists. It may have been cancelled." };
+      let name = "nobody yet";
+      if (workerId) {
+        const [worker] = await tx.select({ name: schema.worker.fullName }).from(schema.worker).where(eq(schema.worker.id, workerId));
+        if (!worker) return { error: "That person could not be found." };
+        name = worker.name;
+      }
+      const startsAt = new Date(londonDateTime(date, wallClock(before.startsAt)));
+      const shiftBy = startsAt.getTime() - before.startsAt.getTime();
+      if (before.workerId === workerId && shiftBy === 0) return { ok: "The shift is already there." };
+      const [after] = (await tx
+        .update(schema.shift)
+        .set({ workerId, startsAt, endsAt: new Date(before.endsAt.getTime() + shiftBy), coverRequestedAt: null })
+        .where(eq(schema.shift.id, shiftId))
+        .returning()) as [Shift];
+      if (shiftBy) {
+        const breaks = await tx.select().from(schema.shiftBreak).where(eq(schema.shiftBreak.shiftId, shiftId));
+        for (const b of breaks)
+          await tx
+            .update(schema.shiftBreak)
+            .set({ startsAt: new Date(b.startsAt.getTime() + shiftBy), endsAt: new Date(b.endsAt.getTime() + shiftBy) })
+            .where(eq(schema.shiftBreak.id, b.id));
+      }
+      const change = await afterChange(tx, organisationId, before, after);
+      await tx.insert(schema.auditEvent).values({
+        organisationId,
+        actorUserId: user.id,
+        requestId: await requestId(),
+        action: "move",
+        entity: "shift",
+        entityId: shiftId,
+        data: { fromWorkerId: before.workerId, toWorkerId: workerId, fromStart: before.startsAt.toISOString(), toStart: startsAt.toISOString() },
+      });
+      const when = `${new Date(`${date}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" })}`;
+      const what = workerId ? `Shift moved to ${name} on ${when}.` : `Shift is now open, on ${when}.`;
+      return { ok: savedMessage(what, change), notices: change.notices };
+    });
+  } catch (error) {
+    if (error instanceof Refused) return { error: error.message };
+    throw error;
+  }
+  const { notices = [], ...state } = result;
+  await textRotaChanges(organisationId, businessName, notices);
+  revalidatePath("/rota");
+  return state;
 }
 
 export async function cancelShift(form: FormData) {

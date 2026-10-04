@@ -83,6 +83,7 @@ describe("staff texts", () => {
     const text = rotaChangeText({ business: "Corner Bakery", changes, link: "L" });
     expect(text).toBe("Corner Bakery: your rota has changed.\nNew shift: Mon 5 Oct 08:00-14:00\nNew shift: Tue 6 Oct 08:00-14:00\nNew shift: Wed 7 Oct 08:00-14:00\nand 1 more.\nSee your shifts: L");
     expect(rotaChangeText({ business: "B", changes: [{ kind: "cancelled", when: "Fri 9 Oct 18:00-23:00" }], link: "L" })).toContain("Cancelled: Fri 9 Oct 18:00-23:00");
+    expect(rotaChangeText({ business: "B", changes: [{ kind: "changed", when: "Sat 10 Oct 09:00-15:00" }], link: "L" })).toContain("Changed, now: Sat 10 Oct 09:00-15:00");
     expect(rotaChangeText({ business: "B".repeat(400), changes, link: "L" }).length).toBeLessThanOrEqual(SMS_MAX);
   });
 });

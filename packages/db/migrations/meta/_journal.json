@@ -295,6 +295,13 @@
       "when": 1791153657053,
       "tag": "0041_support",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1791154417948,
+      "tag": "0042_rota_changes",
+      "breakpoints": true
     }
   ]
 }

@@ -175,6 +175,7 @@ export default async function MyPage() {
   const next = data.shifts.find((s) => s.endsAt.getTime() > data.now);
   const NOTICE_TEXT = {
     added: "New shift",
+    changed: "Changed",
     cancelled: "Cancelled",
     given_to_you: "Now yours (you picked it up)",
     taken_by_colleague: "A colleague is covering this",
