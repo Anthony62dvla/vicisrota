@@ -13,3 +13,4 @@ export * from "./loneWorking";
 export * from "./clock";
 export * from "./setup";
 export * from "./rules/availability";
+export * from "./planning";

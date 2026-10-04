@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { addShift, checkAndPublish, decideClaim, type FormState } from "./actions";
+import { addShift, checkAndPublish, copyPreviousWeek, decideClaim, type FormState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 const button = "rounded-lg bg-zinc-900 px-4 py-2 text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900";
@@ -156,5 +156,18 @@ export function ClaimList({ claims }: { claims: Claim[] }) {
         </ul>
       )}
     </div>
+  );
+}
+
+export function CopyWeekForm({ weekStart, count }: { weekStart: string; count: number }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(copyPreviousWeek, {});
+  return (
+    <form action={action} className="flex flex-col items-start gap-2">
+      <input type="hidden" name="weekStart" value={weekStart} />
+      <Message state={state} />
+      <button type="submit" disabled={pending} className="rounded-lg border border-zinc-400 px-4 py-2 disabled:opacity-60">
+        {pending ? "Copying…" : `Copy last week's ${count} shift${count === 1 ? "" : "s"} as drafts`}
+      </button>
+    </form>
   );
 }

@@ -1,8 +1,8 @@
 "use server";
 
-import { addDays, evaluate, londonDateTime, type Finding } from "@vicisrota/compliance";
+import { addDays, evaluate, londonDateTime, londonParts, type Finding } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
-import { and, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, eq, gte, inArray, lt, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
@@ -229,4 +229,83 @@ export async function decideClaim(_: FormState, form: FormData): Promise<FormSta
   await textRotaChanges(organisationId, businessName, notices);
   revalidatePath("/rota");
   return state;
+}
+
+/** The same UK wall-clock time a week later, so a copied shift keeps its times across a clock change. */
+const aWeekLater = (d: Date) => {
+  const p = londonParts(d.getTime());
+  return new Date(londonDateTime(addDays(p.date, 7), `${String(p.hour).padStart(2, "0")}:${String(p.minute).padStart(2, "0")}`));
+};
+
+/**
+ * Copies last week's shifts into this week as drafts, with their breaks, training needs, visits and
+ * lone working settings. A shift already in this week for the same person at the same time is skipped,
+ * so pressing it twice does nothing more. Nobody sees the copies until the week is checked and published.
+ */
+export async function copyPreviousWeek(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const weekStart = String(form.get("weekStart") ?? "");
+  if (!DATE.test(weekStart)) return { error: "Choose a week." };
+  const { from, to } = weekBounds(weekStart);
+  const previous = weekBounds(addDays(weekStart, -7));
+
+  const result = await withOrganisation(db, organisationId, async (tx) => {
+    const source = await tx
+      .select()
+      .from(schema.shift)
+      .where(and(gte(schema.shift.startsAt, previous.from), lt(schema.shift.startsAt, previous.to), ne(schema.shift.status, "cancelled")));
+    if (!source.length) return { copied: 0, skipped: 0 };
+    const existing = await tx
+      .select({ workerId: schema.shift.workerId, startsAt: schema.shift.startsAt, endsAt: schema.shift.endsAt })
+      .from(schema.shift)
+      .where(and(gte(schema.shift.startsAt, from), lt(schema.shift.startsAt, to), ne(schema.shift.status, "cancelled")));
+    const taken = new Set(existing.map((e) => `${e.workerId}|${e.startsAt.getTime()}|${e.endsAt.getTime()}`));
+    const ids = source.map((s) => s.id);
+    const [breaks, requirements] = await Promise.all([
+      tx.select().from(schema.shiftBreak).where(inArray(schema.shiftBreak.shiftId, ids)),
+      tx.select().from(schema.shiftRequirement).where(inArray(schema.shiftRequirement.shiftId, ids)),
+    ]);
+    let copied = 0;
+    for (const s of source) {
+      const startsAt = aWeekLater(s.startsAt);
+      const endsAt = aWeekLater(s.endsAt);
+      if (taken.has(`${s.workerId}|${startsAt.getTime()}|${endsAt.getTime()}`)) continue;
+      const [row] = await tx
+        .insert(schema.shift)
+        .values({
+          organisationId,
+          workerId: s.workerId,
+          locationId: s.locationId,
+          clientId: s.clientId,
+          travelMinutes: s.travelMinutes,
+          loneWorking: s.loneWorking,
+          checkInMinutes: s.checkInMinutes,
+          startsAt,
+          endsAt,
+        })
+        .returning({ id: schema.shift.id });
+      const myBreaks = breaks.filter((b) => b.shiftId === s.id);
+      if (myBreaks.length)
+        await tx.insert(schema.shiftBreak).values(myBreaks.map((b) => ({ organisationId, shiftId: row!.id, startsAt: aWeekLater(b.startsAt), endsAt: aWeekLater(b.endsAt) })));
+      const needs = requirements.filter((r) => r.shiftId === s.id);
+      if (needs.length) await tx.insert(schema.shiftRequirement).values(needs.map((r) => ({ organisationId, shiftId: row!.id, qualificationId: r.qualificationId })));
+      copied++;
+    }
+    await tx.insert(schema.auditEvent).values({
+      organisationId,
+      actorUserId: user.id,
+      requestId: await requestId(),
+      action: "copy_week",
+      entity: "rota",
+      entityId: weekStart,
+      data: { from: addDays(weekStart, -7), copied, skipped: source.length - copied },
+    });
+    return { copied, skipped: source.length - copied };
+  });
+  revalidatePath("/rota");
+  if (!result.copied && !result.skipped) return { error: "Last week has no shifts to copy." };
+  if (!result.copied) return { ok: "Every shift from last week is already in this week. Nothing was copied." };
+  return {
+    ok: `${result.copied} shift${result.copied === 1 ? "" : "s"} copied as drafts${result.skipped ? ` (${result.skipped} already here)` : ""}. Check them, then publish.`,
+  };
 }

@@ -1,4 +1,4 @@
-import { addDays, londonParts, weekStart as mondayOf, type Finding } from "@vicisrota/compliance";
+import { addDays, londonParts, weekCost, weekStart as mondayOf, type Finding } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, asc, desc, eq, gte, inArray, lt, lte, ne } from "drizzle-orm";
 import Link from "next/link";
@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import { LEAVE_LABEL } from "@/lib/leave";
 import { todayInUk, weekBounds } from "@/lib/rota";
 import { cancelShift } from "./actions";
-import { AddShiftForm, ClaimList, PublishForm } from "./forms";
+import { AddShiftForm, ClaimList, CopyWeekForm, PublishForm } from "./forms";
 
 const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" });
 const dayFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" });
@@ -21,7 +21,9 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(week, i));
   const { from, to } = weekBounds(week);
 
-  const { workers, training, clients, shifts, claims, leave, decision } = await withOrganisation(db, organisationId, async (tx) => ({
+  const previous = weekBounds(addDays(week, -7));
+
+  const { workers, training, clients, shifts, claims, leave, decision, rates, breaks, paysTravelTime, lastWeek } = await withOrganisation(db, organisationId, async (tx) => ({
     workers: await tx.select().from(schema.worker).orderBy(asc(schema.worker.fullName)),
     clients:
       sector === "care"
@@ -52,6 +54,19 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
           gte(schema.leaveRequest.endsOn, days[0]!),
         ),
       ),
+    rates: await tx.select().from(schema.payRate),
+    breaks: await tx
+      .select({ shiftId: schema.shiftBreak.shiftId, startsAt: schema.shiftBreak.startsAt, endsAt: schema.shiftBreak.endsAt })
+      .from(schema.shiftBreak)
+      .innerJoin(schema.shift, eq(schema.shiftBreak.shiftId, schema.shift.id))
+      .where(and(gte(schema.shift.startsAt, from), lt(schema.shift.startsAt, to))),
+    paysTravelTime: (await tx.select({ pays: schema.organisation.paysTravelTime }).from(schema.organisation).where(eq(schema.organisation.id, organisationId)))[0]?.pays ?? false,
+    lastWeek: (
+      await tx
+        .select({ id: schema.shift.id })
+        .from(schema.shift)
+        .where(and(gte(schema.shift.startsAt, previous.from), lt(schema.shift.startsAt, previous.to), ne(schema.shift.status, "cancelled")))
+    ).length,
     decision: (
       await tx
         .select()
@@ -70,6 +85,21 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
     return shift ? [{ ...c, shift }] : [];
   });
   const drafts = shifts.filter((s) => s.status === "draft").length;
+  const cost = weekCost(
+    shifts.map((s) => ({
+      id: s.id,
+      workerId: s.workerId,
+      start: s.startsAt.toISOString(),
+      end: s.endsAt.toISOString(),
+      travelMinutesBefore: s.travelMinutes,
+      breaks: breaks.filter((b) => b.shiftId === s.id).map((b) => ({ start: b.startsAt.toISOString(), end: b.endsAt.toISOString() })),
+    })),
+    rates.map((r) => ({ workerId: r.workerId, hourlyPence: r.hourlyPence, effectiveFrom: r.effectiveFrom })),
+    { paysTravelTime },
+  );
+  const money = (pence: number) => (pence / 100).toLocaleString("en-GB", { style: "currency", currency: "GBP" });
+  const hrs = (h: number) => `${+h.toFixed(2)} hour${h === 1 ? "" : "s"}`;
+  const missingNames = workers.filter((w) => cost.missingRate.includes(w.id)).map((w) => w.fullName);
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-12">
@@ -85,6 +115,25 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
           <Link href={`/rota?week=${addDays(week, 7)}`} className="underline">Next week</Link>
         </nav>
       </div>
+
+      {shifts.length > 0 && (
+        <section aria-label="Planned hours and wages" className="mt-4 rounded-lg border border-zinc-300 p-4 dark:border-zinc-700">
+          <p className="text-lg">
+            <span className="font-semibold">{hrs(cost.hours)}</span> planned, <span className="font-semibold">{money(cost.pence)}</span> in wages
+            {cost.openHours > 0 && <>, plus {hrs(cost.openHours)} of open shifts not yet costed</>}.
+          </p>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+            Hourly pay for scheduled time after unpaid breaks{paysTravelTime ? ", including paid travel between visits" : ""}. Holiday pay, employer National Insurance and
+            pension are not included.
+          </p>
+          {missingNames.length > 0 && <p className="mt-2" role="alert">No pay rate for {missingNames.join(", ")} on some of these days, so their wages are missing from the total.</p>}
+        </section>
+      )}
+      {lastWeek > 0 && workers.length > 0 && (
+        <div className="mt-4">
+          <CopyWeekForm weekStart={week} count={lastWeek} />
+        </div>
+      )}
 
       {workers.length === 0 ? (
         <p className="mt-6">
@@ -104,7 +153,14 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
             <tbody>
               {workers.map((w) => (
                 <tr key={w.id} className="align-top">
-                  <th scope="row" className="border-b border-zinc-200 py-2 font-medium dark:border-zinc-800">{w.fullName}</th>
+                  <th scope="row" className="border-b border-zinc-200 py-2 font-medium dark:border-zinc-800">
+                    {w.fullName}
+                    {cost.byWorker.has(w.id) && (
+                      <span className="block text-xs font-normal text-zinc-600 dark:text-zinc-400">
+                        {+cost.byWorker.get(w.id)!.hours.toFixed(2)}h · {money(cost.byWorker.get(w.id)!.pence)}
+                      </span>
+                    )}
+                  </th>
                   {days.map((d) => (
                     <td key={d} className="border-b border-zinc-200 py-2 pr-2 dark:border-zinc-800">
                       {leave
