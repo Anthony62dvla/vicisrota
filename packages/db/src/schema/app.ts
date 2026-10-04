@@ -830,3 +830,50 @@ export const workerRole = pgTable(
   },
   (t) => [primaryKey({ columns: [t.workerId, t.roleId] })],
 );
+
+/** A regular one-to-four week rota, saved so future weeks can be filled from it. */
+export const rotaPattern = pgTable(
+  "rota_pattern",
+  {
+    id: id(),
+    organisationId: orgId(),
+    name: text("name").notNull(),
+    weeks: smallint("weeks").notNull(),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("rota_pattern_org_name_idx").on(t.organisationId, sql`lower(${t.name})`), check("rota_pattern_weeks", sql`${t.weeks} between 1 and 4`)],
+);
+
+/** One shift in a pattern, in UK wall-clock time. A person or role removed later leaves an open shift. */
+export const rotaPatternShift = pgTable(
+  "rota_pattern_shift",
+  {
+    id: id(),
+    organisationId: orgId(),
+    patternId: uuid("pattern_id")
+      .notNull()
+      .references(() => rotaPattern.id, { onDelete: "cascade" }),
+    weekIndex: smallint("week_index").notNull(),
+    /** 0 = Monday ... 6 = Sunday. */
+    weekday: smallint("weekday").notNull(),
+    startTime: text("start_time").notNull(),
+    endTime: text("end_time").notNull(),
+    endsNextDay: boolean("ends_next_day").notNull().default(false),
+    workerId: uuid("worker_id").references(() => worker.id, { onDelete: "set null" }),
+    roleId: uuid("role_id").references(() => jobRole.id, { onDelete: "set null" }),
+    clientId: uuid("client_id").references(() => client.id, { onDelete: "set null" }),
+    locationId: uuid("location_id").references(() => location.id, { onDelete: "set null" }),
+    note: text("note"),
+    travelMinutes: integer("travel_minutes").notNull().default(0),
+    loneWorking: boolean("lone_working").notNull().default(false),
+    checkInMinutes: smallint("check_in_minutes").notNull().default(60),
+    breaks: jsonb("breaks").$type<{ offsetMinutes: number; minutes: number }[]>().notNull().default([]),
+    /** Training the shift needs (qualification ids). */
+    requires: jsonb("requires").$type<string[]>().notNull().default([]),
+  },
+  (t) => [
+    index("rota_pattern_shift_pattern_idx").on(t.patternId),
+    check("rota_pattern_shift_week", sql`${t.weekIndex} between 0 and 3 and ${t.weekday} between 0 and 6`),
+  ],
+);

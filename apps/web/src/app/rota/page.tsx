@@ -132,9 +132,10 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
           {missingNames.length > 0 && <p className="mt-2" role="alert">No pay rate for {missingNames.join(", ")} on some of these days, so their wages are missing from the total.</p>}
         </section>
       )}
-      {lastWeek > 0 && workers.length > 0 && (
-        <div className="mt-4">
-          <CopyWeekForm weekStart={week} count={lastWeek} />
+      {workers.length > 0 && (
+        <div className="mt-4 flex flex-wrap items-start gap-4">
+          {lastWeek > 0 && <CopyWeekForm weekStart={week} count={lastWeek} />}
+          <Link href={`/rota/patterns?week=${week}`} className="rounded-lg border border-zinc-400 px-4 py-2">Rota patterns</Link>
         </div>
       )}
 

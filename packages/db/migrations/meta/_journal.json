@@ -274,6 +274,20 @@
       "when": 1791130681042,
       "tag": "0038_reminders",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1791139496121,
+      "tag": "0039_rota_patterns",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1791139497061,
+      "tag": "0040_rota_patterns_rls",
+      "breakpoints": true
     }
   ]
 }

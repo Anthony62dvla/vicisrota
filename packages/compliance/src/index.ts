@@ -18,3 +18,4 @@ export * from "./ssp";
 export * from "./workingTimeReport";
 export * from "./rules/roles";
 export * from "./reminders";
+export * from "./patterns";
