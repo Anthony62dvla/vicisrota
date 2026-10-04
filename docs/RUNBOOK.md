@@ -77,3 +77,8 @@ Roles (`job_role`, with `worker_role` for who can work each) are optional. A shi
 
 - **Late texts** are off by default. A manager picks 10, 15, 30 or 60 minutes (`organisation.late_alert_minutes`). The `/api/cron/alerts` job then texts the alert contacts once per shift (dedupe key `late:<shift id>`) when nobody has clocked in by then, or at the end of a shorter shift. Nothing is sent for shifts that ended more than 30 minutes ago, so turning texts on never texts about old shifts.
 - **"Why did I get a late text?"** Look in `sms_message` for purpose `late` and the shift id in the dedupe key, then `clock_event` for that shift. A text with a clock-in just after it is normal: the person was late.
+
+## How I work best, and display settings
+
+- **How I work best** (`/me/profile`, `worker.work_profile`): staff write what they bring, what helps them, how they like to hear about changes and how they like to be contacted. It is private until they tick "Let my managers see this"; managers then see it on the staff record (`#work-best`) and the contact line on the Today board. Only sharing and unsharing are audited, never the words. It is separate from agreed adjustments, which managers record.
+- **Display settings** (`/display`, linked in every page footer): larger text, easier reading (Verdana-style font, wider spacing, no italics), softer colours and no movement. They live in the `vr-display` cookie on that device only, so nothing is stored about the person. The root layout turns them into `data-*` flags on `<html>`, styled at the bottom of `globals.css`. "No movement" also stops pages that refresh themselves and shows a refresh button instead. The device's own reduced-motion setting is always followed.

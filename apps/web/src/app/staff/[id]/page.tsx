@@ -6,6 +6,7 @@ import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
 import { formatAmount, loadBalances } from "@/lib/leave";
 import { todayInUk } from "@/lib/rota";
+import { contactSummary, PROFILE_QUESTIONS } from "@/lib/work-profile";
 import { AvailabilityEditor } from "../../availability-editor";
 import { addStaffUnavailable, removeStaffUnavailable, removeTraining } from "./actions";
 import { formatUkMobile } from "@vicisrota/messaging";
@@ -107,6 +108,11 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
         <AvailabilityEditor slots={unavailable} add={addStaffUnavailable} remove={removeStaffUnavailable} workerId={worker.id} you={false} />
       </section>
 
+      <section id="work-best" className="mt-8 scroll-mt-4" aria-labelledby="work-best-heading">
+        <h2 id="work-best-heading" className="text-lg font-semibold">How {worker.fullName} works best</h2>
+        <WorkProfileView name={worker.fullName} profile={worker.workProfile} hasLogin={!!worker.userId} />
+      </section>
+
       <section id="adjustments" className="mt-8 scroll-mt-4">
         <h2 className="text-lg font-semibold">Agreed adjustments</h2>
         <p className="mt-1 text-zinc-600 dark:text-zinc-400">
@@ -190,5 +196,39 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
         />
       </section>
     </main>
+  );
+}
+
+/** The person's own "How I work best", shown only while they choose to share it. */
+function WorkProfileView({ name, profile, hasLogin }: { name: string; profile: typeof schema.worker.$inferSelect.workProfile; hasLogin: boolean }) {
+  if (!profile.shared) {
+    return (
+      <p className="mt-1 text-zinc-600 dark:text-zinc-400">
+        {hasLogin
+          ? `${name} can write about what they bring, what helps them and how they like to be contacted, and choose to share it with you. They have not shared it, and that is their choice.`
+          : `Once ${name} has a login, they can write about what helps them at work and choose to share it with you.`}
+      </p>
+    );
+  }
+  const answers = PROFILE_QUESTIONS.filter((q) => profile[q.key]);
+  const contact = contactSummary(profile);
+  return (
+    <div className="mt-2 rounded-lg border border-brand p-4">
+      <p className="text-sm text-zinc-600 dark:text-zinc-400">In {name}&apos;s own words, shared by them. Please keep it private.</p>
+      {contact && (
+        <p className="mt-2">
+          <span className="font-medium">Best way to contact them:</span> {contact}
+        </p>
+      )}
+      <dl className="mt-2 flex flex-col gap-2">
+        {answers.map((q) => (
+          <div key={q.key}>
+            <dt className="font-medium">{q.label}</dt>
+            <dd className="whitespace-pre-line">{profile[q.key]}</dd>
+          </div>
+        ))}
+      </dl>
+      {!answers.length && !contact && <p className="mt-2">They have shared it but not written anything yet.</p>}
+    </div>
   );
 }

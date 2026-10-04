@@ -47,3 +47,46 @@ body {
 body {
   border-top: 4px solid var(--brand);
 }
+
+/* Display settings (see src/lib/display.ts), chosen per device. */
+html[data-large] {
+  font-size: 118.75%;
+}
+
+html[data-readable] body {
+  font-family: Verdana, Tahoma, "Trebuchet MS", sans-serif;
+  letter-spacing: 0.03em;
+  word-spacing: 0.12em;
+  line-height: 1.7;
+}
+html[data-readable] :is(em, i, cite) {
+  font-style: normal;
+}
+
+html[data-soft] {
+  --background: #fbf7ee;
+  --foreground: #333333;
+}
+@media (prefers-color-scheme: dark) {
+  html[data-soft] {
+    --background: #1f1d1a;
+    --foreground: #d8d4cc;
+  }
+}
+
+html[data-still] *,
+html[data-still] *::before,
+html[data-still] *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

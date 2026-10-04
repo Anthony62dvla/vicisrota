@@ -129,6 +129,7 @@ function AttendanceItem({ row: r }: { row: AttendanceRow }) {
       <p className="text-sm">{detail.join(" · ")}</p>
       {urgent && (
         <p className="mt-1 text-sm">
+          {r.contact && <>Best way to contact them: {r.contact} </>}
           Contact them, or find cover on the{" "}
           <Link href="/rota" className="underline">
             rota

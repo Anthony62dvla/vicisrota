@@ -466,6 +466,17 @@ export default async function MyPage() {
         </section>
       )}
 
+      <section className="mt-10" aria-labelledby="profile-heading">
+        <h2 id="profile-heading" className="text-lg font-semibold">How I work best</h2>
+        <p className="mt-1">
+          Say what you bring, what helps you at work and how you like to be contacted. It is private unless you choose to share it with your
+          managers{worker.workProfile.shared ? ", which you have" : ""}.
+        </p>
+        <Link href="/me/profile" className="mt-2 inline-block rounded-lg border border-zinc-400 px-4 py-2">
+          {Object.keys(worker.workProfile).some((k) => k !== "shared") ? "See or change yours" : "Fill it in"}
+        </Link>
+      </section>
+
       <section className="mt-10" aria-labelledby="texts-heading">
         <h2 id="texts-heading" className="text-lg font-semibold">Texts about your rota</h2>
         <TextSettingsForm mobile={worker.mobile ? formatUkMobile(worker.mobile) : null} textChanges={!!worker.preferences.textChanges} />
@@ -493,6 +504,10 @@ export default async function MyPage() {
           <label className="flex items-center gap-2">
             <input type="checkbox" name="largeText" defaultChecked={largeText} /> Larger text
           </label>
+          <p className="text-sm">
+            More choices, such as easier reading, softer colours and no movement, are in{" "}
+            <Link href="/display?back=/me" className="underline">display settings</Link>.
+          </p>
           <button type="submit" className="self-start rounded-lg border border-zinc-400 px-4 py-2">Save</button>
         </form>
         <p className="mt-6 text-sm text-zinc-600 dark:text-zinc-400">Updated at {updatedAt}.</p>

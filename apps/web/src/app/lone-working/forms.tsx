@@ -1,17 +1,32 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useSyncExternalStore } from "react";
 import { addAlertContact, markDealtWith, type FormState } from "./actions";
 
-/** Keeps the page current while it is left open, so a missed check-in shows without reloading. */
+/**
+ * Keeps the page current while it is left open, so a missed check-in shows without reloading. With the
+ * "No movement" display setting the page stays still and offers a button instead.
+ */
 export function AutoRefresh({ seconds }: { seconds: number }) {
   const router = useRouter();
+  // The setting only changes on a full page load, so there is nothing to subscribe to.
+  const still = useSyncExternalStore(
+    () => () => {},
+    () => document.documentElement.hasAttribute("data-still"),
+    () => false,
+  );
   useEffect(() => {
+    if (still) return;
     const t = setInterval(() => router.refresh(), seconds * 1000);
     return () => clearInterval(t);
-  }, [router, seconds]);
-  return null;
+  }, [router, seconds, still]);
+  if (!still) return null;
+  return (
+    <button type="button" onClick={() => router.refresh()} className="mb-4 rounded-lg border border-zinc-400 px-4 py-2">
+      Refresh this page
+    </button>
+  );
 }
 
 export function DealtWithForm({ shiftId }: { shiftId: string }) {

@@ -50,6 +50,22 @@ const orgId = () =>
     .notNull()
     .references(() => organisation.id, { onDelete: "cascade" });
 
+export const CONTACT_WAYS = ["text", "app", "call", "in_person"] as const;
+export type ContactWay = (typeof CONTACT_WAYS)[number];
+
+export type WorkProfile = {
+  strengths?: string;
+  helps?: string;
+  changes?: string;
+  hardDay?: string;
+  /** Ways they are happy to be contacted about work, best first. */
+  contact?: ContactWay[];
+  /** Phone calls only if it is urgent. */
+  avoidCalls?: boolean;
+  /** Whether managers can see this. Off until the person turns it on. */
+  shared?: boolean;
+};
+
 export const organisation = pgTable("organisation", {
   id: id(),
   name: text("name").notNull(),
@@ -116,12 +132,17 @@ export const worker = pgTable(
     pinLockedUntil: timestamp("pin_locked_until", { withTimezone: true }),
     /** UK mobile in E.164 form, for texting an invitation and, if they ask, rota changes. */
     mobile: text("mobile"),
-    /** How the person likes their own pages shown (calm mode, larger text), and whether they want rota changes texted. */
     /**
      * Adjustments agreed with the person, checked on every rota (Equality Act 2010, s. 20).
      * note says why in their own words and is shown only to them and managers, never on the rota.
      */
     adjustments: jsonb("adjustments").$type<{ maxShiftHours?: number; earliestStart?: string; latestFinish?: string; note?: string }>().notNull().default({}),
+    /**
+     * "How I work best", written by the person in their own words. Managers see it only while shared
+     * is true; it is never shown on the rota, in warnings or in the audit trail.
+     */
+    workProfile: jsonb("work_profile").$type<WorkProfile>().notNull().default({}),
+    /** How the person likes their own pages shown (calm mode, larger text), and whether they want rota changes texted. */
     preferences: jsonb("preferences").$type<{ calm?: boolean; largeText?: boolean; textChanges?: boolean }>().notNull().default({}),
     createdAt: createdAt(),
   },

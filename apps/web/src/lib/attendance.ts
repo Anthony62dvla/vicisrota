@@ -2,10 +2,13 @@ import { addDays, attendance, londonDateTime, londonParts, type AttendanceState 
 import { schema, type Transaction } from "@vicisrota/db";
 import { and, asc, eq, gt, inArray, isNotNull, lt, lte, gte } from "drizzle-orm";
 import { clockSummaries } from "./clock";
+import { contactSummary } from "./work-profile";
 
 export type AttendanceRow = {
   shift: typeof schema.shift.$inferSelect;
   workerName: string;
+  /** How they like to be contacted, only when they have shared it. */
+  contact: string | null;
   roleName: string | null;
   place: string | null;
   state: AttendanceState;
@@ -23,6 +26,7 @@ export const loadAttendance = async (tx: Transaction, opts: { from: Date; to: Da
     .select({
       shift: schema.shift,
       workerName: schema.worker.fullName,
+      workProfile: schema.worker.workProfile,
       roleName: schema.jobRole.name,
       locationName: schema.location.name,
       clientName: schema.client.name,
@@ -59,6 +63,7 @@ export const loadAttendance = async (tx: Transaction, opts: { from: Date; to: Da
     return {
       shift: r.shift,
       workerName: r.workerName,
+      contact: r.workProfile.shared ? contactSummary(r.workProfile) || null : null,
       roleName: r.roleName,
       place: r.clientName ?? r.locationName,
       state,
