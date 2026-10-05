@@ -31,7 +31,7 @@ export default async function StaffRecordPage({ params, searchParams }: PageProp
       worker,
       checks: await tx.select().from(schema.workerCheck).where(eq(schema.workerCheck.workerId, id)).orderBy(desc(schema.workerCheck.checkedOn)),
       training: await tx
-        .select({ id: schema.workerQualification.id, name: schema.qualification.name, achievedOn: schema.workerQualification.achievedOn, expiresOn: schema.workerQualification.expiresOn })
+        .select({ id: schema.workerQualification.id, name: schema.qualification.name, achievedOn: schema.workerQualification.achievedOn, expiresOn: schema.workerQualification.expiresOn, reference: schema.workerQualification.reference })
         .from(schema.workerQualification)
         .innerJoin(schema.qualification, eq(schema.workerQualification.qualificationId, schema.qualification.id))
         .where(eq(schema.workerQualification.workerId, id))
@@ -167,6 +167,9 @@ export default async function StaffRecordPage({ params, searchParams }: PageProp
             {dbs.map((c) => (
               <li key={c.id}>
                 {c.dbsLevel ? DBS_LABEL[c.dbsLevel] : "DBS"}, checked {ukDate(c.checkedOn)}
+                {c.updateService && ", on the Update Service"}
+                {c.expiresOn && `, recheck due ${ukDate(c.expiresOn)}`}
+                {c.expiresOn && c.expiresOn < today ? " (overdue)" : ""}
               </li>
             ))}
           </ul>
@@ -174,7 +177,7 @@ export default async function StaffRecordPage({ params, searchParams }: PageProp
         <AddCheckForm workerId={worker.id} />
       </section>
 
-      <section className="mt-10">
+      <section id="training" className="mt-10 scroll-mt-4">
         <h2 className="text-lg font-semibold">Training and qualifications</h2>
         {training.length === 0 ? (
           <p className="mt-2">No training recorded.</p>
@@ -185,6 +188,7 @@ export default async function StaffRecordPage({ params, searchParams }: PageProp
                 <span>
                   {t.name}
                   {t.expiresOn && (t.expiresOn < today ? `, expired ${ukDate(t.expiresOn)}` : `, valid until ${ukDate(t.expiresOn)}`)}
+                  {t.reference && <span className="text-muted"> · number {t.reference}</span>}
                 </span>
                 <form action={removeTraining}>
                   <input type="hidden" name="id" value={t.id} />
