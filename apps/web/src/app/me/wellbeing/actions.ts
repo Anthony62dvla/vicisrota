@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireStaff } from "@/lib/business";
 import { db } from "@/lib/db";
+import { getMessages } from "@/lib/i18n/server";
 import { ANSWERS, NOTE_MAX, pendingCheckIns, tellManagersAboutChat } from "@/lib/wellbeing";
 
 export type FormState = { error?: string; ok?: string; values?: Record<string, string> };
@@ -23,8 +24,8 @@ export async function saveWellbeingSettings(_: FormState, form: FormData): Promi
   );
   revalidatePath("/me/wellbeing");
   revalidatePath("/me");
-  if (!on) return { ok: "Saved. You will not be asked. You can turn check-ins on again at any time." };
-  return { ok: `Saved. We will ask after ${after === "every" ? "every shift" : "long shifts and nights"}. ${share ? "Your managers can see your answers." : "Only you can see your answers."}` };
+  const t = (await getMessages()).wellbeing;
+  return { ok: on ? t.savedOn(after === "every", share) : t.savedOff };
 }
 
 /** Answers, or skips, the check-in for one shift. */
@@ -35,9 +36,10 @@ export async function checkIn(_: FormState, form: FormData): Promise<FormState> 
   const answer = skip ? null : Number(form.get("answer"));
   const note = skip ? null : String(form.get("note") ?? "").trim() || null;
   const wantsChat = !skip && form.get("wantsChat") === "on";
+  const t = (await getMessages()).wellbeing;
   const values = { answer: String(answer ?? ""), note: note ?? "", wantsChat: wantsChat ? "on" : "" };
-  if (!skip && !ANSWERS.some((a) => a.value === answer)) return { error: "Choose how your shift was, or skip it.", values };
-  if (note && note.length > NOTE_MAX) return { error: `Keep the note to ${NOTE_MAX.toLocaleString("en-GB")} characters or fewer.`, values };
+  if (!skip && !ANSWERS.some((a) => a.value === answer)) return { error: t.chooseOrSkip, values };
+  if (note && note.length > NOTE_MAX) return { error: t.noteTooLong(NOTE_MAX), values };
   const saved = await withOrganisation(db, organisationId, async (tx) => {
     const pending = await pendingCheckIns(tx, worker.id, new Date().getTime());
     if (!pending.some((s) => s.id === shiftId)) return false;
@@ -47,12 +49,12 @@ export async function checkIn(_: FormState, form: FormData): Promise<FormState> 
       .onConflictDoNothing();
     return true;
   });
-  if (!saved) return { error: "That check-in has closed. Thank you anyway." };
+  if (!saved) return { error: t.closed };
   if (wantsChat) await tellManagersAboutChat(organisationId, worker.fullName);
   revalidatePath("/me/wellbeing");
   revalidatePath("/me");
   // The thank-you is shown by the page itself, because this form goes once the check-in is saved.
-  return { ok: "Saved." };
+  return { ok: t.saved };
 }
 
 /** Deletes one of the person's own check-ins. */

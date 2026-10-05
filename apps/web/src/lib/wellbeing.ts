@@ -1,5 +1,6 @@
 import { CHECK_IN_HOURS, checkInDue } from "@vicisrota/compliance";
 import { schema, withOrganisation, type Transaction as Tx } from "@vicisrota/db";
+import { checkInNotice, langOf } from "@vicisrota/messaging";
 import { and, eq, gte, inArray, lte, ne } from "drizzle-orm";
 import { db } from "./db";
 import { notifyWorkers } from "./notify";
@@ -18,9 +19,10 @@ export const NOTE_MAX = 1000;
 
 const recentlyEnded = (tx: Tx, now: number, workerIds?: string[]) =>
   tx
-    .select({ shift: schema.shift, worker: { id: schema.worker.id, preferences: schema.worker.preferences } })
+    .select({ shift: schema.shift, worker: { id: schema.worker.id, preferences: schema.worker.preferences }, language: schema.user.language })
     .from(schema.shift)
     .innerJoin(schema.worker, eq(schema.shift.workerId, schema.worker.id))
+    .leftJoin(schema.user, eq(schema.worker.userId, schema.user.id))
     .where(
       and(
         eq(schema.shift.status, "published"),
@@ -71,8 +73,7 @@ export const offerCheckIns = async (organisationId: string, businessName: string
     due.map((r) => ({
       workerId: r.worker.id,
       purpose: "wellbeing",
-      title: `${businessName}: how was your shift?`,
-      body: "A quick, private check-in. Skip it if you like.",
+      ...checkInNotice(businessName, langOf(r.language)),
       url: "/me/wellbeing",
       dedupeKey: `wellbeing:${r.shift.id}`,
     })),

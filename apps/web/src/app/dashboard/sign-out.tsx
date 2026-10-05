@@ -5,7 +5,7 @@ import { authClient } from "@/lib/auth-client";
 import { clearSavedPages } from "@/lib/offline";
 import { Icon } from "../icons";
 
-export function SignOutButton() {
+export function SignOutButton({ label = "Sign out" }: { label?: string }) {
   const router = useRouter();
   return (
     <button
@@ -18,7 +18,7 @@ export function SignOutButton() {
       className="flex items-center gap-1.5 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
     >
       <Icon name="signOut" className="h-4 w-4" />
-      Sign out
+      {label}
     </button>
   );
 }

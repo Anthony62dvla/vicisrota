@@ -11,6 +11,13 @@ export type Nav = {
   sections: NavSection[];
   /** Shown in the bar along the bottom of a phone screen. Everything else is under "More". */
   phoneBar: NavItem[];
+  /** The words around the menu, in the person's language. */
+  /**
+   * The language of the menu, for screen readers. Pages not yet translated stay in English, so the
+   * language is set on the translated parts rather than the whole page.
+   */
+  lang: string;
+  words: { skip: string; more: string; close: string; signOut: string; businesses: string; menu: string };
 };
 
 const item = (href: string, label: string, icon: IconName, exact = false): NavItem => ({ href, label, icon, exact });

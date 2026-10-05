@@ -5,6 +5,9 @@ import Link from "next/link";
 import { requireStaff } from "@/lib/business";
 import { db } from "@/lib/db";
 import { spokenLength, spokenTime, timeOfDay } from "@/lib/easy-read";
+import { localeOf } from "@vicisrota/messaging";
+import { getLang } from "@/lib/i18n/server";
+import { messagesFor } from "@/lib/i18n";
 import { todayInUk } from "@/lib/rota";
 import { ReadAloud } from "./read-aloud";
 
@@ -41,7 +44,6 @@ function Line({ picture, children }: { picture: Picture; children: React.ReactNo
 }
 
 const firstName = (name: string) => name.split(/\s+/)[0] ?? name;
-const listWords = (items: string[]) => (items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`);
 
 /**
  * Easy Read rota: the person's next two weeks, one shift per card, in short sentences with a picture each
@@ -50,6 +52,10 @@ const listWords = (items: string[]) => (items.length <= 1 ? items.join("") : `${
 export default async function EasyReadPage() {
   const { organisationId, businessName, worker } = await requireStaff();
   const today = todayInUk();
+  const lang = await getLang();
+  const locale = localeOf(lang);
+  const t = messagesFor(lang).easyRead;
+  const listWords = (items: string[]) => new Intl.ListFormat(locale, { type: "conjunction" }).format(items);
   const from = new Date(londonDateTime(today, "00:00"));
   const to = new Date(londonDateTime(addDays(today, WEEKS_AHEAD * 7), "00:00"));
 
@@ -86,8 +92,8 @@ export default async function EasyReadPage() {
 
   const cards = data.shifts.map(({ shift, place, role, client }) => {
     const date = londonParts(shift.startsAt.getTime()).date;
-    const day = new Date(`${date}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" });
-    const when = date === today ? `Today, ${day}` : date === addDays(today, 1) ? `Tomorrow, ${day}` : day;
+    const day = new Date(`${date}T12:00:00Z`).toLocaleDateString(locale, { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" });
+    const when = date === today ? t.today(day) : date === addDays(today, 1) ? t.tomorrow(day) : day;
     const breakMinutes = Math.round(
       data.breaks.filter((b) => b.shiftId === shift.id).reduce((m, b) => m + (b.endsAt.getTime() - b.startsAt.getTime()), 0) / MINUTE,
     );
@@ -96,32 +102,32 @@ export default async function EasyReadPage() {
       ...new Set(data.colleagues.filter((c) => c.startsAt < shift.endsAt && c.endsAt > shift.startsAt).map((c) => firstName(c.name))),
     ];
     const lines: { picture: Picture; text: string }[] = [
-      { picture: timeOfDay(shift.startsAt), text: `You start at ${spokenTime(shift.startsAt)}.` },
-      { picture: "finish", text: `You finish at ${spokenTime(shift.endsAt)}. That is ${spokenLength(worked)} of work.` },
-      { picture: "break", text: breakMinutes ? `You have a break of ${spokenLength(breakMinutes)}.` : "There is no set break on this shift." },
-      { picture: "place", text: client ? `You are visiting ${client}.` : `You are working at ${place ?? businessName}.` },
-      ...(role ? [{ picture: "role" as const, text: `You are working as ${role}.` }] : []),
-      { picture: "people", text: with_.length ? `Working at the same time: ${listWords(with_)}.` : "Nobody else is on the rota at the same time." },
-      ...(shift.note ? [{ picture: "note" as const, text: `What to expect: ${shift.note}` }] : []),
+      { picture: timeOfDay(shift.startsAt), text: t.start(spokenTime(shift.startsAt, lang)) },
+      { picture: "finish", text: t.finish(spokenTime(shift.endsAt, lang), spokenLength(worked, lang)) },
+      { picture: "break", text: breakMinutes ? t.breakFor(spokenLength(breakMinutes, lang)) : t.noBreak },
+      { picture: "place", text: client ? t.visiting(client) : t.workingAt(place ?? businessName) },
+      ...(role ? [{ picture: "role" as const, text: t.workingAs(role) }] : []),
+      { picture: "people", text: with_.length ? t.with(listWords(with_)) : t.alone },
+      ...(shift.note ? [{ picture: "note" as const, text: t.expect(shift.note) }] : []),
     ];
-    const split = shift.splitGroupId ? " This is one part of a split shift. Clock in and out for each part." : "";
+    const split = shift.splitGroupId ? ` ${t.split}` : "";
     return { id: shift.id, when, lines, speech: `${when}. ${lines.map((l) => l.text).join(" ")}${split}`, split };
   });
 
   return (
-    <main className="mx-auto w-full max-w-2xl px-4 py-8 lg:px-8">
-      <h1 className="text-3xl font-semibold">Your shifts, made simple</h1>
-      <p className="mt-2 text-xl">Your shifts for the next {WEEKS_AHEAD} weeks. Each one has pictures and a button that reads it out loud.</p>
+    <main lang={locale} className="mx-auto w-full max-w-2xl px-4 py-8 lg:px-8">
+      <h1 className="text-3xl font-semibold">{t.title}</h1>
+      <p className="mt-2 text-xl">{t.intro(WEEKS_AHEAD)}</p>
       <p className="mt-2">
-        <Link href="/me" className="underline">Back to My shifts</Link>
+        <Link href="/me" className="underline">{t.back}</Link>
       </p>
 
       {cards.length === 0 ? (
-        <p className="mt-8 text-xl">You have no shifts in the next {WEEKS_AHEAD} weeks. When your manager adds some, they will show here.</p>
+        <p className="mt-8 text-xl">{t.none(WEEKS_AHEAD)}</p>
       ) : (
         <>
           <div className="mt-6">
-            <ReadAloud text={cards.map((c) => c.speech).join(" ")} label="Read all my shifts aloud" />
+            <ReadAloud text={cards.map((c) => c.speech).join(" ")} label={t.readAll} stop={t.stop} locale={locale} />
           </div>
           <ol className="mt-6 flex flex-col gap-6">
             {cards.map((c) => (
@@ -134,7 +140,7 @@ export default async function EasyReadPage() {
                 </ul>
                 {c.split && <p className="mt-4 text-lg">{c.split.trim()}</p>}
                 <div className="mt-5">
-                  <ReadAloud text={c.speech} />
+                  <ReadAloud text={c.speech} label={t.readAloud} stop={t.stop} locale={locale} />
                 </div>
               </li>
             ))}

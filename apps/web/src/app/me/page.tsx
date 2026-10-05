@@ -21,6 +21,9 @@ import { pushPublicKey } from "@/lib/push";
 import { PushSwitch } from "../push-switch";
 import { ClockButtons, LoneCheckIn, PickUpList, PinForm, ReportSickForm, TextSettingsForm, TimeOffForm } from "./forms";
 import { OfflineNotice } from "./offline-notice";
+import { localeOf } from "@vicisrota/messaging";
+import { messagesFor } from "@/lib/i18n";
+import { getLang } from "@/lib/i18n/server";
 import { AvailabilityEditor } from "../availability-editor";
 import { adjustmentLines } from "@/lib/availability-labels";
 
@@ -46,6 +49,7 @@ function More({ calm, children }: { calm: boolean; children: ReactNode }) {
 
 export default async function MyPage() {
   const { user, organisationId, businessName, worker } = await requireStaff();
+  const lang = await getLang();
   const today = todayInUk();
   const from = new Date(londonDateTime(today, "00:00"));
   const to = new Date(londonDateTime(addDays(today, WEEKS_AHEAD * 7), "00:00"));
@@ -241,6 +245,19 @@ export default async function MyPage() {
       )}
       <h1 className="text-2xl font-semibold">Hello, {user.name}</h1>
       <p className="text-zinc-600 dark:text-zinc-400">{businessName}</p>
+      <p className="mt-1 text-sm">
+        {/* Each word in its own language, so someone who does not read English can still find it. */}
+        <Link href="/display?back=/me#language-heading" className="underline">
+          Language · <span lang="cy">Iaith</span> · <span lang="pl">Język</span> · <span lang="ro">Limba</span>
+        </Link>
+      </p>
+      {lang !== "en" && (
+        <p lang={localeOf(lang)} className="mt-3">
+          <Link href="/me/easy-read" className="inline-block rounded-lg border-2 border-brand px-4 py-2 font-medium text-heading">
+            {messagesFor(lang).me.inYourLanguage}
+          </Link>
+        </p>
+      )}
 
       <OfflineNotice updatedAt={updatedAt} />
 
@@ -654,7 +671,7 @@ export default async function MyPage() {
             <input type="checkbox" name="largeText" defaultChecked={largeText} /> Larger text
           </label>
           <p className="text-sm">
-            More choices, such as easier reading, softer colours and no movement, are in{" "}
+            More choices, such as your language, easier reading, softer colours and no movement, are in{" "}
             <Link href="/display?back=/me" className="underline">display settings</Link>.
           </p>
           <button type="submit" className="self-start rounded-lg border border-zinc-400 px-4 py-2">Save</button>

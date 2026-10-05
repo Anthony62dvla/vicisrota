@@ -2,6 +2,7 @@ import { schema, withOrganisation } from "@vicisrota/db";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { db } from "./db";
 import { CONCERN_CATEGORIES, type ConcernCategory, type FormState } from "./concern-labels";
+import { en, type Messages } from "./i18n/en";
 import { requestId } from "./request";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -14,6 +15,7 @@ const MAX = 10_000;
 export const raiseConcern = async (
   form: FormData,
   by: { organisationId: string; userId: string; name: string; allowedClientIds: Set<string> | "all" },
+  t: Messages["concern"] = en.concern,
 ): Promise<FormState> => {
   const category = String(form.get("category") ?? "") as ConcernCategory;
   const details = String(form.get("details") ?? "").trim();
@@ -27,11 +29,11 @@ export const raiseConcern = async (
     error,
     values: Object.fromEntries([...form.entries()].filter((e): e is [string, string] => typeof e[1] === "string" && !e[0].startsWith("$"))),
   });
-  if (!CONCERN_CATEGORIES.includes(category)) return fail("Choose what the concern is about.");
-  if (!details) return fail("Write what happened or what you noticed. A few words is enough.");
-  if (details.length > MAX || (aboutPerson?.length ?? 0) > 200) return fail("That is too long to save. Please shorten it.");
-  if (happenedOn && !DATE.test(happenedOn)) return fail("Enter the date as day, month and year.");
-  if (clientId && by.allowedClientIds !== "all" && !by.allowedClientIds.has(clientId)) return fail("Choose a client from the list.");
+  if (!CONCERN_CATEGORIES.includes(category)) return fail(t.chooseCategory);
+  if (!details) return fail(t.writeWhat);
+  if (details.length > MAX || (aboutPerson?.length ?? 0) > 200) return fail(t.tooLong);
+  if (happenedOn && !DATE.test(happenedOn)) return fail(t.badDate);
+  if (clientId && by.allowedClientIds !== "all" && !by.allowedClientIds.has(clientId)) return fail(t.badClient);
 
   await withOrganisation(db, by.organisationId, async (tx) => {
     if (clientId) {
@@ -63,9 +65,7 @@ export const raiseConcern = async (
     });
   });
   return {
-    ok: anonymous
-      ? "Thank you. Your concern has been passed to the managers. Because you chose not to give your name, you will not see updates here."
-      : "Thank you. Your concern has been passed to the managers. You can see what is happening with it below.",
+    ok: anonymous ? t.sentAnonymous : t.sent,
   };
 };
 

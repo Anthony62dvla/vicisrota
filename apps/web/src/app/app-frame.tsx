@@ -41,12 +41,13 @@ export function AppFrame({ nav, children }: { nav: Nav | null; children: ReactNo
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <a
+        lang={nav.lang}
         href="#content"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-surface focus:px-4 focus:py-2"
       >
-        Skip to content
+        {nav.words.skip}
       </a>
-      <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur print:hidden">
+      <header lang={nav.lang} className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur print:hidden">
         <div className="flex h-16 items-center gap-3 px-4 lg:px-6">
           <Link href={nav.phoneBar[0]!.href} className="flex items-center gap-2.5 rounded-lg">
             <Logo className="h-9 w-9" />
@@ -60,13 +61,14 @@ export function AppFrame({ nav, children }: { nav: Nav | null; children: ReactNo
           )}
           <div className="ml-auto flex items-center gap-3">
             <span className="hidden text-sm text-muted md:block">{nav.userName}</span>
-            <SignOutButton />
+            <SignOutButton label={nav.words.signOut} />
           </div>
         </div>
       </header>
 
       <div className="flex flex-1">
         <nav
+          lang={nav.lang}
           aria-label="Main"
           className="sticky top-16 hidden h-[calc(100vh-4rem)] w-64 shrink-0 overflow-y-auto border-r border-line bg-surface px-3 py-4 md:block print:hidden"
         >
@@ -78,7 +80,7 @@ export function AppFrame({ nav, children }: { nav: Nav | null; children: ReactNo
       </div>
 
       {/* Phone menu */}
-      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface md:hidden print:hidden">
+      <nav lang={nav.lang} aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface md:hidden print:hidden">
         <ul className="grid grid-cols-5">
           {nav.phoneBar.map((item) => (
             <li key={item.href}>
@@ -94,7 +96,7 @@ export function AppFrame({ nav, children }: { nav: Nav | null; children: ReactNo
               className={`flex w-full flex-col items-center gap-0.5 py-2 text-xs ${!inBar ? "font-semibold text-brand" : "text-muted"}`}
             >
               <Icon name="more" className="h-6 w-6" />
-              More
+              {nav.words.more}
             </button>
           </li>
         </ul>
@@ -159,16 +161,17 @@ function MoreSheet({ nav, pathname, onClose }: { nav: Nav; pathname: string; onC
   return (
     <div
       id="more-menu"
+      lang={nav.lang}
       role="dialog"
       aria-modal="true"
-      aria-label="Menu"
+      aria-label={nav.words.menu}
       className="fixed inset-0 z-40 overflow-y-auto bg-surface px-3 pb-24 pt-4 md:hidden"
     >
       <div className="mb-4 flex items-center justify-between px-3">
         {nav.businesses.length > 1 ? <BusinessSwitcher nav={nav} /> : <p className="font-semibold text-heading">{nav.businessName}</p>}
         <button ref={closeRef} type="button" onClick={onClose} className="flex items-center gap-1 rounded-lg border border-zinc-400 px-3 py-1.5">
           <Icon name="close" className="h-4 w-4" />
-          Close
+          {nav.words.close}
         </button>
       </div>
       <MenuSections nav={nav} pathname={pathname} />
@@ -186,7 +189,7 @@ function BusinessSwitcher({ nav, className = "" }: { nav: Nav; className?: strin
         <span className="sr-only">, switch business</span>
       </summary>
       <div className="absolute left-0 z-50 mt-1 w-72 rounded-xl border border-line bg-surface p-2 shadow-lg">
-        <p className="px-2 pb-1 pt-1 text-xs font-semibold uppercase tracking-wider text-muted">Your businesses</p>
+        <p className="px-2 pb-1 pt-1 text-xs font-semibold uppercase tracking-wider text-muted">{nav.words.businesses}</p>
         <ul>
           {nav.businesses.map((b) => (
             <li key={b.id}>
