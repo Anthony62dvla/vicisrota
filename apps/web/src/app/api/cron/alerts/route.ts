@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { log } from "@/lib/log";
 import { loadLoneShifts } from "@/lib/lone-working";
 import { sendShiftReminders } from "@/lib/reminders-send";
+import { deleteOldApplications } from "@/lib/hiring";
 import { offerCheckIns } from "@/lib/wellbeing";
 import { appUrl, textAlertContacts } from "@/lib/sms";
 
@@ -63,6 +64,7 @@ export async function GET(request: Request) {
 
     reminders += await sendShiftReminders(business, now);
     reminders += await offerCheckIns(business.id, business.name, now);
+    await deleteOldApplications(business.id, now);
 
     if (business.lateAlertMinutes === null) continue;
     // Late texts stop half an hour after a shift ends, so only shifts still running or just finished matter.

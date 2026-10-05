@@ -17,10 +17,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DBS_LABEL = { basic: "Basic", standard: "Standard", enhanced: "Enhanced", enhanced_barred: "Enhanced with barred list" };
 const ukDate = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" });
 
-export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]">) {
+export default async function StaffRecordPage({ params, searchParams }: PageProps<"/staff/[id]">) {
   const { organisationId } = await requireManager();
   const { id } = await params;
   if (!UUID.test(id)) notFound();
+  const welcome = (await searchParams).welcome === "1";
   const today = todayInUk();
 
   const data = await withOrganisation(db, organisationId, async (tx) => {
@@ -63,6 +64,17 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
         <Link href="/staff" className="text-sm text-muted underline">All staff</Link>
       </p>
       <h1 className="mt-2 text-2xl font-semibold">{worker.fullName}</h1>
+      {welcome && (
+        <div role="status" className="mt-4 rounded-lg border border-brand bg-brand-soft p-4">
+          <p className="font-medium">{worker.fullName} has been added to your staff. Next steps:</p>
+          <ol className="mt-2 list-decimal pl-5">
+            <li><a href="#right-to-work" className="underline">Check their right to work</a> before their first shift. The law requires it.</li>
+            {checks.length === 0 && <li><a href="#dbs" className="underline">Record a DBS check</a> if their role needs one.</li>}
+            <li><a href="#roles" className="underline">Choose the roles</a> they will work.</li>
+            <li><a href="#login" className="underline">Send them an invitation</a> so they can see their shifts on their phone.</li>
+          </ol>
+        </div>
+      )}
 
       <section id="roles" className="mt-8 scroll-mt-4" aria-labelledby="roles-heading">
         <h2 id="roles-heading" className="text-lg font-semibold">Job roles</h2>

@@ -1221,3 +1221,54 @@ export const wellbeingCheckIn = pgTable(
   },
   (t) => [uniqueIndex("wellbeing_check_in_shift_idx").on(t.workerId, t.shiftId), index("wellbeing_check_in_org_idx").on(t.organisationId, t.createdAt)],
 );
+
+export const applicantStatus = pgEnum("applicant_status", ["new", "shortlisted", "interview", "offered", "hired", "not_progressed"]);
+
+/** A job advert. Its public page is /jobs/{organisationId}/{id}, open to anyone while status is open. */
+export const jobPost = pgTable(
+  "job_post",
+  {
+    id: id(),
+    organisationId: orgId(),
+    title: text("title").notNull(),
+    roleId: uuid("role_id").references(() => jobRole.id, { onDelete: "set null" }),
+    /** Where, hours and pay, in the manager's words. */
+    place: text("place"),
+    hours: text("hours"),
+    pay: text("pay"),
+    description: text("description").notNull(),
+    open: boolean("open").notNull().default(true),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("job_post_org_idx").on(t.organisationId, t.createdAt)],
+);
+
+/**
+ * Someone who applied for a job. Deleted automatically six months after applying unless hired (UK GDPR:
+ * kept no longer than needed). Once hired, their details move to a staff record and this is kept as the link.
+ */
+export const applicant = pgTable(
+  "applicant",
+  {
+    id: id(),
+    organisationId: orgId(),
+    jobPostId: uuid("job_post_id")
+      .notNull()
+      .references(() => jobPost.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    email: text("email"),
+    phone: text("phone"),
+    /** How they would like to be contacted: email, phone or text. */
+    contactBy: text("contact_by"),
+    about: text("about").notNull(),
+    /** Anything that would help them at an interview, in their own words. */
+    adjustments: text("adjustments"),
+    status: applicantStatus("status").notNull().default("new"),
+    /** Manager's notes. Applicants can ask to see these (subject access), so keep them factual. */
+    notes: text("notes"),
+    hiredWorkerId: uuid("hired_worker_id").references(() => worker.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("applicant_post_idx").on(t.jobPostId, t.createdAt)],
+);
