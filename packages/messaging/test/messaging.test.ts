@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { spokenLength, spokenTime, checkInNotice, dayWord, langOf, isQuiet, tellsChanges, wantsTexts, formatUkMobile, helpAlert, httpSender, inviteText, lateAlert, reminderNotice, reminderText, rotaChangeNotice, normaliseUkMobile, overdueAlert, rotaChangeText, senderFromEnv, SMS_MAX } from "../src";
+import { spokenLength, spokenTime, checkInNotice, dayWord, langOf, isQuiet, tellsChanges, wantsTexts, formatUkMobile, helpAlert, httpSender, inviteText, lateAlert, reminderNotice, reminderText, rotaChangeNotice, normaliseUkMobile, overdueAlert, rotaChangeText, senderFromEnv, SMS_MAX, SMS_SINGLE } from "../src";
 
 describe("UK mobile numbers", () => {
   it("accepts common formats", () => {
@@ -75,8 +75,14 @@ describe("alert texts", () => {
 describe("staff texts", () => {
   it("invite says who, why and how long the link works", () => {
     expect(inviteText({ business: "Corner Bakery", link: "https://vicisrota.app/join/abc", days: 7 })).toBe(
-      "Corner Bakery has invited you to VicisRota to see your shifts and ask for time off. Set up your login here (works once, for 7 days): https://vicisrota.app/join/abc",
+      "Corner Bakery invited you to VicisRota. Set up your login within 7 days: https://vicisrota.app/join/abc",
     );
+  });
+  it("invite fits in one text with a real link, even for a long business name", () => {
+    const link = `https://www.vicisrota.app/join/${"x".repeat(43)}`;
+    const text = inviteText({ business: "Sunnyside Children's Residential Home Ltd", link, days: 7 });
+    expect(text.length).toBeLessThanOrEqual(SMS_SINGLE);
+    expect(text.endsWith(link)).toBe(true);
   });
   it("rota changes are listed one per line, with a count when there are many", () => {
     const changes = ["Mon 5 Oct 08:00-14:00", "Tue 6 Oct 08:00-14:00", "Wed 7 Oct 08:00-14:00", "Thu 8 Oct 08:00-14:00"].map((when) => ({ kind: "added" as const, when }));
