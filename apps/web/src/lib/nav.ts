@@ -51,7 +51,7 @@ export const managerNav = (sector: Sector, superadmin: boolean, kind: string | n
   {
     title: "Safety",
     items: [
-      item("/roll-call", "Fire roll call", "rollCall"), item("/lone-working", "Lone working", "loneWorking"), item("/safeguarding", "Safeguarding", "safeguarding"),
+      item("/checks", "Checks due", "checksDue"), item("/roll-call", "Fire roll call", "rollCall"), item("/lone-working", "Lone working", "loneWorking"), item("/safeguarding", "Safeguarding", "safeguarding"),
       ...(has.inspection ? [item("/inspection", "Inspection pack", "inspection")] : []),
     ],
   },
@@ -97,7 +97,7 @@ export const staffPhoneBar: NavItem[] = ["/me", "/messages", "/me/easy-read", "/
 
 /** Pages that show without the app menu: signing in, joining, the shared clock-in tablet and the public home page. */
 export const showsMenu = (pathname: string) =>
-  !["/", "/sign-in", "/sign-up", "/kiosk", "/offline"].includes(pathname) && !pathname.startsWith("/join/") && !pathname.startsWith("/welcome/") && !pathname.startsWith("/jobs/") && pathname !== "/workplaces/poster";
+  !["/", "/sign-in", "/sign-up", "/kiosk", "/offline", "/terms", "/privacy"].includes(pathname) && !pathname.startsWith("/join/") && !pathname.startsWith("/welcome/") && !pathname.startsWith("/jobs/") && pathname !== "/workplaces/poster";
 
 export const isActive = (pathname: string, item: NavItem) =>
   item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);

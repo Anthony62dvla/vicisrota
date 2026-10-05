@@ -42,6 +42,11 @@ const FEATURES: { icon: IconName; title: string; text: string }[] = [
     text: "Scan a code on the shared tablet, use a PIN, or clock in from a phone at work. Late or missed starts are spotted before they become a gap.",
   },
   {
+    icon: "checksDue",
+    title: "Checks that never lapse",
+    text: "Right to work, DBS, SIA licences, training and supervisions in one list, with a weekly reminder before anything runs out.",
+  },
+  {
     icon: "leave",
     title: "Leave and sickness done right",
     text: "Holiday for irregular hours, Statutory Sick Pay and working-time records, all in line with current UK rules.",

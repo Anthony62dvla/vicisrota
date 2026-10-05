@@ -38,10 +38,11 @@ export async function addCheck(_: FormState, form: FormData): Promise<FormState>
   const expiresOn = optionalDate(form.get("expiresOn"));
   const level = String(form.get("dbsLevel") ?? "");
   const reference = String(form.get("reference") ?? "").trim() || null;
+  const updateService = kind === "dbs" && form.get("updateService") === "on";
   if (kind !== "right_to_work" && kind !== "dbs") return { error: "Choose the type of check." };
   if (!DATE.test(checkedOn)) return { error: "Enter the date the check was done." };
   if (kind === "dbs" && !DBS_LEVELS.includes(level as DbsLevel)) return { error: "Choose the DBS level." };
-  if (expiresOn && expiresOn < checkedOn) return { error: "The follow-up date must be after the check date." };
+  if (expiresOn && expiresOn < checkedOn) return { error: `The ${kind === "dbs" ? "recheck" : "follow-up"} date must be after the check date.` };
 
   const result = await withOrganisation(db, organisationId, async (tx) => {
     const worker = await findWorker(tx, workerId);
@@ -53,8 +54,9 @@ export async function addCheck(_: FormState, form: FormData): Promise<FormState>
         workerId,
         kind,
         checkedOn,
-        expiresOn: kind === "right_to_work" ? expiresOn : null,
+        expiresOn,
         dbsLevel: kind === "dbs" ? (level as DbsLevel) : null,
+        updateService,
         reference,
       })
       .returning({ id: schema.workerCheck.id });
@@ -66,7 +68,7 @@ export async function addCheck(_: FormState, form: FormData): Promise<FormState>
       entity: "worker_check",
       entityId: row!.id,
       // The reference (share code or certificate number) stays out of the audit trail.
-      data: { workerId, kind, checkedOn, expiresOn, dbsLevel: kind === "dbs" ? level : null },
+      data: { workerId, kind, checkedOn, expiresOn, dbsLevel: kind === "dbs" ? level : null, updateService },
     });
     return { ok: `${kind === "dbs" ? "DBS check" : "Right to work check"} recorded for ${worker.name}.` };
   });
@@ -80,6 +82,7 @@ export async function addTraining(_: FormState, form: FormData): Promise<FormSta
   const name = String(form.get("name") ?? "").trim();
   const achievedOn = optionalDate(form.get("achievedOn"));
   const expiresOn = optionalDate(form.get("expiresOn"));
+  const reference = String(form.get("reference") ?? "").trim() || null;
   if (!name) return { error: "Enter the name of the training." };
   if (achievedOn && expiresOn && expiresOn < achievedOn) return { error: "The expiry date must be after the date it was achieved." };
 
@@ -96,7 +99,7 @@ export async function addTraining(_: FormState, form: FormData): Promise<FormSta
     }
     const [row] = await tx
       .insert(schema.workerQualification)
-      .values({ organisationId, workerId, qualificationId: type!.id, achievedOn, expiresOn })
+      .values({ organisationId, workerId, qualificationId: type!.id, achievedOn, expiresOn, reference })
       .returning({ id: schema.workerQualification.id });
     await tx.insert(schema.auditEvent).values({
       organisationId,

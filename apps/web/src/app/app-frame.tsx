@@ -35,6 +35,14 @@ export function AppFrame({ nav, children }: { nav: Nav | null; children: ReactNo
           <Link href="/display#language-heading" className="underline">
             <span lang="cy">Iaith</span> · <span lang="pl">Język</span> · <span lang="ro">Limba</span>
           </Link>
+          <span aria-hidden> · </span>
+          <Link href="/terms" className="underline">
+            Terms
+          </Link>
+          <span aria-hidden> · </span>
+          <Link href="/privacy" className="underline">
+            Privacy
+          </Link>
         </footer>
       </>
     );
@@ -154,7 +162,15 @@ function BarLink({ item, active }: { item: NavItem; active: boolean }) {
   );
 }
 
+/** Display and language, Plan and billing and Report a problem: at the top of "More" on a phone, not at the end of a long list. */
+const SETTINGS = ["/display", "/billing", "/help"];
+
 function MoreSheet({ nav, pathname, onClose }: { nav: Nav; pathname: string; onClose: () => void }) {
+  const all = nav.sections.flatMap((s) => s.items);
+  const settings = SETTINGS.flatMap((href) => all.filter((i) => i.href === href));
+  const sections = nav.sections
+    .map((s) => ({ ...s, items: s.items.filter((i) => !SETTINGS.includes(i.href)) }))
+    .filter((s) => s.items.length > 0);
   const closeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     closeRef.current?.focus();
@@ -178,7 +194,28 @@ function MoreSheet({ nav, pathname, onClose }: { nav: Nav; pathname: string; onC
           {nav.words.close}
         </button>
       </div>
-      <MenuSections nav={nav} pathname={pathname} />
+      {settings.length > 0 && (
+        <ul className="mb-5 grid grid-cols-3 gap-2 px-1">
+          {settings.map((item) => {
+            const active = isActive(pathname, item);
+            return (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  aria-current={active ? "page" : undefined}
+                  className={`flex h-full flex-col items-center gap-1.5 rounded-xl border px-2 py-3 text-center text-sm ${
+                    active ? "border-brand bg-brand-soft font-semibold text-brand" : "border-line text-foreground"
+                  }`}
+                >
+                  <Icon name={item.icon} className={`h-6 w-6 ${active ? "text-brand" : "text-muted"}`} />
+                  {item.label}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <MenuSections nav={{ ...nav, sections }} pathname={pathname} />
     </div>
   );
 }

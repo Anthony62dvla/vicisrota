@@ -38,15 +38,28 @@ export function AddCheckForm({ workerId }: { workerId: string }) {
           <input name="expiresOn" type="date" className={input} />
         </label>
       ) : (
-        <label className="flex flex-col gap-1">
-          <span className="font-medium">DBS level</span>
-          <select name="dbsLevel" defaultValue="enhanced_barred" className={input}>
-            <option value="basic">Basic</option>
-            <option value="standard">Standard</option>
-            <option value="enhanced">Enhanced</option>
-            <option value="enhanced_barred">Enhanced with barred list</option>
-          </select>
-        </label>
+        <>
+          <label className="flex flex-col gap-1">
+            <span className="font-medium">DBS level</span>
+            <select name="dbsLevel" defaultValue="enhanced_barred" className={input}>
+              <option value="basic">Basic</option>
+              <option value="standard">Standard</option>
+              <option value="enhanced">Enhanced</option>
+              <option value="enhanced_barred">Enhanced with barred list</option>
+            </select>
+          </label>
+          <label className="flex items-start gap-2">
+            <input name="updateService" type="checkbox" className="mt-1 h-5 w-5" />
+            <span>They are on the DBS Update Service, so you can check their certificate online</span>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="font-medium">Recheck due (optional)</span>
+            <span className="text-sm text-zinc-600 dark:text-zinc-400">
+              A DBS certificate has no end date in law. Many care providers recheck every 3 years, or check the Update Service every year.
+            </span>
+            <input name="expiresOn" type="date" className={input} />
+          </label>
+        </>
       )}
       <label className="flex flex-col gap-1">
         <span className="font-medium">Reference (optional)</span>
@@ -83,6 +96,11 @@ export function AddTrainingForm({ workerId, known }: { workerId: string; known: 
       <label className="flex flex-col gap-1">
         <span className="font-medium">Expires on (optional)</span>
         <input name="expiresOn" type="date" className={input} />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Licence or certificate number (optional)</span>
+        <span className="text-sm text-zinc-600 dark:text-zinc-400">For an SIA licence, the 16-digit number on the front of the card.</span>
+        <input name="reference" className={input} />
       </label>
       <button type="submit" disabled={pending} className={button}>
         {pending ? "Saving…" : "Save training"}

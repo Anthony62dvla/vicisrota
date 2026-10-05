@@ -9,6 +9,7 @@ import { loadLoneShifts } from "@/lib/lone-working";
 import { sendShiftReminders } from "@/lib/reminders-send";
 import { deleteOldApplications } from "@/lib/hiring";
 import { offerCheckIns } from "@/lib/wellbeing";
+import { remindChecksDue } from "@/lib/checks-due";
 import { syncBands } from "@/lib/stripe";
 import { appUrl, textAlertContacts } from "@/lib/sms";
 
@@ -65,6 +66,7 @@ export async function GET(request: Request) {
 
     reminders += await sendShiftReminders(business, now);
     reminders += await offerCheckIns(business.id, business.name, now);
+    reminders += await remindChecksDue(business.id, now);
     await deleteOldApplications(business.id, now);
 
     if (business.lateAlertMinutes === null) continue;

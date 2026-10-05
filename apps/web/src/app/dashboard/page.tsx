@@ -10,6 +10,8 @@ import { managerNav } from "@/lib/nav";
 import { Icon } from "../icons";
 import { SetupChecklist } from "./setup-checklist";
 import { planFor, planNotice } from "@/lib/plan";
+import { checksDueSummary, loadChecksDue } from "@/lib/checks-due";
+import { todayInUk } from "@/lib/rota";
 
 const ROLE_LABELS = {
   owner: "Owner",
@@ -28,6 +30,7 @@ export default async function Dashboard() {
   const superadmin = await isSuperadmin(user.id);
 
   const plan = managed ? planNotice((await planFor(managed.id)).state) : null;
+  const checks = managed ? checksDueSummary(await loadChecksDue(managed.id, todayInUk())) : null;
   const sections = managed ? managerNav(managed.sector, false, managed.kind).filter((sec) => sec.title) : [];
 
   return (
@@ -50,6 +53,13 @@ export default async function Dashboard() {
         <p role={plan.urgent ? "alert" : "status"} className={`mt-4 rounded-lg border-l-4 p-3 ${plan.urgent ? "border-warn bg-warn-soft" : "border-brand bg-brand-soft"}`}>
           {plan.text}{" "}
           <Link href="/billing" className="font-medium underline">Plan and billing</Link>
+        </p>
+      )}
+
+      {checks && (
+        <p className={`mt-4 rounded-lg border-l-4 p-3 ${checks.urgent ? "border-warn bg-warn-soft" : "border-brand bg-brand-soft"}`}>
+          {checks.text}{" "}
+          <Link href="/checks" className="font-medium underline">See checks due</Link>
         </p>
       )}
 
