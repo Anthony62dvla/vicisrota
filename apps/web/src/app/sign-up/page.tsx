@@ -31,6 +31,10 @@ export default function SignUp() {
       <Field label="Your name" name="name" autoComplete="name" />
       <Field label="Email" name="email" type="email" autoComplete="email" />
       <Field label="Password (at least 10 characters)" name="password" type="password" autoComplete="new-password" minLength={10} />
+      <p className="text-sm text-muted">
+        By creating an account you agree to our <Link href="/terms" className="underline">terms of service</Link>. Our{" "}
+        <Link href="/privacy" className="underline">privacy policy</Link> explains how we look after your information.
+      </p>
       <SubmitButton pending={pending}>Create account</SubmitButton>
       <p>
         Already have an account? <Link href="/sign-in" className="underline">Sign in</Link>

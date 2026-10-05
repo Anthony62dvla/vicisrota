@@ -35,6 +35,14 @@ export function AppFrame({ nav, children }: { nav: Nav | null; children: ReactNo
           <Link href="/display#language-heading" className="underline">
             <span lang="cy">Iaith</span> · <span lang="pl">Język</span> · <span lang="ro">Limba</span>
           </Link>
+          <span aria-hidden> · </span>
+          <Link href="/terms" className="underline">
+            Terms
+          </Link>
+          <span aria-hidden> · </span>
+          <Link href="/privacy" className="underline">
+            Privacy
+          </Link>
         </footer>
       </>
     );

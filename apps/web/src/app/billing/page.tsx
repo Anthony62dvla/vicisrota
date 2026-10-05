@@ -131,6 +131,10 @@ export default async function BillingPage({ searchParams }: PageProps<"/billing"
         {paying && band === "free" && (
           <p className="mt-3">Your team is down to {PRICING.freeStaff} people or fewer, so you can cancel and use VicisRota free.</p>
         )}
+        <p className="mt-3 text-sm text-muted">
+          Plans follow our <Link href="/terms#plans" className="underline">terms of service</Link>. Read how we look after your information in our{" "}
+          <Link href="/privacy" className="underline">privacy policy</Link>.
+        </p>
       </section>
 
       <section className="mt-8" aria-labelledby="charity-heading">
