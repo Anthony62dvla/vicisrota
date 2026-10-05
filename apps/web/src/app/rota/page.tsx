@@ -121,6 +121,10 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
   const hrs = (h: number) => `${+h.toFixed(2)} hour${h === 1 ? "" : "s"}`;
   const missingNames = workers.filter((w) => cost.missingRate.includes(w.id)).map((w) => w.fullName);
 
+  const splitPart = (s: (typeof shifts)[number]) => {
+    const parts = shifts.filter((p) => p.splitGroupId === s.splitGroupId);
+    return parts.length > 1 ? { part: parts.findIndex((p) => p.id === s.id) + 1, of: parts.length } : null;
+  };
   const hoursThisWeek = new Map([...cost.byWorker].map(([id, w]) => [id, w.hours]));
   const boardShifts: BoardShift[] = shifts.map((s) => {
     const open = !s.workerId ? checks.open.find((o) => o.id === s.id) : undefined;
@@ -142,6 +146,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
       status: s.status === "published" ? "published" : "draft",
       coverRequested: !!s.coverRequestedAt,
       requested: claimed.has(s.id),
+      split: s.splitGroupId ? splitPart(s) : null,
       problems: findings.filter((f) => f.shiftIds.includes(s.id)).map((f) => ({ severity: f.severity, message: f.message })),
       candidates: open
         ? candidatesFor(checks.context, open, hoursThisWeek).map((c) => ({

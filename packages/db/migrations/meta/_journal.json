@@ -302,6 +302,13 @@
       "when": 1791154417948,
       "tag": "0042_rota_changes",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1791181842337,
+      "tag": "0043_split_shifts",
+      "breakpoints": true
     }
   ]
 }

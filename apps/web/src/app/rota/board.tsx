@@ -23,6 +23,8 @@ export type BoardShift = {
   status: "draft" | "published";
   coverRequested: boolean;
   requested: boolean;
+  /** Part of a split shift, for example part 1 of 2. */
+  split: { part: number; of: number } | null;
   problems: { severity: "block" | "warn"; message: string }[];
   /** Open shifts only: everyone, best fit first. */
   candidates?: { workerId: string; name: string; hours: number; blocks: string[]; warnings: string[] }[];
@@ -130,7 +132,7 @@ export function RotaBoard(props: Props) {
           setOver(null);
         }}
         onClick={() => setOpen({ mode: "edit", shiftId: s.id })}
-        aria-label={`${s.start} to ${s.end}${role ? `, ${role.name}` : ""}${s.workerId ? `, ${nameById.get(s.workerId) ?? ""}` : ", open shift"}. ${s.status === "published" ? "Published" : "Draft"}.${s.problems.length ? ` ${s.problems.length} to look at.` : ""} Edit or move.`}
+        aria-label={`${s.start} to ${s.end}${s.split ? `, split shift part ${s.split.part} of ${s.split.of}` : ""}${role ? `, ${role.name}` : ""}${s.workerId ? `, ${nameById.get(s.workerId) ?? ""}` : ", open shift"}. ${s.status === "published" ? "Published" : "Draft"}.${s.problems.length ? ` ${s.problems.length} to look at.` : ""} Edit or move.`}
         className={`mb-1.5 block w-full cursor-grab rounded-lg border-2 p-1.5 text-left text-sm shadow-sm hover:border-brand active:cursor-grabbing ${
           role ? ROLE_CARD[role.colour] : "bg-surface"
         } ${s.status === "draft" ? "border-dashed" : ""} ${blocks ? "border-red-600" : warns ? "border-amber-500" : s.status === "draft" ? "border-zinc-400" : "border-zinc-300 dark:border-zinc-600"} ${
@@ -140,6 +142,11 @@ export function RotaBoard(props: Props) {
         <span className="block whitespace-nowrap text-[13px] font-semibold tabular-nums">
           {s.start}–{s.end}
         </span>
+        {s.split && (
+          <span className="mt-0.5 inline-block rounded-full border border-zinc-400 px-1.5 text-[11px] font-medium">
+            Split {s.split.part} of {s.split.of}
+          </span>
+        )}
         {role && <span className="block truncate text-xs font-medium">{role.name}</span>}
         {s.clientName && <span className="block truncate text-xs font-medium">{s.clientName}</span>}
         <span className="block text-xs text-zinc-600 dark:text-zinc-400">
@@ -307,6 +314,7 @@ function ShiftDialog({
   const [start, setStart] = useState(shift?.start ?? "");
   const [end, setEnd] = useState(shift?.end ?? "");
   const [cancelling, startCancel] = useTransition();
+  const [split, setSplit] = useState(false);
 
   useEffect(() => {
     const dialog = ref.current;
@@ -441,8 +449,36 @@ function ShiftDialog({
               <input name="end" type="time" required value={end} onChange={(e) => setEnd(e.target.value)} className={input} />
             </label>
           </div>
+          {!shift && (
+            <fieldset className="flex flex-col gap-3 rounded-lg border border-line p-3">
+              <legend className="px-1 font-medium">Split shift</legend>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" name="split" checked={split} onChange={(e) => setSplit(e.target.checked)} /> Add a second part later the same day
+              </label>
+              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                For example 07:00 to 10:00 and 16:00 to 19:00. The time in between is unpaid and not working time. Each part is clocked in and out on its own.
+              </p>
+              {split && (
+                <div className="flex gap-4">
+                  <label className="flex flex-1 flex-col gap-1">
+                    <span className="font-medium">Second part starts</span>
+                    <input name="start2" type="time" required className={input} />
+                  </label>
+                  <label className="flex flex-1 flex-col gap-1">
+                    <span className="font-medium">Second part finishes</span>
+                    <input name="end2" type="time" required className={input} />
+                  </label>
+                </div>
+              )}
+            </fieldset>
+          )}
+          {shift?.split && (
+            <p className="rounded-lg bg-brand-soft p-3 text-sm">
+              This is part {shift.split.part} of {shift.split.of} of a split shift. Changes here are to this part only. Dragging it moves every part together.
+            </p>
+          )}
           <label className="flex flex-col gap-1">
-            <span className="font-medium">Unpaid break (minutes)</span>
+            <span className="font-medium">Unpaid break (minutes){split ? ", first part" : ""}</span>
             <input name="breakMinutes" type="number" min={0} max={240} defaultValue={shift?.breakMinutes ?? 0} className={input} />
           </label>
           {roles.length > 0 && (

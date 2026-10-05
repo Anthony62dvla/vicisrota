@@ -195,6 +195,8 @@ export const shift = pgTable(
     checkInMinutes: smallint("check_in_minutes").notNull().default(60),
     /** What to expect, written by the manager for the person on the shift, for example "Delivery at 10". */
     note: text("note"),
+    /** Parts of one split shift (for example 07:00 to 10:00 and 16:00 to 19:00) share this id. Each part is clocked separately. */
+    splitGroupId: uuid("split_group_id"),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
@@ -203,6 +205,7 @@ export const shift = pgTable(
     check("shift_travel_minutes", sql`${t.travelMinutes} between 0 and 240`),
     check("shift_check_in_minutes", sql`${t.checkInMinutes} between 15 and 240`),
     index("shift_org_start_idx").on(t.organisationId, t.startsAt), index("shift_worker_idx").on(t.workerId, t.startsAt),
+    index("shift_split_group_idx").on(t.splitGroupId),
   ],
 );
 

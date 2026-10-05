@@ -313,6 +313,12 @@ export default async function MyPage() {
                           {unpaid > 0 && `, ${Math.round(unpaid / MINUTE)} minute break`}
                         </span>
                       </p>
+                      {s.splitGroupId && shifts.filter((p) => p.splitGroupId === s.splitGroupId).length > 1 && (
+                        <p className="text-sm">
+                          Split shift, part {shifts.filter((p) => p.splitGroupId === s.splitGroupId).findIndex((p) => p.id === s.id) + 1} of{" "}
+                          {shifts.filter((p) => p.splitGroupId === s.splitGroupId).length}. The time in between is your own. Clock in and out for each part.
+                        </p>
+                      )}
                       {client?.postcode && <p className="text-sm">{client.postcode}</p>}
                       {s.travelMinutes > 0 && <p className="text-sm">Allow {s.travelMinutes} minutes to travel from your previous visit.</p>}
                       {client?.visitNotes && <p className="mt-1 rounded-md bg-zinc-100 p-2 text-sm dark:bg-zinc-900">{client.visitNotes}</p>}

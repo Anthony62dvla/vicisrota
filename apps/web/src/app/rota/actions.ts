@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { addDays, evaluate, londonDateTime, londonParts, type Finding } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, eq, gte, inArray, lt, ne } from "drizzle-orm";
@@ -69,7 +70,17 @@ const savedMessage = (what: string, change: { problems: string[]; checked: boole
       ? `${what} No problems found.`
       : what;
 
-/** Adds a shift, or edits one when the form has a shiftId. */
+/** A split shift with only one part left is just a shift. Runs inside the transaction. */
+const tidySplit = async (tx: Tx, groupId: string | null) => {
+  if (!groupId) return;
+  const parts = await tx
+    .select({ id: schema.shift.id })
+    .from(schema.shift)
+    .where(and(eq(schema.shift.splitGroupId, groupId), ne(schema.shift.status, "cancelled")));
+  if (parts.length < 2) await tx.update(schema.shift).set({ splitGroupId: null }).where(eq(schema.shift.splitGroupId, groupId));
+};
+
+/** Adds a shift (or a split shift in two parts), or edits one shift or part when the form has a shiftId. */
 export async function saveShift(_: FormState, form: FormData): Promise<FormState> {
   const { user, organisationId, businessName } = await requireManager();
   const shiftId = String(form.get("shiftId") ?? "") || null;
@@ -100,6 +111,21 @@ export async function saveShift(_: FormState, form: FormData): Promise<FormState
   if (endsAt <= startsAt) endsAt = londonDateTime(addDays(date, 1), end);
   if (breakMinutes * MINUTE >= endsAt - startsAt) return { error: "The break is longer than the shift." };
 
+  // A split shift's second part starts after the first finishes, later the same day or that night.
+  let second: { startsAt: number; endsAt: number } | null = null;
+  if (!shiftId && form.get("split") === "on") {
+    const start2 = String(form.get("start2") ?? "");
+    const end2 = String(form.get("end2") ?? "");
+    if (!TIME.test(start2) || !TIME.test(end2)) return { error: "Enter a start and finish time for the second part." };
+    const firstEnd = londonParts(endsAt).date;
+    let from = londonDateTime(firstEnd, start2);
+    if (from <= endsAt) from = londonDateTime(addDays(firstEnd, 1), start2);
+    if (from - endsAt >= 16 * 3_600_000) return { error: "The second part must start after the first part finishes, on the same day." };
+    let to = londonDateTime(londonParts(from).date, end2);
+    if (to <= from) to = londonDateTime(addDays(londonParts(from).date, 1), end2);
+    second = { startsAt: from, endsAt: to };
+  }
+
   let result: FormState & { notices?: Notice[] };
   try {
     result = await withOrganisation(db, organisationId, async (tx): Promise<FormState & { notices?: Notice[] }> => {
@@ -120,7 +146,8 @@ export async function saveShift(_: FormState, form: FormData): Promise<FormState
         const known = await tx.select({ id: schema.qualification.id }).from(schema.qualification).where(inArray(schema.qualification.id, requires));
         if (known.length !== requires.length) return { error: "Some of the training chosen could not be found." };
       }
-      const values = { workerId, clientId, roleId, travelMinutes, loneWorking, checkInMinutes, note, startsAt: new Date(startsAt), endsAt: new Date(endsAt) };
+      const splitGroupId = second ? randomUUID() : undefined;
+      const values = { workerId, clientId, roleId, travelMinutes, loneWorking, checkInMinutes, note, startsAt: new Date(startsAt), endsAt: new Date(endsAt), splitGroupId };
       let before: Shift | null = null;
       let after: Shift;
       if (shiftId) {
@@ -129,6 +156,11 @@ export async function saveShift(_: FormState, form: FormData): Promise<FormState
         [after] = (await tx.update(schema.shift).set(values).where(eq(schema.shift.id, shiftId)).returning()) as [Shift];
         await tx.delete(schema.shiftBreak).where(eq(schema.shiftBreak.shiftId, shiftId));
         await tx.delete(schema.shiftRequirement).where(eq(schema.shiftRequirement.shiftId, shiftId));
+        // A part given to someone else is no longer part of the split.
+        if (before.splitGroupId && before.workerId !== workerId) {
+          await tx.update(schema.shift).set({ splitGroupId: null }).where(eq(schema.shift.id, shiftId));
+          await tidySplit(tx, before.splitGroupId);
+        }
       } else {
         [after] = (await tx.insert(schema.shift).values({ organisationId, ...values }).returning()) as [Shift];
       }
@@ -145,7 +177,23 @@ export async function saveShift(_: FormState, form: FormData): Promise<FormState
       if (requires.length) {
         await tx.insert(schema.shiftRequirement).values(requires.map((qualificationId) => ({ organisationId, shiftId: after.id, qualificationId })));
       }
-      const change = await afterChange(tx, organisationId, before, after);
+      const changes = [await afterChange(tx, organisationId, before, after)];
+      if (second) {
+        const [part] = (await tx
+          .insert(schema.shift)
+          .values({ organisationId, ...values, startsAt: new Date(second.startsAt), endsAt: new Date(second.endsAt) })
+          .returning()) as [Shift];
+        if (requires.length) {
+          await tx.insert(schema.shiftRequirement).values(requires.map((qualificationId) => ({ organisationId, shiftId: part.id, qualificationId })));
+        }
+        changes.push(await afterChange(tx, organisationId, null, part));
+      }
+      const change = {
+        notices: changes.flatMap((c) => c.notices),
+        problems: [...new Set(changes.flatMap((c) => c.problems))],
+        checked: changes[0]!.checked,
+        published: changes[0]!.published,
+      };
       await tx.insert(schema.auditEvent).values({
         organisationId,
         actorUserId: user.id,
@@ -153,13 +201,16 @@ export async function saveShift(_: FormState, form: FormData): Promise<FormState
         action: before ? "update" : "create",
         entity: "shift",
         entityId: after.id,
-        data: { workerId, date, start, end, breakMinutes, requires, clientId, roleId, travelMinutes, loneWorking, checkInMinutes, note: !!note },
+        data: {
+          workerId, date, start, end, breakMinutes, requires, clientId, roleId, travelMinutes, loneWorking, checkInMinutes, note: !!note,
+          ...(second && { splitGroupId, secondStart: new Date(second.startsAt).toISOString(), secondEnd: new Date(second.endsAt).toISOString() }),
+        },
       });
       const what = before
         ? change.notices.length
           ? "Shift saved. The people affected have been told."
           : "Shift saved."
-        : `${clientId ? "Visit" : workerId ? "Shift" : "Open shift"} added as a draft.`;
+        : `${second ? "Split shift" : clientId ? "Visit" : workerId ? "Shift" : "Open shift"} added as a draft.`;
       return { ok: savedMessage(what, change), notices: change.notices };
     });
   } catch (error) {
@@ -202,20 +253,33 @@ export async function moveShift(_: FormState, form: FormData): Promise<FormState
       const startsAt = new Date(londonDateTime(date, wallClock(before.startsAt)));
       const shiftBy = startsAt.getTime() - before.startsAt.getTime();
       if (before.workerId === workerId && shiftBy === 0) return { ok: "The shift is already there." };
-      const [after] = (await tx
-        .update(schema.shift)
-        .set({ workerId, startsAt, endsAt: new Date(before.endsAt.getTime() + shiftBy), coverRequestedAt: null })
-        .where(eq(schema.shift.id, shiftId))
-        .returning()) as [Shift];
-      if (shiftBy) {
-        const breaks = await tx.select().from(schema.shiftBreak).where(eq(schema.shiftBreak.shiftId, shiftId));
-        for (const b of breaks)
-          await tx
-            .update(schema.shiftBreak)
-            .set({ startsAt: new Date(b.startsAt.getTime() + shiftBy), endsAt: new Date(b.endsAt.getTime() + shiftBy) })
-            .where(eq(schema.shiftBreak.id, b.id));
+      // Every part of a split shift moves together.
+      const parts = before.splitGroupId
+        ? await tx.select().from(schema.shift).where(and(eq(schema.shift.splitGroupId, before.splitGroupId), ne(schema.shift.status, "cancelled")))
+        : [before];
+      const changes = [];
+      for (const part of parts) {
+        const [after] = (await tx
+          .update(schema.shift)
+          .set({ workerId, startsAt: new Date(part.startsAt.getTime() + shiftBy), endsAt: new Date(part.endsAt.getTime() + shiftBy), coverRequestedAt: null })
+          .where(eq(schema.shift.id, part.id))
+          .returning()) as [Shift];
+        if (shiftBy) {
+          const breaks = await tx.select().from(schema.shiftBreak).where(eq(schema.shiftBreak.shiftId, part.id));
+          for (const b of breaks)
+            await tx
+              .update(schema.shiftBreak)
+              .set({ startsAt: new Date(b.startsAt.getTime() + shiftBy), endsAt: new Date(b.endsAt.getTime() + shiftBy) })
+              .where(eq(schema.shiftBreak.id, b.id));
+        }
+        changes.push({ after, change: await afterChange(tx, organisationId, part, after) });
       }
-      const change = await afterChange(tx, organisationId, before, after);
+      const change = {
+        notices: changes.flatMap((c) => c.change.notices),
+        problems: [...new Set(changes.flatMap((c) => c.change.problems))],
+        checked: changes[0]!.change.checked,
+        published: changes[0]!.change.published,
+      };
       await tx.insert(schema.auditEvent).values({
         organisationId,
         actorUserId: user.id,
@@ -226,7 +290,7 @@ export async function moveShift(_: FormState, form: FormData): Promise<FormState
         data: { fromWorkerId: before.workerId, toWorkerId: workerId, fromStart: before.startsAt.toISOString(), toStart: startsAt.toISOString() },
       });
       const when = `${new Date(`${date}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" })}`;
-      const what = workerId ? `Shift moved to ${name} on ${when}.` : `Shift is now open, on ${when}.`;
+      const what = `${parts.length > 1 ? "Split shift" : "Shift"} ${workerId ? `moved to ${name} on ${when}.` : `is now open, on ${when}.`}`;
       return { ok: savedMessage(what, change), notices: change.notices };
     });
   } catch (error) {
@@ -247,9 +311,12 @@ export async function cancelShift(form: FormData) {
       .update(schema.shift)
       .set({ status: "cancelled" })
       .where(eq(schema.shift.id, shiftId))
-      .returning({ workerId: schema.shift.workerId, startsAt: schema.shift.startsAt, endsAt: schema.shift.endsAt, publishedAt: schema.shift.publishedAt });
+      .returning({ workerId: schema.shift.workerId, startsAt: schema.shift.startsAt, endsAt: schema.shift.endsAt, publishedAt: schema.shift.publishedAt, splitGroupId: schema.shift.splitGroupId });
+    await tidySplit(tx, cancelled?.splitGroupId ?? null);
     // Staff only knew about it if it had been published.
-    const notices = cancelled?.publishedAt ? await notify(tx, organisationId, [{ ...cancelled, shiftId, kind: "cancelled" }]) : [];
+    const notices = cancelled?.publishedAt
+      ? await notify(tx, organisationId, [{ workerId: cancelled.workerId, startsAt: cancelled.startsAt, endsAt: cancelled.endsAt, shiftId, kind: "cancelled" }])
+      : [];
     await tx.insert(schema.auditEvent).values({
       organisationId,
       actorUserId: user.id,
@@ -414,6 +481,13 @@ export async function copyPreviousWeek(_: FormState, form: FormData): Promise<Fo
       tx.select().from(schema.shiftRequirement).where(inArray(schema.shiftRequirement.shiftId, ids)),
     ]);
     let copied = 0;
+    // Copied split shifts get their own new group, so this week's parts stay together.
+    const groups = new Map<string, string>();
+    const groupFor = (id: string | null) => {
+      if (!id) return null;
+      if (!groups.has(id)) groups.set(id, randomUUID());
+      return groups.get(id)!;
+    };
     for (const s of source) {
       const startsAt = aWeekLater(s.startsAt);
       const endsAt = aWeekLater(s.endsAt);
@@ -430,6 +504,7 @@ export async function copyPreviousWeek(_: FormState, form: FormData): Promise<Fo
           travelMinutes: s.travelMinutes,
           loneWorking: s.loneWorking,
           checkInMinutes: s.checkInMinutes,
+          splitGroupId: groupFor(s.splitGroupId),
           startsAt,
           endsAt,
         })
