@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { addCheck, addTraining, inviteStaff, saveAdjustments, setMobile, updateHolidaySettings, updatePayrollId, type FormState, type InviteState } from "./actions";
+import { addCheck, addTraining, inviteStaff, saveAdjustments, setMobile, updateHolidaySettings, updatePayrollId, addSupervision, type FormState, type InviteState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 const button = "rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover disabled:opacity-60";
@@ -139,6 +139,34 @@ export function PayrollIdForm({ workerId, payrollId }: { workerId: string; payro
       </label>
       <button type="submit" disabled={pending} className={button}>
         {pending ? "Saving…" : "Save payroll ID"}
+      </button>
+    </form>
+  );
+}
+
+export function SupervisionForm({ workerId }: { workerId: string }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(addSupervision, {});
+  return (
+    <form action={action} className="mt-3 flex max-w-md flex-col gap-3">
+      <Message state={state} />
+      <input type="hidden" name="workerId" value={workerId} />
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">What was held</span>
+        <select name="kind" className={input} defaultValue="supervision">
+          <option value="supervision">Supervision</option>
+          <option value="appraisal">Appraisal</option>
+        </select>
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Date held</span>
+        <input name="heldOn" type="date" required className={input} />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Next one due (optional)</span>
+        <input name="nextDueOn" type="date" className={input} />
+      </label>
+      <button type="submit" disabled={pending} className={button}>
+        {pending ? "Saving…" : "Record it"}
       </button>
     </form>
   );

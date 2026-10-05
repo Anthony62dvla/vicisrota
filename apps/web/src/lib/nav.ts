@@ -37,7 +37,13 @@ export const managerNav = (sector: "care" | "hospitality" | "small_business", su
     ],
   },
   { title: "Your team", items: [item("/announcements", "Announcements", "announcements"), item("/workplaces", "Workplaces", "workplaces")] },
-  { title: "Safety", items: [item("/roll-call", "Fire roll call", "rollCall"), item("/lone-working", "Lone working", "loneWorking"), item("/safeguarding", "Safeguarding", "safeguarding")] },
+  {
+    title: "Safety",
+    items: [
+      item("/roll-call", "Fire roll call", "rollCall"), item("/lone-working", "Lone working", "loneWorking"), item("/safeguarding", "Safeguarding", "safeguarding"),
+      ...(sector === "care" ? [item("/inspection", "Inspection pack", "inspection")] : []),
+    ],
+  },
   {
     title: null,
     items: [

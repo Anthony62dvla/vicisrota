@@ -325,6 +325,29 @@ export const workerQualification = pgTable(
   (t) => [index("worker_qualification_worker_idx").on(t.workerId)],
 );
 
+export const supervisionKind = pgEnum("supervision_kind", ["supervision", "appraisal"]);
+
+/**
+ * That a supervision or appraisal happened, and when the next is due. Only dates are kept here: what was
+ * discussed belongs in the person's supervision notes, kept privately, not in the rota app.
+ */
+export const supervision = pgTable(
+  "supervision",
+  {
+    id: id(),
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    kind: supervisionKind("kind").notNull(),
+    heldOn: date("held_on").notNull(),
+    nextDueOn: date("next_due_on"),
+    recordedByUserId: text("recorded_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("supervision_worker_idx").on(t.workerId, t.heldOn)],
+);
+
 /** Training the person working a shift must hold. */
 export const shiftRequirement = pgTable(
   "shift_requirement",

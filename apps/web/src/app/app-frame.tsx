@@ -46,7 +46,7 @@ export function AppFrame({ nav, children }: { nav: Nav | null; children: ReactNo
       >
         Skip to content
       </a>
-      <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
+      <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur print:hidden">
         <div className="flex h-16 items-center gap-3 px-4 lg:px-6">
           <Link href={nav.phoneBar[0]!.href} className="flex items-center gap-2.5 rounded-lg">
             <Logo className="h-9 w-9" />
@@ -68,7 +68,7 @@ export function AppFrame({ nav, children }: { nav: Nav | null; children: ReactNo
       <div className="flex flex-1">
         <nav
           aria-label="Main"
-          className="sticky top-16 hidden h-[calc(100vh-4rem)] w-64 shrink-0 overflow-y-auto border-r border-line bg-surface px-3 py-4 md:block"
+          className="sticky top-16 hidden h-[calc(100vh-4rem)] w-64 shrink-0 overflow-y-auto border-r border-line bg-surface px-3 py-4 md:block print:hidden"
         >
           <MenuSections nav={nav} pathname={pathname} />
         </nav>
@@ -78,7 +78,7 @@ export function AppFrame({ nav, children }: { nav: Nav | null; children: ReactNo
       </div>
 
       {/* Phone menu */}
-      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface md:hidden">
+      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface md:hidden print:hidden">
         <ul className="grid grid-cols-5">
           {nav.phoneBar.map((item) => (
             <li key={item.href}>

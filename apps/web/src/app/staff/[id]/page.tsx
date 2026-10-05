@@ -11,7 +11,7 @@ import { AvailabilityEditor } from "../../availability-editor";
 import { addStaffUnavailable, removeStaffUnavailable, removeTraining } from "./actions";
 import { formatUkMobile } from "@vicisrota/messaging";
 import { WorkerRolesForm } from "../../roles/forms";
-import { AddCheckForm, AddTrainingForm, AdjustmentsForm, HolidaySettingsForm, InviteForm, MobileForm, PayrollIdForm } from "./forms";
+import { AddCheckForm, AddTrainingForm, AdjustmentsForm, HolidaySettingsForm, InviteForm, MobileForm, PayrollIdForm, SupervisionForm } from "./forms";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DBS_LABEL = { basic: "Basic", standard: "Standard", enhanced: "Enhanced", enhanced_barred: "Enhanced with barred list" };
@@ -46,11 +46,12 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
         .orderBy(asc(schema.workerUnavailability.weekday), asc(schema.workerUnavailability.startsAt)),
       roles: await tx.select().from(schema.jobRole).orderBy(asc(schema.jobRole.name)),
       held: (await tx.select({ roleId: schema.workerRole.roleId }).from(schema.workerRole).where(eq(schema.workerRole.workerId, id))).map((r) => r.roleId),
+      supervisions: await tx.select().from(schema.supervision).where(eq(schema.supervision.workerId, id)).orderBy(desc(schema.supervision.heldOn)),
       known: (await tx.select({ name: schema.qualification.name }).from(schema.qualification).orderBy(asc(schema.qualification.name))).map((q) => q.name),
     };
   });
   if (!data) notFound();
-  const { worker, checks, training, known, holiday, login, unavailable, roles, held } = data;
+  const { worker, checks, training, known, holiday, login, unavailable, roles, held, supervisions } = data;
   const balance = holiday.balances.get(worker.id)!;
   const rtw = checks.filter((c) => c.kind === "right_to_work");
   const dbs = checks.filter((c) => c.kind === "dbs");
@@ -198,6 +199,26 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
       <section className="mt-10" id="payroll">
         <h2 className="text-lg font-semibold">Payroll</h2>
         <PayrollIdForm workerId={worker.id} payrollId={worker.payrollId} />
+      </section>
+
+      <section className="mt-10" id="supervision">
+        <h2 className="text-lg font-semibold">Supervision and appraisal</h2>
+        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+          A record of when they happened and when the next is due, for inspections. Keep what was discussed in the person&apos;s private supervision notes.
+        </p>
+        {supervisions.length === 0 ? (
+          <p className="mt-2">None recorded yet.</p>
+        ) : (
+          <ul className="mt-2 list-disc pl-6">
+            {supervisions.map((s) => (
+              <li key={s.id}>
+                {s.kind === "supervision" ? "Supervision" : "Appraisal"} on {ukDate(s.heldOn)}
+                {s.nextDueOn && `, next due ${ukDate(s.nextDueOn)}`}
+              </li>
+            ))}
+          </ul>
+        )}
+        <SupervisionForm workerId={worker.id} />
       </section>
     </main>
   );
