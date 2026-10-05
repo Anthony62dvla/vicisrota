@@ -12,6 +12,7 @@ export * from "./tips";
 export * from "./loneWorking";
 export * from "./clock";
 export * from "./setup";
+export * from "./staffImport";
 export * from "./rules/availability";
 export * from "./planning";
 export * from "./ssp";
