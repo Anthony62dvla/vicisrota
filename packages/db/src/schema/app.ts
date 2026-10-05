@@ -53,6 +53,21 @@ const orgId = () =>
 export const CONTACT_WAYS = ["text", "app", "call", "in_person"] as const;
 export type ContactWay = (typeof CONTACT_WAYS)[number];
 
+/**
+ * How a person likes their own pages shown, and what they want to be told about. textChanges and the
+ * remind* settings say WHAT to tell them (the names are older than app notifications). Everything goes
+ * to their page and their app notifications for free; byText says whether it is also texted. When
+ * byText was never set, people with a mobile number get texts, as they did before app notifications.
+ */
+export type WorkerPreferences = {
+  calm?: boolean;
+  largeText?: boolean;
+  textChanges?: boolean;
+  remindEvening?: boolean;
+  remindBeforeMinutes?: number | null;
+  byText?: boolean;
+};
+
 export type WorkProfile = {
   strengths?: string;
   helps?: string;
@@ -150,9 +165,9 @@ export const worker = pgTable(
      * is true; it is never shown on the rota, in warnings or in the audit trail.
      */
     workProfile: jsonb("work_profile").$type<WorkProfile>().notNull().default({}),
-    /** How the person likes their own pages shown (calm mode, larger text), and which texts they asked for (rota changes, shift reminders). */
+    /** See WorkerPreferences. */
     preferences: jsonb("preferences")
-      .$type<{ calm?: boolean; largeText?: boolean; textChanges?: boolean; remindEvening?: boolean; remindBeforeMinutes?: number | null }>()
+      .$type<WorkerPreferences>()
       .notNull()
       .default({}),
     createdAt: createdAt(),
@@ -1017,4 +1032,51 @@ export const supportReport = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("support_report_created_idx").on(t.createdAt), index("support_report_reporter_idx").on(t.reporterUserId)],
+);
+
+/**
+ * A phone or computer where someone turned on app notifications. Belongs to the login, not a business,
+ * so one device gets notifications from every business the person works for. Only the browser's
+ * push address and keys are kept: nothing here identifies the device itself.
+ */
+export const pushSubscription = pgTable(
+  "push_subscription",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("push_subscription_endpoint_idx").on(t.endpoint), index("push_subscription_user_idx").on(t.userId)],
+);
+
+/**
+ * Everything VicisRota has told a member of staff: rota changes, reminders and roll calls. Shown on their
+ * own page, and sent as an app notification to their devices (free) and, only if they chose it, as a text.
+ */
+export const notification = pgTable(
+  "notification",
+  {
+    id: id(),
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    purpose: text("purpose").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    /** The page it opens, e.g. /me. */
+    url: text("url").notNull(),
+    /** Stops the same notification going out twice when a job is retried. */
+    dedupeKey: text("dedupe_key").notNull(),
+    /** How many of the person's devices accepted it. */
+    pushed: integer("pushed").notNull().default(0),
+    texted: boolean("texted").notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("notification_dedupe_idx").on(t.organisationId, t.workerId, t.dedupeKey), index("notification_worker_idx").on(t.workerId, t.createdAt)],
 );

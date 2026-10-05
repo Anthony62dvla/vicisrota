@@ -9,7 +9,7 @@ import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
 import { log } from "@/lib/log";
 import { notify, type Notice } from "@/lib/notices";
-import { textRotaChanges } from "@/lib/rota-texts";
+import { notifyRotaChanges } from "@/lib/rota-notify";
 import { requestId } from "@/lib/request";
 import { checkAssignment } from "@/lib/claims";
 import { loadComplianceContext, loadWeekChecks, weekBounds } from "@/lib/rota";
@@ -225,7 +225,7 @@ export async function saveShift(_: FormState, form: FormData): Promise<FormState
     throw error;
   }
   const { notices = [], ...state } = result;
-  await textRotaChanges(organisationId, businessName, notices);
+  await notifyRotaChanges(organisationId, businessName, notices);
   revalidatePath("/rota");
   return state;
 }
@@ -306,7 +306,7 @@ export async function moveShift(_: FormState, form: FormData): Promise<FormState
     throw error;
   }
   const { notices = [], ...state } = result;
-  await textRotaChanges(organisationId, businessName, notices);
+  await notifyRotaChanges(organisationId, businessName, notices);
   revalidatePath("/rota");
   return state;
 }
@@ -337,7 +337,7 @@ export async function cancelShift(form: FormData): Promise<string> {
     });
     return { notices, owed };
   });
-  await textRotaChanges(organisationId, businessName, notices);
+  await notifyRotaChanges(organisationId, businessName, notices);
   revalidatePath("/rota");
   return ["Shift cancelled.", ...(owed ? [owedMessage(owed)] : [])].join(" ");
 }
@@ -394,7 +394,7 @@ export async function checkAndPublish(_: FormState, form: FormData): Promise<For
 
   const { notices, ...summary } = result;
   await log("info", "rota checked", { organisationId, weekStart, ...summary });
-  await textRotaChanges(organisationId, businessName, notices);
+  await notifyRotaChanges(organisationId, businessName, notices);
   revalidatePath("/rota");
   if (!result.publishable)
     return { error: `This rota cannot be published yet: ${result.blocking} problem${result.blocking === 1 ? "" : "s"} to fix. See the list below.` };
@@ -452,7 +452,7 @@ export async function decideClaim(_: FormState, form: FormData): Promise<FormSta
     return { ok: `${claim.name} now has this shift.`, notices };
   });
   const { notices = [], ...state } = result;
-  await textRotaChanges(organisationId, businessName, notices);
+  await notifyRotaChanges(organisationId, businessName, notices);
   revalidatePath("/rota");
   return state;
 }

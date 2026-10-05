@@ -15,6 +15,7 @@ import { helpAlert, normaliseUkMobile } from "@vicisrota/messaging";
 import { LEAVE_KINDS, LEAVE_LABEL } from "@/lib/leave";
 import { log } from "@/lib/log";
 import { requestId } from "@/lib/request";
+import { sendPush } from "@/lib/push";
 import { appUrl, textAlertContacts } from "@/lib/sms";
 import { todayInUk } from "@/lib/rota";
 
@@ -334,22 +335,26 @@ export async function setClockPin(_: FormState, form: FormData): Promise<FormSta
   return { ok: "PIN saved. Use it on the clock-in tablet at work." };
 }
 
-/** The person's own mobile number, and which texts they want: rota changes and shift reminders. */
+/**
+ * What the person wants to be told about (rota changes, shift reminders), and whether they also want it
+ * texted to their mobile. Everything always goes to their page and to any device with app notifications on.
+ */
 export async function saveTextSettings(_: FormState, form: FormData): Promise<FormState> {
   const { user, organisationId, worker } = await requireStaff();
   const raw = String(form.get("mobile") ?? "").trim();
   const mobile = raw ? normaliseUkMobile(raw) : null;
   const textChanges = form.get("textChanges") === "on";
   const remindEvening = form.get("remindEvening") === "on";
+  const byText = form.get("byText") === "on";
   const before = String(form.get("remindBefore") ?? "");
   const remindBeforeMinutes = (BEFORE_CHOICES as readonly number[]).includes(Number(before)) ? Number(before) : null;
-  const values = { mobile: raw, textChanges: textChanges ? "on" : "", remindEvening: remindEvening ? "on" : "", remindBefore: before };
+  const values = { mobile: raw, textChanges: textChanges ? "on" : "", remindEvening: remindEvening ? "on" : "", remindBefore: before, byText: byText ? "on" : "" };
   if (raw && !mobile) return { error: "Enter a UK mobile number, for example 07700 900123.", values };
-  if ((textChanges || remindEvening || remindBeforeMinutes) && !mobile) return { error: "Add your mobile number to get texts.", values };
+  if (byText && !mobile) return { error: "Add your mobile number to get texts.", values };
   await withOrganisation(db, organisationId, async (tx) => {
     await tx
       .update(schema.worker)
-      .set({ mobile, preferences: { ...worker.preferences, textChanges, remindEvening, remindBeforeMinutes } })
+      .set({ mobile, preferences: { ...worker.preferences, textChanges, remindEvening, remindBeforeMinutes, byText } })
       .where(eq(schema.worker.id, worker.id));
     await tx.insert(schema.auditEvent).values({
       organisationId,
@@ -358,7 +363,7 @@ export async function saveTextSettings(_: FormState, form: FormData): Promise<Fo
       action: "text_settings",
       entity: "worker",
       entityId: worker.id,
-      data: { textChanges, remindEvening, remindBeforeMinutes, hasMobile: !!mobile },
+      data: { textChanges, remindEvening, remindBeforeMinutes, byText, hasMobile: !!mobile },
     });
   });
   revalidatePath("/me");
@@ -367,7 +372,40 @@ export async function saveTextSettings(_: FormState, form: FormData): Promise<Fo
     remindEvening && "the evening before each shift",
     remindBeforeMinutes && `${beforeLabel(remindBeforeMinutes)} before each shift`,
   ].filter(Boolean);
-  return { ok: chosen.length ? `Saved. We will text you ${chosen.join(", and ")}.` : "Saved. You will not get texts about your rota." };
+  if (!chosen.length) return { ok: "Saved. We will not send you rota messages. Changes still show on this page." };
+  return { ok: `Saved. We will tell you ${chosen.join(", and ")}${byText ? ", by app notification and by text" : ""}.` };
+}
+
+/** The browsers' own push services. Anything else is refused, so the server never posts to an address someone made up. */
+const PUSH_HOST = /^https:\/\/(fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|[a-z0-9-]+\.push\.apple\.com|[a-z0-9.-]+\.notify\.windows\.com)\//;
+const KEY = /^[A-Za-z0-9_-]{16,200}$/;
+
+/** Remembers this device so app notifications reach it. Called from the browser after the person allows notifications. */
+export async function savePushDevice(device: { endpoint: string; keys: { p256dh: string; auth: string } }): Promise<{ ok: boolean }> {
+  const { user, organisationId } = await requireStaff();
+  const { endpoint, keys } = device ?? {};
+  if (typeof endpoint !== "string" || endpoint.length > 1000 || !PUSH_HOST.test(endpoint) || !KEY.test(keys?.p256dh ?? "") || !KEY.test(keys?.auth ?? "")) return { ok: false };
+  await db
+    .insert(schema.pushSubscription)
+    .values({ userId: user.id, endpoint, p256dh: keys.p256dh, auth: keys.auth })
+    .onConflictDoUpdate({ target: schema.pushSubscription.endpoint, set: { userId: user.id, p256dh: keys.p256dh, auth: keys.auth } });
+  await log("info", "app notifications turned on", { organisationId });
+  return { ok: true };
+}
+
+/** Forgets this device: no more app notifications on it. */
+export async function removePushDevice(endpoint: string): Promise<{ ok: boolean }> {
+  const { user } = await requireStaff();
+  if (typeof endpoint !== "string") return { ok: false };
+  await db.delete(schema.pushSubscription).where(and(eq(schema.pushSubscription.endpoint, endpoint), eq(schema.pushSubscription.userId, user.id)));
+  return { ok: true };
+}
+
+/** Sends a test notification to the person's own devices. */
+export async function sendTestNotification(): Promise<{ sent: number }> {
+  const { user, businessName } = await requireStaff();
+  const sent = await sendPush([user.id], { title: businessName, body: "Notifications are working. This is how rota changes and reminders will look.", url: "/me", tag: "test" });
+  return { sent };
 }
 
 /** Adds a weekly time the person cannot work. Managers see it, and the rota check warns about clashes. */

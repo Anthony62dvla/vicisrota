@@ -2,6 +2,7 @@
  * VicisRota service worker. Keeps a saved copy of each person's own page (/me) so they can still
  * see their shifts with no signal, plus the app's static files. Nothing else is stored: manager
  * pages hold other people's information and always need the network.
+ * It also shows app notifications (rota changes, reminders, roll calls) sent by src/lib/push.ts.
  * PAGE_CACHE must match src/lib/offline.ts, which clears it on sign out.
  */
 const PAGE_CACHE = "vr-pages-v1";
@@ -61,5 +62,39 @@ self.addEventListener("fetch", (event) => {
         const copy = saved ? await caches.match(url.pathname, { cacheName: PAGE_CACHE }) : undefined;
         return copy || (await caches.match(OFFLINE_PAGE, { cacheName: STATIC_CACHE })) || Response.error();
       }),
+  );
+});
+
+// App notifications. The message is { title, body, url, tag }; a newer one with the same tag replaces the older.
+self.addEventListener("push", (event) => {
+  let message = {};
+  try {
+    message = event.data ? event.data.json() : {};
+  } catch {
+    message = { body: event.data ? event.data.text() : "" };
+  }
+  event.waitUntil(
+    self.registration.showNotification(message.title || "VicisRota", {
+      body: message.body || "",
+      tag: message.tag || undefined,
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      data: { url: message.url || "/me" },
+    }),
+  );
+});
+
+// Tapping a notification opens its page, reusing an open VicisRota window if there is one.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const path = (event.notification.data && event.notification.data.url) || "/me";
+  const target = new URL(path, self.location.origin);
+  if (target.origin !== self.location.origin) return;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+      const open = windows.find((w) => new URL(w.url).origin === self.location.origin);
+      if (open) return open.navigate(target.href).then((w) => (w || open).focus());
+      return self.clients.openWindow(target.href);
+    }),
   );
 });

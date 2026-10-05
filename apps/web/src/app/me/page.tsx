@@ -15,6 +15,9 @@ import { activeRollCall } from "@/lib/roll-call";
 import { iAmSafe } from "../roll-call/actions";
 import { addMyUnavailable, markNoticesSeen, readAnnouncement, removeMyUnavailable, savePreferences, setCoverRequest, withdrawClaim, withdrawRequest } from "./actions";
 import { formatUkMobile } from "@vicisrota/messaging";
+import { tellsChanges, wantsTexts } from "@vicisrota/messaging";
+import { pushPublicKey } from "@/lib/push";
+import { PushSwitch } from "./push-switch";
 import { ClockButtons, LoneCheckIn, PickUpList, PinForm, ReportSickForm, TextSettingsForm, TimeOffForm } from "./forms";
 import { OfflineNotice } from "./offline-notice";
 import { AvailabilityEditor } from "../availability-editor";
@@ -24,6 +27,7 @@ const MINUTE = 60_000;
 /** How far ahead staff can see published shifts. */
 const WEEKS_AHEAD = 4;
 const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const sentFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 const longDate = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" });
 const shortDate = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "long" });
 const STATUS = { requested: "Waiting for your manager", approved: "Approved", declined: "Not approved", cancelled: "Withdrawn" } as const;
@@ -174,9 +178,15 @@ export default async function MyPage() {
       .where(isNull(schema.announcement.archivedAt))
       .orderBy(desc(schema.announcement.createdAt))
       .limit(20);
+    const recentMessages = await tx
+      .select({ id: schema.notification.id, title: schema.notification.title, body: schema.notification.body, createdAt: schema.notification.createdAt })
+      .from(schema.notification)
+      .where(eq(schema.notification.workerId, worker.id))
+      .orderBy(desc(schema.notification.createdAt))
+      .limit(5);
     const sick = (await loadSickness(tx, addDays(today, 366), [worker.id])).get(worker.id);
     const sickPay = new Map((sick?.records ?? []).filter((r) => !r.ssp.oldRules && r.ssp.pence > 0).map((r) => [r.id, r.ssp.pence]));
-    return { colleagues, roles, sickPay, announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, shortNotice, rollCall, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
+    return { recentMessages, colleagues, roles, sickPay, announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, shortNotice, rollCall, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
   });
 
   const days = new Map<string, typeof data.shifts>();
@@ -196,6 +206,7 @@ export default async function MyPage() {
     }));
   const unit = worker.irregularHours ? "hours" : "days";
   const { calm = false, largeText = false } = worker.preferences;
+  const pushKey = pushPublicKey();
   const next = data.shifts.find((s) => s.endsAt.getTime() > data.now);
   const SHORT_NOTICE_KIND = { cancelled: "cancelled", moved: "moved", shortened: "cut short" } as const;
   const NOTICE_TEXT = {
@@ -575,13 +586,34 @@ export default async function MyPage() {
       </section>
 
       <section className="mt-10" aria-labelledby="texts-heading">
-        <h2 id="texts-heading" className="text-lg font-semibold">Texts and reminders</h2>
+        <h2 id="texts-heading" className="text-lg font-semibold">Notifications and reminders</h2>
+        <p className="mt-1">Changes always show on this page. You can also have them sent to your phone.</p>
+        {pushKey ? (
+          <PushSwitch publicKey={pushKey} />
+        ) : (
+          <p className="mt-2 text-muted">App notifications are not switched on for VicisRota yet, so for now messages come by text if you choose it.</p>
+        )}
         <TextSettingsForm
           mobile={worker.mobile ? formatUkMobile(worker.mobile) : null}
-          textChanges={!!worker.preferences.textChanges}
+          textChanges={tellsChanges(worker.preferences)}
           remindEvening={!!worker.preferences.remindEvening}
           remindBeforeMinutes={worker.preferences.remindBeforeMinutes ?? null}
+          byText={wantsTexts(worker.preferences, worker.mobile)}
         />
+        {data.recentMessages.length > 0 && (
+          <details className="mt-4 rounded-lg border p-3">
+            <summary className="font-medium">Messages we sent you recently</summary>
+            <ul className="mt-2 flex flex-col gap-3">
+              {data.recentMessages.map((m) => (
+                <li key={m.id}>
+                  <p className="text-sm text-muted">{sentFmt.format(m.createdAt)}</p>
+                  <p className="font-medium">{m.title}</p>
+                  <p className="whitespace-pre-line">{m.body}</p>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
       </section>
 
       <section className="mt-10" aria-labelledby="install-heading">

@@ -6,22 +6,40 @@ import { revalidatePath } from "next/cache";
 import { requireManager, requireStaff } from "@/lib/business";
 import { db } from "@/lib/db";
 import { log } from "@/lib/log";
+import { notifyWorkers } from "@/lib/notify";
 import { requestId } from "@/lib/request";
 import { activeRollCall, peopleOnSite } from "@/lib/roll-call";
+import { appUrl } from "@/lib/sms";
 
 /** Starts a roll call with everyone who should be on site now. If one is already running, it carries on with that. */
 export async function startRollCall() {
-  const { user, organisationId } = await requireManager();
-  await withOrganisation(db, organisationId, async (tx) => {
-    if (await activeRollCall(tx)) return;
+  const { user, organisationId, businessName } = await requireManager();
+  const started = await withOrganisation(db, organisationId, async (tx) => {
+    if (await activeRollCall(tx)) return null;
     const [call] = await tx.insert(schema.rollCall).values({ organisationId, startedByUserId: user.id }).returning();
     const people = await peopleOnSite(tx, new Date().getTime());
     if (people.length) {
       await tx.insert(schema.rollCallPerson).values(people.map((p) => ({ organisationId, rollCallId: call!.id, workerId: p.workerId, expected: p.expected, place: p.place })));
     }
     await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "start", entity: "roll_call", entityId: call!.id, data: { people: people.length } });
+    return { id: call!.id, people };
   });
+  if (!started) return;
   await log("info", "roll call started", { organisationId });
+  // Urgent: pushed to their phones and texted to everyone with a mobile number, whatever they chose.
+  await notifyWorkers(
+    organisationId,
+    started.people.map((p) => ({
+      workerId: p.workerId,
+      purpose: "roll_call",
+      title: `${businessName}: fire roll call`,
+      body: "If you are safe, open VicisRota and tap I'm safe. Do not go back inside.",
+      url: "/me",
+      dedupeKey: `roll_call:${started.id}`,
+      text: `${businessName}: fire roll call. If you are safe, tap I'm safe here: ${appUrl("/me")} Do not go back inside.`,
+      urgent: true,
+    })),
+  );
   revalidatePath("/roll-call");
 }
 

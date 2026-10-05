@@ -67,3 +67,19 @@ export const rotaChangeText = (a: { business: string; changes: { kind: RotaChang
   // Newlines are kept: they make a list far easier to read on a phone.
   return fit(lines.map(plain).join("\n"));
 };
+
+/** The app notification version of rotaChangeText: no link, because tapping it opens their shifts. */
+export const rotaChangeNotice = (a: { business: string; changes: { kind: RotaChangeKind; when: string }[] }) => {
+  const shown = a.changes.slice(0, 3).map((c) => `${CHANGE_LABEL[c.kind]}: ${c.when}`);
+  const more = a.changes.length - shown.length;
+  return { title: `${a.business}: your rota has changed`, body: [...shown, ...(more > 0 ? [`and ${more} more.`] : [])].map(plain).join("\n") };
+};
+
+/** The app notification version of reminderText. */
+export const reminderNotice = (a: { business: string; when: string; detail?: string | null; note?: string | null }) => {
+  const note = a.note ? plain(a.note).slice(0, 100) : "";
+  return {
+    title: `${a.business}: shift reminder`,
+    body: plain(`Your shift ${a.when}${a.detail ? `, ${a.detail}` : ""}.${note ? ` Note: ${note}${/[.!?]$/.test(note) ? "" : "."}` : ""}`),
+  };
+};

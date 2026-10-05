@@ -344,6 +344,13 @@
       "when": 1791195921612,
       "tag": "0048_supervision",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1791199365135,
+      "tag": "0049_push_notifications",
+      "breakpoints": true
     }
   ]
 }

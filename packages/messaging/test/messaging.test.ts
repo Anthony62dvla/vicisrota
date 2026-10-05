@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { formatUkMobile, helpAlert, httpSender, inviteText, lateAlert, reminderText, normaliseUkMobile, overdueAlert, rotaChangeText, senderFromEnv, SMS_MAX } from "../src";
+import { tellsChanges, wantsTexts, formatUkMobile, helpAlert, httpSender, inviteText, lateAlert, reminderNotice, reminderText, rotaChangeNotice, normaliseUkMobile, overdueAlert, rotaChangeText, senderFromEnv, SMS_MAX } from "../src";
 
 describe("UK mobile numbers", () => {
   it("accepts common formats", () => {
@@ -85,5 +85,39 @@ describe("staff texts", () => {
     expect(rotaChangeText({ business: "B", changes: [{ kind: "cancelled", when: "Fri 9 Oct 18:00-23:00" }], link: "L" })).toContain("Cancelled: Fri 9 Oct 18:00-23:00");
     expect(rotaChangeText({ business: "B", changes: [{ kind: "changed", when: "Sat 10 Oct 09:00-15:00" }], link: "L" })).toContain("Changed, now: Sat 10 Oct 09:00-15:00");
     expect(rotaChangeText({ business: "B".repeat(400), changes, link: "L" }).length).toBeLessThanOrEqual(SMS_MAX);
+  });
+});
+
+describe("app notifications", () => {
+  it("lists rota changes without a link, since tapping opens the shifts", () => {
+    const changes = ["Mon 5 Oct", "Tue 6 Oct", "Wed 7 Oct", "Thu 8 Oct"].map((d) => ({ kind: "added" as const, when: `${d} 08:00-14:00` }));
+    expect(rotaChangeNotice({ business: "Corner Bakery", changes })).toEqual({
+      title: "Corner Bakery: your rota has changed",
+      body: "New shift: Mon 5 Oct 08:00-14:00\nNew shift: Tue 6 Oct 08:00-14:00\nNew shift: Wed 7 Oct 08:00-14:00\nand 1 more.",
+    });
+  });
+  it("words a reminder like the text, with the note", () => {
+    expect(reminderNotice({ business: "B", when: "today, 09:00 to 17:00", detail: "Chef at Kitchen", note: "Bring whites" })).toEqual({
+      title: "B: shift reminder",
+      body: "Your shift today, 09:00 to 17:00, Chef at Kitchen. Note: Bring whites.",
+    });
+  });
+});
+
+describe("who gets texts", () => {
+  it("rota changes are on unless turned off", () => {
+    expect(tellsChanges({})).toBe(true);
+    expect(tellsChanges({ textChanges: false })).toBe(false);
+  });
+  it("texts only go to people who chose them and gave a number", () => {
+    expect(wantsTexts({ byText: true }, "+447700900123")).toBe(true);
+    expect(wantsTexts({ byText: true }, null)).toBe(false);
+    expect(wantsTexts({ byText: false, textChanges: true }, "+447700900123")).toBe(false);
+  });
+  it("people who set up texts before app notifications keep getting them", () => {
+    expect(wantsTexts({ remindEvening: true }, "+447700900123")).toBe(true);
+    expect(wantsTexts({ remindBeforeMinutes: 60 }, "+447700900123")).toBe(true);
+    // A number given only for the invitation does not mean they wanted texts.
+    expect(wantsTexts({}, "+447700900123")).toBe(false);
   });
 });
