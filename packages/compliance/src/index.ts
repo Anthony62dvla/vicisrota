@@ -25,3 +25,4 @@ export * from "./rules/fatigue";
 export * from "./autoAssign";
 export * from "./wellbeing";
 export * from "./plan";
+export * from "./staffImport";

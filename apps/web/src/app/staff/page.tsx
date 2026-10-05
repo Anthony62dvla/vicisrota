@@ -23,7 +23,12 @@ export default async function StaffPage() {
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-8 lg:px-8">
-      <h1 className="text-2xl font-semibold">Staff</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold">Staff</h1>
+        <Link href="/staff/import" className="rounded-lg border border-zinc-400 px-3 py-1.5 font-medium hover:bg-brand-soft">
+          Add people from a spreadsheet
+        </Link>
+      </div>
       {workers.length === 0 ? (
         <p className="mt-4">No staff yet. Add your first person below.</p>
       ) : (

@@ -54,10 +54,11 @@ export const planningBlocked = async (organisationId: string) =>
   !paymentsOn() || (await planFor(organisationId)).state.canPlan ? null : PAUSED_MESSAGE;
 
 /** For actions that add someone to the team: an error to show when that would go past the free people. */
-export const addingBlocked = async (organisationId: string) => {
+export const addingBlocked = async (organisationId: string, people = 1) => {
   if (!paymentsOn()) return null;
   const [org, staff] = await Promise.all([billingOf(organisationId), staffCount(organisationId)]);
-  return canAddPerson(inputFor(org, staff))
+  // canAddPerson asks about one more person, so count the others as already there.
+  return canAddPerson(inputFor(org, staff + people - 1))
     ? null
     : `The free plan covers ${PRICING.freeStaff} people. Choose a plan on the Plan and billing page to add more.`;
 };
