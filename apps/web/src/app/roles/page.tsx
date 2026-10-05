@@ -6,10 +6,11 @@ import { db } from "@/lib/db";
 import { RoleBadge } from "../role-badge";
 import { removeRole } from "./actions";
 import { suggestionsFor } from "@/lib/role-suggestions";
+import { packById } from "@/lib/sector-packs";
 import { AddRoleForm, SuggestedRolesForm } from "./forms";
 
 export default async function RolesPage() {
-  const { organisationId, sector  } = await requireManager();
+  const { organisationId, sector, kind } = await requireManager();
   const { roles, links, workers } = await withOrganisation(db, organisationId, async (tx) => ({
     roles: await tx.select().from(schema.jobRole).orderBy(asc(schema.jobRole.name)),
     links: await tx.select().from(schema.workerRole),
@@ -21,8 +22,7 @@ export default async function RolesPage() {
     <main className="mx-auto w-full max-w-3xl px-4 py-8 lg:px-8">
       <h1 className="text-2xl font-semibold">Job roles</h1>
       <p className="mt-2 text-zinc-700 dark:text-zinc-300">
-        Give shifts a role so everyone can see who is on the kitchen, the bar or the senior round. Open shifts are only offered to people set up
-        for the role, and the rota warns if someone is put on a role they are not set up for. Roles are optional.
+        Give shifts a role so everyone can see who is on the kitchen, the bar or the senior round. Open shifts are only offered to people who can do the role. The rota warns you if someone is put on a role they are not set up for. Roles are optional.
       </p>
 
       <section className="mt-8" aria-labelledby="roles-heading">
@@ -56,7 +56,7 @@ export default async function RolesPage() {
       <section className="mt-8" aria-labelledby="suggested-heading">
         <h2 id="suggested-heading" className="text-lg font-semibold">Choose from common roles</h2>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">Tick the roles you use, then add them all at once. You can remove any you do not need later.</p>
-        <SuggestedRolesForm groups={suggestionsFor(sector)} have={roles.map((r) => r.name)} />
+        <SuggestedRolesForm groups={suggestionsFor(sector, packById(kind)?.roleGroup)} have={roles.map((r) => r.name)} />
       </section>
 
       <section className="mt-8" aria-labelledby="add-heading">

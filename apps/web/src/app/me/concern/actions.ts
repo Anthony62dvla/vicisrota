@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireStaff } from "@/lib/business";
+import { getMessages } from "@/lib/i18n/server";
 import type { FormState } from "@/lib/concern-labels";
 import { myClientIds, raiseConcern } from "@/lib/safeguarding";
 
@@ -12,7 +13,7 @@ export async function raiseConcernAsStaff(_: FormState, form: FormData): Promise
     userId: user.id,
     name: worker.fullName,
     allowedClientIds: await myClientIds(organisationId, worker.id),
-  });
+  }, (await getMessages()).concern);
   revalidatePath("/me/concern");
   return result;
 }

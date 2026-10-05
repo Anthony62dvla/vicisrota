@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { requireManager } from "@/lib/business";
@@ -46,6 +47,9 @@ export default async function WorkplacesPage() {
                   {p.address && `${p.address} · `}
                   {p.latitude === null ? "Location not set" : `Location set, within ${p.radiusMetres} metres counts as at work`}
                 </p>
+                <Link href={`/workplaces/poster?l=${p.id}`} className="mt-2 inline-block text-sm underline">
+                  Print a QR code poster for {p.name}
+                </Link>
                 <form action={setUpKiosk} className="mt-2">
                   <input type="hidden" name="locationId" value={p.id} />
                   <button type="submit" className="rounded-lg border border-zinc-400 px-3 py-1 text-sm">Use this device as the clock-in tablet here</button>
@@ -83,7 +87,10 @@ export default async function WorkplacesPage() {
 
       <section className="mt-10" aria-labelledby="kiosk-heading">
         <h2 id="kiosk-heading" className="text-lg font-semibold">Clock-in tablets</h2>
-        <p className="mt-1">Staff clock in on these with a PIN they choose on their own home page.</p>
+        <p className="mt-1">
+          Staff clock in on the tablet in one of two ways. They type a PIN they chose on their home page, or they scan the QR code with their own phone. The code
+          changes every 30 seconds, so it only works for someone standing at the tablet.
+        </p>
         {kiosks.length === 0 ? (
           <p className="mt-2">None set up yet.</p>
         ) : (

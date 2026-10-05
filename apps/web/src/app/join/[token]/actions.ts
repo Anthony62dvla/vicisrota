@@ -1,5 +1,6 @@
 "use server";
 
+import { rememberBusiness } from "@/lib/business";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, eq, isNull } from "drizzle-orm";
 import { redirect } from "next/navigation";
@@ -52,5 +53,7 @@ export async function acceptInvitation(_: JoinState, form: FormData): Promise<Jo
   });
   if (error) return { error };
   await log("info", "invitation accepted", { organisationId: invitation.organisationId, workerId: invitation.workerId });
+  // Open the business they have just joined, even if they already belong to another.
+  await rememberBusiness(invitation.organisationId);
   redirect("/me");
 }

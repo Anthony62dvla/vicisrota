@@ -1,10 +1,11 @@
 "use server";
 
 import { schema, withOrganisation } from "@vicisrota/db";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
+import { notifyWorkers } from "@/lib/notify";
 import { requestId } from "@/lib/request";
 
 /** values: what was typed, sent back on an error so the form is not cleared. */
@@ -18,7 +19,7 @@ export async function postAnnouncement(_: FormState, form: FormData): Promise<Fo
   const values = { title, body, needsConfirmation: needsConfirmation ? "on" : "" };
   if (!title || title.length > 120) return { error: "Give it a short title (up to 120 characters).", values };
   if (!body || body.length > 5000) return { error: "Write the message (up to 5,000 characters).", values };
-  await withOrganisation(db, organisationId, async (tx) => {
+  const { id, staff } = await withOrganisation(db, organisationId, async (tx) => {
     const [row] = await tx
       .insert(schema.announcement)
       .values({ organisationId, title, body, needsConfirmation, createdByUserId: user.id })
@@ -32,7 +33,14 @@ export async function postAnnouncement(_: FormState, form: FormData): Promise<Fo
       entityId: row!.id,
       data: { title, needsConfirmation },
     });
+    const staff = await tx.select({ id: schema.worker.id }).from(schema.worker).where(isNotNull(schema.worker.userId));
+    return { id: row!.id, staff };
   });
+  // App notifications only: they are free, and announcements are never urgent enough to text.
+  await notifyWorkers(
+    organisationId,
+    staff.map((w) => ({ workerId: w.id, purpose: "announcement", title, body: body.slice(0, 200), url: "/me", dedupeKey: `announcement:${id}` })),
+  );
   revalidatePath("/announcements");
   return { ok: needsConfirmation ? "Posted. Staff will be asked to confirm they have read it." : "Posted. Staff will see it on their page." };
 }

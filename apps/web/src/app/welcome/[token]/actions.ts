@@ -1,5 +1,6 @@
 "use server";
 
+import { rememberBusiness } from "@/lib/business";
 import { schema } from "@vicisrota/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
@@ -55,5 +56,7 @@ export async function acceptOwnerInvitation(_: WelcomeState, form: FormData): Pr
   });
   if (error) return { error };
   await log("info", "owner joined", { organisationId: invitation.organisationId });
+  // Open the business they have just joined, even if they already belong to another.
+  await rememberBusiness(invitation.organisationId);
   redirect("/dashboard");
 }

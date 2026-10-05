@@ -1,17 +1,19 @@
-import { addDays, londonParts, weekCost, weekStart as mondayOf, type Finding } from "@vicisrota/compliance";
+import { addDays, evaluate, londonParts, weekCost, weekStart as mondayOf, type Finding } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, asc, desc, eq, gte, inArray, lt, lte, ne } from "drizzle-orm";
 import Link from "next/link";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
 import { LEAVE_LABEL } from "@/lib/leave";
-import { todayInUk, weekBounds } from "@/lib/rota";
-import { cancelShift } from "./actions";
-import { AddShiftForm, ClaimList, CopyWeekForm, PublishForm } from "./forms";
-import { RoleBadge } from "../role-badge";
+import { candidatesFor, usualTimes } from "@/lib/board";
+import { loadWeekChecks, todayInUk, weekBounds } from "@/lib/rota";
+import { RotaBoard, type BoardShift } from "./board";
+import { ClaimList, CopyWeekForm, FillOpenShiftsForm, PublishForm } from "./forms";
 
 const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" });
 const dayFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" });
+const longFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" });
+const MINUTE = 60_000;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
@@ -24,7 +26,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
 
   const previous = weekBounds(addDays(week, -7));
 
-  const { workers, training, clients, shifts, claims, leave, decision, rates, breaks, paysTravelTime, lastWeek, roles } = await withOrganisation(db, organisationId, async (tx) => ({
+  const { workers, training, clients, shifts, claims, leave, decision, rates, breaks, paysTravelTime, shortNoticeHours, lastWeek, roles, requirements, unavailable, workerRoles, recent, checks } = await withOrganisation(db, organisationId, async (tx) => ({
     workers: await tx.select().from(schema.worker).orderBy(asc(schema.worker.fullName)),
     clients:
       sector === "care"
@@ -57,12 +59,29 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
         ),
       ),
     rates: await tx.select().from(schema.payRate),
+    requirements: await tx
+      .select({ shiftId: schema.shiftRequirement.shiftId, qualificationId: schema.shiftRequirement.qualificationId })
+      .from(schema.shiftRequirement)
+      .innerJoin(schema.shift, eq(schema.shiftRequirement.shiftId, schema.shift.id))
+      .where(and(gte(schema.shift.startsAt, from), lt(schema.shift.startsAt, to))),
+    unavailable: await tx.select().from(schema.workerUnavailability),
+    workerRoles: await tx.select().from(schema.workerRole),
+    // The last five weeks of shifts give the business's usual start and finish times.
+    recent: await tx
+      .select({ startsAt: schema.shift.startsAt, endsAt: schema.shift.endsAt })
+      .from(schema.shift)
+      .where(and(gte(schema.shift.startsAt, weekBounds(addDays(week, -35)).from), lt(schema.shift.startsAt, to), ne(schema.shift.status, "cancelled"))),
+    // Every rule is run on every page view, so problems show as the rota is built, not only at publishing.
+    checks: await loadWeekChecks(tx, organisationId, week),
     breaks: await tx
       .select({ shiftId: schema.shiftBreak.shiftId, startsAt: schema.shiftBreak.startsAt, endsAt: schema.shiftBreak.endsAt })
       .from(schema.shiftBreak)
       .innerJoin(schema.shift, eq(schema.shiftBreak.shiftId, schema.shift.id))
       .where(and(gte(schema.shift.startsAt, from), lt(schema.shift.startsAt, to))),
-    paysTravelTime: (await tx.select({ pays: schema.organisation.paysTravelTime }).from(schema.organisation).where(eq(schema.organisation.id, organisationId)))[0]?.pays ?? false,
+    ...(await tx
+      .select({ paysTravelTime: schema.organisation.paysTravelTime, shortNoticeHours: schema.organisation.shortNoticeHours })
+      .from(schema.organisation)
+      .where(eq(schema.organisation.id, organisationId)))[0]!,
     lastWeek: (
       await tx
         .select({ id: schema.shift.id })
@@ -78,16 +97,19 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
         .limit(1)
     )[0],
   }));
-  const findings = (decision?.findings ?? []) as Finding[];
-  const flagged = new Set(findings.flatMap((f) => f.shiftIds));
+  const thisWeek = new Set(shifts.map((s) => s.id));
+  const findings = evaluate(checks.context).findings.filter((f) => f.shiftIds.some((id) => thisWeek.has(id)));
   const clientName = new Map(clients.map((c) => [c.id, c.name]));
-  const roleById = new Map(roles.map((r) => [r.id, r]));
+  const workerName = new Map(workers.map((w) => [w.id, w.fullName]));
+  const claimed = new Set(claims.map((c) => c.claim.shiftId));
   // Requests for this week's shifts.
   const claimsShown = claims.flatMap((c) => {
     const shift = shifts.find((s) => s.id === c.claim.shiftId);
     return shift ? [{ ...c, shift }] : [];
   });
   const drafts = shifts.filter((s) => s.status === "draft").length;
+  // Open drafts the rota builder can fill. Split shift parts are left for the manager.
+  const openDrafts = shifts.filter((s) => !s.workerId && s.status === "draft" && !s.splitGroupId).length;
   const cost = weekCost(
     shifts.map((s) => ({
       id: s.id,
@@ -103,6 +125,45 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
   const money = (pence: number) => (pence / 100).toLocaleString("en-GB", { style: "currency", currency: "GBP" });
   const hrs = (h: number) => `${+h.toFixed(2)} hour${h === 1 ? "" : "s"}`;
   const missingNames = workers.filter((w) => cost.missingRate.includes(w.id)).map((w) => w.fullName);
+
+  const splitPart = (s: (typeof shifts)[number]) => {
+    const parts = shifts.filter((p) => p.splitGroupId === s.splitGroupId);
+    return parts.length > 1 ? { part: parts.findIndex((p) => p.id === s.id) + 1, of: parts.length } : null;
+  };
+  const hoursThisWeek = new Map([...cost.byWorker].map(([id, w]) => [id, w.hours]));
+  const boardShifts: BoardShift[] = shifts.map((s) => {
+    const open = !s.workerId ? checks.open.find((o) => o.id === s.id) : undefined;
+    return {
+      id: s.id,
+      workerId: s.workerId,
+      date: londonParts(s.startsAt.getTime()).date,
+      start: timeFmt.format(s.startsAt),
+      end: timeFmt.format(s.endsAt),
+      breakMinutes: breaks.filter((b) => b.shiftId === s.id).reduce((m, b) => m + Math.round((b.endsAt.getTime() - b.startsAt.getTime()) / MINUTE), 0),
+      roleId: s.roleId,
+      clientId: s.clientId,
+      clientName: s.clientId ? (clientName.get(s.clientId) ?? "Visit") : null,
+      travelMinutes: s.travelMinutes,
+      note: s.note,
+      loneWorking: s.loneWorking,
+      checkInMinutes: s.checkInMinutes,
+      requires: requirements.filter((r) => r.shiftId === s.id).map((r) => r.qualificationId),
+      status: s.status === "published" ? "published" : "draft",
+      coverRequested: !!s.coverRequestedAt,
+      requested: claimed.has(s.id),
+      split: s.splitGroupId ? splitPart(s) : null,
+      problems: findings.filter((f) => f.shiftIds.includes(s.id)).map((f) => ({ severity: f.severity, message: f.message })),
+      candidates: open
+        ? candidatesFor(checks.context, open, hoursThisWeek).map((c) => ({
+            workerId: c.workerId,
+            name: workerName.get(c.workerId) ?? "Someone",
+            hours: hoursThisWeek.get(c.workerId) ?? 0,
+            blocks: c.blocks.map((f) => f.message),
+            warnings: c.warnings.map((f) => f.message),
+          }))
+        : undefined,
+    };
+  });
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 lg:px-8">
@@ -130,6 +191,8 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
       {workers.length > 0 && (
         <div className="mt-4 flex flex-wrap items-start gap-4">
           {lastWeek > 0 && <CopyWeekForm weekStart={week} count={lastWeek} />}
+          {/* Stays on the page once the shifts are filled, so its message can be read. */}
+          {shifts.length > 0 && <FillOpenShiftsForm weekStart={week} open={openDrafts} />}
           <Link href={`/rota/patterns?week=${week}`} className="rounded-lg border border-zinc-400 px-4 py-2">Rota patterns</Link>
         </div>
       )}
@@ -139,97 +202,62 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
           Add your staff first on the <Link href="/staff" className="underline">Staff page</Link>.
         </p>
       ) : (
-        <div className="mt-6 overflow-x-auto">
-          <table className="w-full min-w-[720px] table-fixed border-collapse text-left text-sm">
-            <thead>
-              <tr>
-                <th className="w-36 border-b border-zinc-300 py-2 dark:border-zinc-700">Staff</th>
-                {days.map((d) => (
-                  <th key={d} className="border-b border-zinc-300 py-2 dark:border-zinc-700">{dayFmt.format(new Date(`${d}T12:00:00Z`))}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {workers.map((w) => (
-                <tr key={w.id} className="align-top">
-                  <th scope="row" className="border-b border-zinc-200 py-2 font-medium dark:border-zinc-800">
-                    {w.fullName}
-                    {cost.byWorker.has(w.id) && (
-                      <span className="block text-xs font-normal text-zinc-600 dark:text-zinc-400">
-                        {+cost.byWorker.get(w.id)!.hours.toFixed(2)}h · {money(cost.byWorker.get(w.id)!.pence)}
-                      </span>
-                    )}
-                  </th>
-                  {days.map((d) => (
-                    <td key={d} className="border-b border-zinc-200 py-2 pr-2 dark:border-zinc-800">
-                      {leave
-                        .filter((l) => l.workerId === w.id && l.startsOn <= d && l.endsOn >= d)
-                        .map((l) => (
-                          <p
-                            key={l.id}
-                            className={`mb-1 rounded-md p-1 text-xs ${l.status === "approved" ? "bg-sky-100 dark:bg-sky-950" : "border border-dashed border-sky-500"}`}
-                          >
-                            {LEAVE_LABEL[l.kind]}
-                            {l.status === "requested" && " (requested)"}
-                          </p>
-                        ))}
-                      {shifts
-                        .filter((s) => s.workerId === w.id && londonParts(s.startsAt.getTime()).date === d)
-                        .map((s) => (
-                          <div
-                            key={s.id}
-                            className={`mb-1 rounded-md border p-1 ${flagged.has(s.id) ? "border-red-500" : "border-zinc-300 dark:border-zinc-700"}`}
-                          >
-                            <p>{timeFmt.format(s.startsAt)}–{timeFmt.format(s.endsAt)}</p>
-                            {s.roleId && roleById.has(s.roleId) && <RoleBadge name={roleById.get(s.roleId)!.name} colour={roleById.get(s.roleId)!.colour} />}
-                            {s.clientId && <p className="text-xs font-medium">{clientName.get(s.clientId) ?? "Visit"}</p>}
-                            {s.note && <p className="line-clamp-2 text-xs" title={s.note}>{s.note}</p>}
-                            {s.travelMinutes > 0 && <p className="text-xs text-zinc-600 dark:text-zinc-400">{s.travelMinutes} min travel before</p>}
-                            <p className="text-xs text-zinc-600 dark:text-zinc-400">
-                              {s.status === "published" ? "Published" : "Draft"}
-                              {flagged.has(s.id) && " · needs attention"}
-                              {s.coverRequestedAt && " · cover requested"}
-                              {s.loneWorking && " · working alone"}
-                            </p>
-                            <form action={cancelShift}>
-                              <input type="hidden" name="shiftId" value={s.id} />
-                              <button type="submit" className="text-xs underline">Cancel shift</button>
-                            </form>
-                          </div>
-                        ))}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-              {shifts.some((s) => !s.workerId) && (
-                <tr className="align-top">
-                  <th scope="row" className="border-b border-zinc-200 py-2 font-medium dark:border-zinc-800">Open shifts</th>
-                  {days.map((d) => (
-                    <td key={d} className="border-b border-zinc-200 py-2 pr-2 dark:border-zinc-800">
-                      {shifts
-                        .filter((s) => !s.workerId && londonParts(s.startsAt.getTime()).date === d)
-                        .map((s) => (
-                          <div key={s.id} className="mb-1 rounded-md border border-dashed border-zinc-500 p-1">
-                            <p>{timeFmt.format(s.startsAt)}–{timeFmt.format(s.endsAt)}</p>
-                            {s.roleId && roleById.has(s.roleId) && <RoleBadge name={roleById.get(s.roleId)!.name} colour={roleById.get(s.roleId)!.colour} />}
-                            <p className="text-xs text-zinc-600 dark:text-zinc-400">
-                              {s.status === "published" ? "Open to staff" : "Draft"}
-                              {claims.some((c) => c.claim.shiftId === s.id) && " · requested"}
-                            </p>
-                            <form action={cancelShift}>
-                              <input type="hidden" name="shiftId" value={s.id} />
-                              <button type="submit" className="text-xs underline">Cancel shift</button>
-                            </form>
-                          </div>
-                        ))}
-                    </td>
-                  ))}
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <RotaBoard
+          days={days.map((d, i) => ({ date: d, label: dayFmt.format(new Date(`${d}T12:00:00Z`)), long: longFmt.format(new Date(`${d}T12:00:00Z`)), weekday: i + 1 }))}
+          workers={workers.map((w) => ({
+            id: w.id,
+            name: w.fullName,
+            summary: cost.byWorker.has(w.id) ? `${+cost.byWorker.get(w.id)!.hours.toFixed(2)}h · ${money(cost.byWorker.get(w.id)!.pence)}` : null,
+            roleIds: workerRoles.filter((r) => r.workerId === w.id).map((r) => r.roleId),
+          }))}
+          shifts={boardShifts}
+          leave={leave.flatMap((l) =>
+            days.filter((d) => l.startsOn <= d && l.endsOn >= d).map((d) => ({ workerId: l.workerId, date: d, label: LEAVE_LABEL[l.kind], requested: l.status === "requested" })),
+          )}
+          unavailable={unavailable.map((u) => ({ workerId: u.workerId, weekday: u.weekday, from: u.startsAt, to: u.endsAt }))}
+          roles={roles.map((r) => ({ id: r.id, name: r.name, colour: r.colour }))}
+          training={training}
+          clients={sector === "care" ? clients.filter((c) => c.active) : undefined}
+          usualTimes={usualTimes(recent)}
+          shortNoticeHours={shortNoticeHours}
+        />
       )}
+
+      <section className="mt-8" aria-labelledby="check-heading">
+        <h2 id="check-heading" className="text-lg font-semibold">Check and publish</h2>
+        <p className="mt-1">
+          {drafts === 0 ? "No draft shifts this week." : `${drafts} draft shift${drafts === 1 ? "" : "s"} waiting to be published.`} Before you publish, every shift is checked against the law and your records. That includes working time, under-18 rules, minimum wage, right to work, DBS, training and booked leave.
+        </p>
+        <PublishForm weekStart={week} />
+        {shifts.length > 0 && (
+          <div className="mt-4">
+            {decision && (
+              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                Last checked with the publish button {decision.checkedAt.toLocaleString("en-GB", { timeZone: "Europe/London" })}
+                {decision.requestId && ` · reference ${decision.requestId}`}
+              </p>
+            )}
+            {findings.length === 0 ? (
+              <p className="mt-2">No problems found in this week&rsquo;s shifts right now.</p>
+            ) : (
+              <ul className="mt-2 space-y-2">
+                {findings.map((f, i) => (
+                  <li key={i} className={`rounded-lg border-l-4 p-3 ${f.severity === "block" ? "border-red-600 bg-red-50 dark:bg-red-950" : "border-amber-500 bg-warn-soft"}`}>
+                    <p>
+                      <span className="font-semibold">{f.severity === "block" ? "Must fix: " : "Check: "}</span>
+                      {f.message}
+                    </p>
+                    <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                      {f.shiftIds.length > 0 && workerName.has(f.workerId) && `${workerName.get(f.workerId)} · `}
+                      {f.legalRef}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </section>
 
       <section className="mt-8" aria-labelledby="claims-heading">
         <h2 id="claims-heading" className="text-lg font-semibold">Requests to pick up shifts</h2>
@@ -247,39 +275,6 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
         />
       </section>
 
-      <section className="mt-8" aria-labelledby="check-heading">
-        <h2 id="check-heading" className="text-lg font-semibold">Check and publish</h2>
-        <p className="mt-1">
-          {drafts === 0 ? "No draft shifts this week." : `${drafts} draft shift${drafts === 1 ? "" : "s"} waiting to be published.`} Every
-          shift is checked against UK working time, under-18 and minimum wage rules, right to work, DBS, required training and booked leave before it is published.
-        </p>
-        <PublishForm weekStart={week} />
-        {decision && (
-          <div className="mt-4">
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Last checked {decision.checkedAt.toLocaleString("en-GB", { timeZone: "Europe/London" })}
-              {decision.requestId && ` · reference ${decision.requestId}`}
-            </p>
-            {findings.length === 0 ? (
-              <p className="mt-2">No problems found.</p>
-            ) : (
-              <ul className="mt-2 space-y-2">
-                {findings.map((f, i) => (
-                  <li key={i} className={`rounded-lg border p-3 ${f.severity === "block" ? "border-red-500" : "border-amber-500"}`}>
-                    <p>
-                      <span className="font-semibold">{f.severity === "block" ? "Must fix: " : "Check: "}</span>
-                      {f.message}
-                    </p>
-                    <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{f.legalRef}</p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-      </section>
-
-      {workers.length > 0 && <AddShiftForm workers={workers.map((w) => ({ id: w.id, name: w.fullName }))} days={days} training={training} roles={roles.map((r) => ({ id: r.id, name: r.name }))} clients={sector === "care" ? clients.filter((c) => c.active) : undefined} />}
     </main>
   );
 }

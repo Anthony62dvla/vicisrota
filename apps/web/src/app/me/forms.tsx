@@ -202,29 +202,25 @@ export function TextSettingsForm({
   textChanges,
   remindEvening,
   remindBeforeMinutes,
+  byText,
 }: {
   mobile: string | null;
   textChanges: boolean;
   remindEvening: boolean;
   remindBeforeMinutes: number | null;
+  byText: boolean;
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(saveTextSettings, {});
   const v = state.values;
   return (
-    <form key={JSON.stringify(v ?? {})} action={action} className="mt-2 flex flex-col gap-3">
+    <form key={JSON.stringify(v ?? {})} action={action} className="mt-4 flex flex-col gap-3">
       {state.error && <p role="alert" className="rounded-lg border border-red-400 p-3">{state.error}</p>}
       {state.ok && <p role="status" className="rounded-lg border border-green-600 p-3">{state.ok}</p>}
-      <label className="flex flex-col gap-1">
-        <span className="font-medium">Your mobile number</span>
-        <input name="mobile" type="tel" autoComplete="tel" defaultValue={v ? v.mobile : (mobile ?? "")} placeholder="07700 900123" className={`${input} max-w-xs`} />
-      </label>
       <label className="flex items-start gap-2">
         <input type="checkbox" name="textChanges" defaultChecked={v ? v.textChanges === "on" : textChanges} className="mt-1" />
         <span>
-          Text me when my rota changes
-          <span className="block text-sm text-zinc-600 dark:text-zinc-400">
-            When shifts are published, cancelled or swapped. Nothing else, and you can turn it off here at any time.
-          </span>
+          Tell me when my rota changes
+          <span className="block text-sm text-zinc-600 dark:text-zinc-400">When shifts are published, changed, cancelled or swapped. Nothing else.</span>
         </span>
       </label>
       <fieldset className="flex flex-col gap-2">
@@ -241,6 +237,22 @@ export function TextSettingsForm({
               <option key={m} value={m}>{beforeLabel(m)} before</option>
             ))}
           </select>
+        </label>
+      </fieldset>
+      <fieldset className="flex flex-col gap-2">
+        <legend className="font-medium">Texts</legend>
+        <label className="flex items-start gap-2">
+          <input type="checkbox" name="byText" defaultChecked={v ? v.byText === "on" : byText} className="mt-1" />
+          <span>
+            Also send these to me by text
+            <span className="block text-sm text-zinc-600 dark:text-zinc-400">
+              Useful if you do not use the app. App notifications do the same job for free. In a fire roll call we always text you.
+            </span>
+          </span>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span>Your mobile number</span>
+          <input name="mobile" type="tel" autoComplete="tel" defaultValue={v ? v.mobile : (mobile ?? "")} placeholder="07700 900123" className={`${input} max-w-xs`} />
         </label>
       </fieldset>
       <button type="submit" disabled={pending} className="self-start rounded-lg border border-zinc-400 px-4 py-2 disabled:opacity-60">Save</button>

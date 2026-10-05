@@ -36,10 +36,10 @@ export const concernCategory = pgEnum("concern_category", ["abuse_or_neglect", "
 export const concernStatus = pgEnum("concern_status", ["open", "in_progress", "referred", "closed"]);
 export const concernActionKind = pgEnum("concern_action_kind", ["note", "referral", "status"]);
 export const loneCheckKind = pgEnum("lone_check_kind", ["start", "ok", "finished", "help", "resolved"]);
-export const noticeKind = pgEnum("notice_kind", ["added", "cancelled", "given_to_you", "taken_by_colleague"]);
+export const noticeKind = pgEnum("notice_kind", ["added", "changed", "cancelled", "given_to_you", "taken_by_colleague"]);
 export const clockKind = pgEnum("clock_kind", ["in", "break_start", "break_end", "out"]);
 export const clockLocationRule = pgEnum("clock_location_rule", ["off", "record", "require"]);
-export const clockSource = pgEnum("clock_source", ["phone", "kiosk"]);
+export const clockSource = pgEnum("clock_source", ["phone", "kiosk", "qr"]);
 export const clockPlace = pgEnum("clock_place", ["at_work", "away", "unknown"]);
 export const dbsLevel = pgEnum("dbs_level", ["basic", "standard", "enhanced", "enhanced_barred"]);
 
@@ -52,6 +52,29 @@ const orgId = () =>
 
 export const CONTACT_WAYS = ["text", "app", "call", "in_person"] as const;
 export type ContactWay = (typeof CONTACT_WAYS)[number];
+
+/**
+ * How a person likes their own pages shown, and what they want to be told about. textChanges and the
+ * remind* settings say WHAT to tell them (the names are older than app notifications). Everything goes
+ * to their page and their app notifications for free; byText says whether it is also texted. When
+ * byText was never set, people with a mobile number get texts, as they did before app notifications.
+ */
+export type WorkerPreferences = {
+  calm?: boolean;
+  largeText?: boolean;
+  textChanges?: boolean;
+  remindEvening?: boolean;
+  remindBeforeMinutes?: number | null;
+  byText?: boolean;
+  /** Wellbeing check-ins: off unless the person turns them on, and private unless they choose to share. */
+  wellbeing?: { on?: boolean; after?: "every" | "hard"; share?: boolean };
+};
+
+/**
+ * Quiet hours for team messages. Messages still arrive in VicisRota; only the notification waits. Unset
+ * means the defaults: quiet from 9pm to 7am, and all day on days off (staff with no shift that day).
+ */
+export type MessageQuiet = { from?: string | null; to?: string | null; daysOff?: boolean };
 
 export type WorkProfile = {
   strengths?: string;
@@ -70,6 +93,8 @@ export const organisation = pgTable("organisation", {
   id: id(),
   name: text("name").notNull(),
   sector: sector("sector").notNull(),
+  /** The kind of business chosen at setup, such as "nursery" or "security" (see sector-packs.ts). Null for businesses set up before kinds. */
+  kind: text("kind"),
   /** Care providers: every shift needs an enhanced DBS with barred list check. */
   requiresEnhancedDbs: boolean("requires_enhanced_dbs").notNull().default(false),
   /** Month the holiday year starts, 1 = January. */
@@ -82,6 +107,12 @@ export const organisation = pgTable("organisation", {
   clockLocationRule: clockLocationRule("clock_location_rule").notNull().default("off"),
   /** Text the alert contacts when nobody has clocked in this many minutes after a shift starts. Null is off. */
   lateAlertMinutes: smallint("late_alert_minutes"),
+  /** Pay staff when a published shift is cancelled, moved or cut short with less than this many hours' notice. Null is off. */
+  shortNoticeHours: smallint("short_notice_hours"),
+  /** Share of the lost pay owed for a short-notice change, 100 = full pay. */
+  shortNoticePayPercent: smallint("short_notice_pay_percent").notNull().default(100),
+  /** What the business's payroll software calls each kind of pay, where it differs from VicisRota's names. */
+  payItemNames: jsonb("pay_item_names").$type<Partial<Record<"basic" | "travel" | "holiday" | "ssp" | "tips" | "shortNotice", string>>>().notNull().default({}),
   createdAt: createdAt(),
 });
 
@@ -94,6 +125,8 @@ export const membership = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     role: role("role").notNull(),
+    /** When this person does not want message notifications from this business. See MessageQuiet. */
+    messageQuiet: jsonb("message_quiet").$type<MessageQuiet>().notNull().default({}),
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.organisationId, t.userId] }), index("membership_user_idx").on(t.userId)],
@@ -126,6 +159,8 @@ export const worker = pgTable(
     daysPerWeek: numeric("days_per_week", { precision: 3, scale: 1, mode: "number" }).notNull().default(5),
     /** Irregular hours or part-year: leave accrues at 12.07% of hours worked instead. */
     irregularHours: boolean("irregular_hours").notNull().default(false),
+    /** The person's employee number in the business's payroll software, so imported pay lands on the right person. */
+    payrollId: text("payroll_id"),
     /** Hashed PIN for clocking in on an in-store tablet. */
     pinHash: text("pin_hash"),
     pinFailures: smallint("pin_failures").notNull().default(0),
@@ -142,9 +177,9 @@ export const worker = pgTable(
      * is true; it is never shown on the rota, in warnings or in the audit trail.
      */
     workProfile: jsonb("work_profile").$type<WorkProfile>().notNull().default({}),
-    /** How the person likes their own pages shown (calm mode, larger text), and which texts they asked for (rota changes, shift reminders). */
+    /** See WorkerPreferences. */
     preferences: jsonb("preferences")
-      .$type<{ calm?: boolean; largeText?: boolean; textChanges?: boolean; remindEvening?: boolean; remindBeforeMinutes?: number | null }>()
+      .$type<WorkerPreferences>()
       .notNull()
       .default({}),
     createdAt: createdAt(),
@@ -195,6 +230,8 @@ export const shift = pgTable(
     checkInMinutes: smallint("check_in_minutes").notNull().default(60),
     /** What to expect, written by the manager for the person on the shift, for example "Delivery at 10". */
     note: text("note"),
+    /** Parts of one split shift (for example 07:00 to 10:00 and 16:00 to 19:00) share this id. Each part is clocked separately. */
+    splitGroupId: uuid("split_group_id"),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
@@ -203,6 +240,7 @@ export const shift = pgTable(
     check("shift_travel_minutes", sql`${t.travelMinutes} between 0 and 240`),
     check("shift_check_in_minutes", sql`${t.checkInMinutes} between 15 and 240`),
     index("shift_org_start_idx").on(t.organisationId, t.startsAt), index("shift_worker_idx").on(t.workerId, t.startsAt),
+    index("shift_split_group_idx").on(t.splitGroupId),
   ],
 );
 
@@ -312,6 +350,29 @@ export const workerQualification = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("worker_qualification_worker_idx").on(t.workerId)],
+);
+
+export const supervisionKind = pgEnum("supervision_kind", ["supervision", "appraisal"]);
+
+/**
+ * That a supervision or appraisal happened, and when the next is due. Only dates are kept here: what was
+ * discussed belongs in the person's supervision notes, kept privately, not in the rota app.
+ */
+export const supervision = pgTable(
+  "supervision",
+  {
+    id: id(),
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    kind: supervisionKind("kind").notNull(),
+    heldOn: date("held_on").notNull(),
+    nextDueOn: date("next_due_on"),
+    recordedByUserId: text("recorded_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("supervision_worker_idx").on(t.workerId, t.heldOn)],
 );
 
 /** Training the person working a shift must hold. */
@@ -620,6 +681,71 @@ export const rotaNotice = pgTable(
   (t) => [index("rota_notice_worker_idx").on(t.workerId, t.createdAt)],
 );
 
+/** A fire or emergency roll call: who should be on site, and who has been accounted for. */
+export const rollCall = pgTable("roll_call", {
+  id: id(),
+  organisationId: orgId(),
+  startedByUserId: text("started_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  startedAt: createdAt(),
+  endedAt: timestamp("ended_at", { withTimezone: true }),
+  endedByUserId: text("ended_by_user_id").references(() => user.id, { onDelete: "set null" }),
+});
+
+export const rollCallExpected = pgEnum("roll_call_expected", ["clocked_in", "not_clocked_in"]);
+
+/** Each person on the roll call, taken when it started, and when they were marked safe and by whom. */
+export const rollCallPerson = pgTable(
+  "roll_call_person",
+  {
+    id: id(),
+    organisationId: orgId(),
+    rollCallId: uuid("roll_call_id")
+      .notNull()
+      .references(() => rollCall.id, { onDelete: "cascade" }),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    expected: rollCallExpected("expected").notNull(),
+    place: text("place"),
+    safeAt: timestamp("safe_at", { withTimezone: true }),
+    /** True when the person marked themselves safe from their phone. */
+    markedBySelf: boolean("marked_by_self").notNull().default(false),
+    markedByUserId: text("marked_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  },
+  (t) => [index("roll_call_person_call_idx").on(t.rollCallId)],
+);
+
+export const shortNoticeKind = pgEnum("short_notice_kind", ["cancelled", "moved", "shortened"]);
+
+/**
+ * Pay owed because a published shift was cancelled, moved or cut short at short notice (Employment Rights
+ * Act 2025). Worked out when the change is saved, from the original times, and paid with the pay period the
+ * original shift fell in. A manager can mark it not owed, with a reason; the row is kept either way.
+ */
+export const shortNoticePayment = pgTable(
+  "short_notice_payment",
+  {
+    id: id(),
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    shiftId: uuid("shift_id")
+      .notNull()
+      .references(() => shift.id, { onDelete: "cascade" }),
+    kind: shortNoticeKind("kind").notNull(),
+    shiftStartsAt: timestamp("shift_starts_at", { withTimezone: true }).notNull(),
+    shiftEndsAt: timestamp("shift_ends_at", { withTimezone: true }).notNull(),
+    lostMinutes: integer("lost_minutes").notNull(),
+    noticeHours: integer("notice_hours").notNull(),
+    pence: integer("pence").notNull(),
+    waivedAt: timestamp("waived_at", { withTimezone: true }),
+    waivedReason: text("waived_reason"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("short_notice_payment_worker_idx").on(t.workerId, t.shiftStartsAt)],
+);
+
 /** Regular weekly times someone cannot work, in UK time. weekday: 1 = Monday to 7 = Sunday; ends_at may be "24:00". */
 export const workerUnavailability = pgTable(
   "worker_unavailability",
@@ -918,4 +1044,231 @@ export const supportReport = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("support_report_created_idx").on(t.createdAt), index("support_report_reporter_idx").on(t.reporterUserId)],
+);
+
+/**
+ * A phone or computer where someone turned on app notifications. Belongs to the login, not a business,
+ * so one device gets notifications from every business the person works for. Only the browser's
+ * push address and keys are kept: nothing here identifies the device itself.
+ */
+export const pushSubscription = pgTable(
+  "push_subscription",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("push_subscription_endpoint_idx").on(t.endpoint), index("push_subscription_user_idx").on(t.userId)],
+);
+
+/**
+ * Everything VicisRota has told a member of staff: rota changes, reminders and roll calls. Shown on their
+ * own page, and sent as an app notification to their devices (free) and, only if they chose it, as a text.
+ */
+export const notification = pgTable(
+  "notification",
+  {
+    id: id(),
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    purpose: text("purpose").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    /** The page it opens, e.g. /me. */
+    url: text("url").notNull(),
+    /** Stops the same notification going out twice when a job is retried. */
+    dedupeKey: text("dedupe_key").notNull(),
+    /** How many of the person's devices accepted it. */
+    pushed: integer("pushed").notNull().default(0),
+    texted: boolean("texted").notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("notification_dedupe_idx").on(t.organisationId, t.workerId, t.dedupeKey), index("notification_worker_idx").on(t.workerId, t.createdAt)],
+);
+
+/**
+ * A conversation between people in one business: one-to-one (name is null) or a group a manager set up.
+ * Only its members can read it, managers included: a manager who is not in a conversation cannot see it.
+ */
+export const conversation = pgTable(
+  "conversation",
+  {
+    id: id(),
+    organisationId: orgId(),
+    /** A group's name, e.g. "Kitchen team". Null for one-to-one. */
+    name: text("name"),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("conversation_org_idx").on(t.organisationId, t.lastMessageAt)],
+);
+
+export const conversationMember = pgTable(
+  "conversation_member",
+  {
+    organisationId: orgId(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversation.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** Messages after this are shown as new. */
+    lastReadAt: timestamp("last_read_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.conversationId, t.userId] }), index("conversation_member_user_idx").on(t.organisationId, t.userId)],
+);
+
+export const message = pgTable(
+  "message",
+  {
+    id: id(),
+    organisationId: orgId(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversation.id, { onDelete: "cascade" }),
+    senderUserId: text("sender_user_id").references(() => user.id, { onDelete: "set null" }),
+    body: text("body").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("message_conversation_idx").on(t.conversationId, t.createdAt)],
+);
+
+/**
+ * A list of tasks for a shift, such as opening checks. Shown to whoever works a shift that matches:
+ * a role, a workplace, both, or (when neither is set) every shift.
+ */
+export const checklistTemplate = pgTable(
+  "checklist_template",
+  {
+    id: id(),
+    organisationId: orgId(),
+    name: text("name").notNull(),
+    items: jsonb("items").$type<string[]>().notNull(),
+    roleId: uuid("role_id").references(() => jobRole.id, { onDelete: "set null" }),
+    locationId: uuid("location_id").references(() => location.id, { onDelete: "set null" }),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("checklist_template_org_idx").on(t.organisationId)],
+);
+
+/** A task ticked off on a shift. The task's wording is copied, so later edits to the list do not change the record. */
+export const checklistTick = pgTable(
+  "checklist_tick",
+  {
+    id: id(),
+    organisationId: orgId(),
+    shiftId: uuid("shift_id")
+      .notNull()
+      .references(() => shift.id, { onDelete: "cascade" }),
+    templateId: uuid("template_id")
+      .notNull()
+      .references(() => checklistTemplate.id, { onDelete: "cascade" }),
+    item: smallint("item").notNull(),
+    task: text("task").notNull(),
+    workerId: uuid("worker_id").references(() => worker.id, { onDelete: "set null" }),
+    tickedAt: timestamp("ticked_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("checklist_tick_item_idx").on(t.shiftId, t.templateId, t.item)],
+);
+
+/** A note left at the end of a shift for the next people working at the same workplace. */
+export const handover = pgTable(
+  "handover",
+  {
+    id: id(),
+    organisationId: orgId(),
+    shiftId: uuid("shift_id").references(() => shift.id, { onDelete: "set null" }),
+    workerId: uuid("worker_id").references(() => worker.id, { onDelete: "set null" }),
+    locationId: uuid("location_id").references(() => location.id, { onDelete: "set null" }),
+    body: text("body").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("handover_org_idx").on(t.organisationId, t.createdAt)],
+);
+
+/**
+ * A wellbeing check-in after a shift, given only by people who turned them on. Private to the person
+ * unless shared was true when they gave it. Asking for a chat always reaches a manager, but only as
+ * "would like a chat", never the answer or note.
+ */
+export const wellbeingCheckIn = pgTable(
+  "wellbeing_check_in",
+  {
+    id: id(),
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    shiftId: uuid("shift_id").references(() => shift.id, { onDelete: "set null" }),
+    /** 1 good, 2 OK, 3 tiring, 4 hard, 5 really hard. Null when they chose to skip. */
+    answer: smallint("answer"),
+    note: text("note"),
+    shared: boolean("shared").notNull().default(false),
+    wantsChat: boolean("wants_chat").notNull().default(false),
+    chatHandledAt: timestamp("chat_handled_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("wellbeing_check_in_shift_idx").on(t.workerId, t.shiftId), index("wellbeing_check_in_org_idx").on(t.organisationId, t.createdAt)],
+);
+
+export const applicantStatus = pgEnum("applicant_status", ["new", "shortlisted", "interview", "offered", "hired", "not_progressed"]);
+
+/** A job advert. Its public page is /jobs/{organisationId}/{id}, open to anyone while status is open. */
+export const jobPost = pgTable(
+  "job_post",
+  {
+    id: id(),
+    organisationId: orgId(),
+    title: text("title").notNull(),
+    roleId: uuid("role_id").references(() => jobRole.id, { onDelete: "set null" }),
+    /** Where, hours and pay, in the manager's words. */
+    place: text("place"),
+    hours: text("hours"),
+    pay: text("pay"),
+    description: text("description").notNull(),
+    open: boolean("open").notNull().default(true),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("job_post_org_idx").on(t.organisationId, t.createdAt)],
+);
+
+/**
+ * Someone who applied for a job. Deleted automatically six months after applying unless hired (UK GDPR:
+ * kept no longer than needed). Once hired, their details move to a staff record and this is kept as the link.
+ */
+export const applicant = pgTable(
+  "applicant",
+  {
+    id: id(),
+    organisationId: orgId(),
+    jobPostId: uuid("job_post_id")
+      .notNull()
+      .references(() => jobPost.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    email: text("email"),
+    phone: text("phone"),
+    /** How they would like to be contacted: email, phone or text. */
+    contactBy: text("contact_by"),
+    about: text("about").notNull(),
+    /** Anything that would help them at an interview, in their own words. */
+    adjustments: text("adjustments"),
+    status: applicantStatus("status").notNull().default("new"),
+    /** Manager's notes. Applicants can ask to see these (subject access), so keep them factual. */
+    notes: text("notes"),
+    hiredWorkerId: uuid("hired_worker_id").references(() => worker.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("applicant_post_idx").on(t.jobPostId, t.createdAt)],
 );

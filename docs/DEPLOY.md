@@ -90,6 +90,12 @@ cd /opt/vicisrota/deploy && ./update.sh
 
 Any database changes are applied automatically.
 
+**App notifications.** These are free, so staff who turn them on do not need texts. `update.sh` creates the keys for them the first time (the `VAPID_` lines in `.env`) and keeps them after that. Do not change or delete those lines, because new keys turn notifications off on everyone's phones. The first update that adds them runs the old copy of `update.sh`, so that time run:
+
+```
+cd /opt/vicisrota/deploy && ./ensure-keys.sh && ./update.sh
+```
+
 **Turning on real text messages.** Once you have your Text Global (or other bulk SMS) API details:
 
 1. Run `nano /opt/vicisrota/deploy/app.env`.

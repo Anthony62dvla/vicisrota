@@ -165,6 +165,45 @@ export async function updateHolidaySettings(_: FormState, form: FormData): Promi
   return result;
 }
 
+/** The person's employee number in the business's payroll software. */
+export async function updatePayrollId(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  const payrollId = String(form.get("payrollId") ?? "").trim() || null;
+  if (payrollId && payrollId.length > 40) return { error: "Keep the payroll ID under 40 characters." };
+  const result = await withOrganisation(db, organisationId, async (tx) => {
+    const rows = await tx.update(schema.worker).set({ payrollId }).where(eq(schema.worker.id, workerId)).returning({ name: schema.worker.fullName });
+    if (!rows.length) return { error: "That person could not be found." };
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "update", entity: "worker", entityId: workerId, data: { payrollId } });
+    return { ok: payrollId ? `Payroll ID saved for ${rows[0]!.name}.` : `Payroll ID removed for ${rows[0]!.name}.` };
+  });
+  revalidatePath(`/staff/${workerId}`);
+  revalidatePath("/timesheets");
+  return result;
+}
+
+/** Records that a supervision or appraisal happened, and when the next is due. Only dates are kept. */
+export async function addSupervision(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  const kind = String(form.get("kind") ?? "");
+  const heldOn = optionalDate(form.get("heldOn"));
+  const nextDueOn = optionalDate(form.get("nextDueOn"));
+  if (kind !== "supervision" && kind !== "appraisal") return { error: "Choose supervision or appraisal." };
+  if (!heldOn) return { error: "Enter the date it was held." };
+  if (nextDueOn && nextDueOn <= heldOn) return { error: "The next one should be due after this one." };
+  const result = await withOrganisation(db, organisationId, async (tx) => {
+    const worker = await findWorker(tx, workerId);
+    if (!worker) return { error: "That person could not be found." };
+    const [row] = await tx.insert(schema.supervision).values({ organisationId, workerId, kind, heldOn, nextDueOn, recordedByUserId: user.id }).returning({ id: schema.supervision.id });
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "create", entity: "supervision", entityId: row!.id, data: { workerId, kind, heldOn, nextDueOn } });
+    return { ok: `${kind === "supervision" ? "Supervision" : "Appraisal"} recorded for ${worker.name}.` };
+  });
+  revalidatePath(`/staff/${workerId}`);
+  revalidatePath("/inspection");
+  return result;
+}
+
 export type InviteState = FormState & { link?: string };
 
 /** Creates a fresh invitation link for a member of staff; any earlier unused link stops working. */

@@ -3,7 +3,7 @@
 import { schema } from "@vicisrota/db";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
-import { firstMembership } from "@/lib/business";
+import { currentMembership } from "@/lib/business";
 import { db } from "@/lib/db";
 import { safeNextPath } from "@/lib/next-path";
 import { SUPPORT_MAX } from "@/lib/support";
@@ -11,7 +11,7 @@ import { SUPPORT_MAX } from "@/lib/support";
 /** Saves a problem report for the VicisRota team. Only the reporter and VicisRota superadmins can read it. */
 export async function reportProblem(form: FormData) {
   const user = await requireUser();
-  const membership = await firstMembership(user.id);
+  const membership = await currentMembership(user.id);
   const what = String(form.get("what") ?? "").trim();
   const errorRef = String(form.get("ref") ?? "").trim().toUpperCase().slice(0, 40) || null;
   // Only the path is kept, not any query string.

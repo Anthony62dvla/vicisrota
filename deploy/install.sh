@@ -44,6 +44,7 @@ if [ ! -f app.env ]; then
   cp app.env.example app.env
 fi
 
+./ensure-keys.sh
 mkdir -p backups
 . ./.env
 say "Building and starting VicisRota (the first build takes a few minutes)..."

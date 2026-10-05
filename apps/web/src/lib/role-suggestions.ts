@@ -95,13 +95,71 @@ export const SUGGESTED_ROLES: SuggestedGroup[] = [
       ["Fire marshal", "pink"],
     ],
   },
+  {
+    id: "nursery",
+    title: "Nurseries and childcare",
+    sectors: [],
+    roles: [
+      ["Nursery manager", "teal"],
+      ["Deputy manager", "teal"],
+      ["Room leader", "teal"],
+      ["Nursery practitioner", "pink"],
+      ["Nursery assistant", "pink"],
+      ["Apprentice practitioner", "pink"],
+      ["SENCO", "purple"],
+      ["Cook", "orange"],
+      ["Administrator", "grey"],
+    ],
+  },
+  {
+    id: "retail",
+    title: "Shops",
+    sectors: [],
+    roles: [
+      ["Store manager", "teal"],
+      ["Assistant manager", "teal"],
+      ["Supervisor", "teal"],
+      ["Sales assistant", "blue"],
+      ["Cashier", "blue"],
+      ["Visual merchandiser", "green"],
+      ["Stock and warehouse", "grey"],
+      ["Delivery driver", "grey"],
+    ],
+  },
+  {
+    id: "cleaning",
+    title: "Cleaning",
+    sectors: [],
+    roles: [
+      ["Operations manager", "teal"],
+      ["Area supervisor", "teal"],
+      ["Cleaner", "grey"],
+      ["Specialist cleaner", "grey"],
+      ["Window cleaner", "grey"],
+      ["Housekeeper", "grey"],
+    ],
+  },
+  {
+    id: "security",
+    title: "Security",
+    sectors: [],
+    roles: [
+      ["Security manager", "teal"],
+      ["Shift supervisor", "teal"],
+      ["Security officer", "blue"],
+      ["Door supervisor", "blue"],
+      ["CCTV operator", "grey"],
+      ["Key holder", "grey"],
+      ["Event steward", "green"],
+    ],
+  },
 ];
 
-/** Groups for the business's own sector first, then the rest, for businesses that do a bit of everything. */
-export const suggestionsFor = (sector: string) => [
-  ...SUGGESTED_ROLES.filter((g) => g.sectors.includes(sector as never)),
-  ...SUGGESTED_ROLES.filter((g) => !g.sectors.includes(sector as never)),
-];
+/** The business's own kind first, then groups for its sector, then the rest, for businesses that do a bit of everything. */
+export const suggestionsFor = (sector: string, ownGroup?: string) => {
+  const rank = (g: SuggestedGroup) => (g.id === ownGroup ? 0 : g.sectors.includes(sector as never) ? 1 : 2);
+  return [...SUGGESTED_ROLES].sort((a, b) => rank(a) - rank(b));
+};
 
 /** Every suggested role by lower-case name, so the server only accepts names from this list. */
 export const SUGGESTED_BY_NAME = new Map(SUGGESTED_ROLES.flatMap((g) => g.roles).map(([name, colour]) => [name.toLowerCase(), { name, colour }]));

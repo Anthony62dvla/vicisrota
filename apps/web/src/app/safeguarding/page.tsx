@@ -64,8 +64,7 @@ export default async function SafeguardingPage() {
     <main className="mx-auto w-full max-w-3xl px-4 py-8 lg:px-8">
       <h1 className="text-2xl font-semibold">Safeguarding</h1>
       <p className="mt-1">
-        Concerns raised by staff and managers. What was reported cannot be changed or deleted. Everything you do about it is added to its
-        record, so there is a clear history if it is ever reviewed.
+        Concerns raised by staff and managers. What was reported cannot be changed or deleted. Everything you do about it is added to its record. This keeps a clear history in case it is ever reviewed.
       </p>
 
       <section className="mt-8" aria-labelledby="open-heading">

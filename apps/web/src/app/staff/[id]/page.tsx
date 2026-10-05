@@ -11,16 +11,17 @@ import { AvailabilityEditor } from "../../availability-editor";
 import { addStaffUnavailable, removeStaffUnavailable, removeTraining } from "./actions";
 import { formatUkMobile } from "@vicisrota/messaging";
 import { WorkerRolesForm } from "../../roles/forms";
-import { AddCheckForm, AddTrainingForm, AdjustmentsForm, HolidaySettingsForm, InviteForm, MobileForm } from "./forms";
+import { AddCheckForm, AddTrainingForm, AdjustmentsForm, HolidaySettingsForm, InviteForm, MobileForm, PayrollIdForm, SupervisionForm } from "./forms";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DBS_LABEL = { basic: "Basic", standard: "Standard", enhanced: "Enhanced", enhanced_barred: "Enhanced with barred list" };
 const ukDate = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" });
 
-export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]">) {
+export default async function StaffRecordPage({ params, searchParams }: PageProps<"/staff/[id]">) {
   const { organisationId } = await requireManager();
   const { id } = await params;
   if (!UUID.test(id)) notFound();
+  const welcome = (await searchParams).welcome === "1";
   const today = todayInUk();
 
   const data = await withOrganisation(db, organisationId, async (tx) => {
@@ -46,11 +47,12 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
         .orderBy(asc(schema.workerUnavailability.weekday), asc(schema.workerUnavailability.startsAt)),
       roles: await tx.select().from(schema.jobRole).orderBy(asc(schema.jobRole.name)),
       held: (await tx.select({ roleId: schema.workerRole.roleId }).from(schema.workerRole).where(eq(schema.workerRole.workerId, id))).map((r) => r.roleId),
+      supervisions: await tx.select().from(schema.supervision).where(eq(schema.supervision.workerId, id)).orderBy(desc(schema.supervision.heldOn)),
       known: (await tx.select({ name: schema.qualification.name }).from(schema.qualification).orderBy(asc(schema.qualification.name))).map((q) => q.name),
     };
   });
   if (!data) notFound();
-  const { worker, checks, training, known, holiday, login, unavailable, roles, held } = data;
+  const { worker, checks, training, known, holiday, login, unavailable, roles, held, supervisions } = data;
   const balance = holiday.balances.get(worker.id)!;
   const rtw = checks.filter((c) => c.kind === "right_to_work");
   const dbs = checks.filter((c) => c.kind === "dbs");
@@ -62,6 +64,17 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
         <Link href="/staff" className="text-sm text-muted underline">All staff</Link>
       </p>
       <h1 className="mt-2 text-2xl font-semibold">{worker.fullName}</h1>
+      {welcome && (
+        <div role="status" className="mt-4 rounded-lg border border-brand bg-brand-soft p-4">
+          <p className="font-medium">{worker.fullName} has been added to your staff. Next steps:</p>
+          <ol className="mt-2 list-decimal pl-5">
+            <li><a href="#right-to-work" className="underline">Check their right to work</a> before their first shift. The law requires it.</li>
+            {checks.length === 0 && <li><a href="#dbs" className="underline">Record a DBS check</a> if their role needs one.</li>}
+            <li><a href="#roles" className="underline">Choose the roles</a> they will work.</li>
+            <li><a href="#login" className="underline">Send them an invitation</a> so they can see their shifts on their phone.</li>
+          </ol>
+        </div>
+      )}
 
       <section id="roles" className="mt-8 scroll-mt-4" aria-labelledby="roles-heading">
         <h2 id="roles-heading" className="text-lg font-semibold">Job roles</h2>
@@ -193,6 +206,31 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
           daysPerWeek={worker.daysPerWeek}
           irregularHours={worker.irregularHours}
         />
+      </section>
+
+      <section className="mt-10" id="payroll">
+        <h2 className="text-lg font-semibold">Payroll</h2>
+        <PayrollIdForm workerId={worker.id} payrollId={worker.payrollId} />
+      </section>
+
+      <section className="mt-10" id="supervision">
+        <h2 className="text-lg font-semibold">Supervision and appraisal</h2>
+        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+          A record of when they happened and when the next is due, for inspections. Keep what was discussed in the person&apos;s private supervision notes.
+        </p>
+        {supervisions.length === 0 ? (
+          <p className="mt-2">None recorded yet.</p>
+        ) : (
+          <ul className="mt-2 list-disc pl-6">
+            {supervisions.map((s) => (
+              <li key={s.id}>
+                {s.kind === "supervision" ? "Supervision" : "Appraisal"} on {ukDate(s.heldOn)}
+                {s.nextDueOn && `, next due ${ukDate(s.nextDueOn)}`}
+              </li>
+            ))}
+          </ul>
+        )}
+        <SupervisionForm workerId={worker.id} />
       </section>
     </main>
   );

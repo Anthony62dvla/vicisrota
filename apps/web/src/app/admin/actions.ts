@@ -3,16 +3,16 @@
 import { schema } from "@vicisrota/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { applyPack } from "@/lib/apply-pack";
 import { db } from "@/lib/db";
 import { hashInviteToken, newInviteToken } from "@/lib/invite";
 import { log } from "@/lib/log";
 import { OWNER_INVITE_DAYS } from "@/lib/owner-invite";
 import { requestId } from "@/lib/request";
+import { packById } from "@/lib/sector-packs";
 import { appUrl } from "@/lib/sms";
 import { recordPlatformAction, requireSuperadmin } from "@/lib/superadmin";
 
-const SECTORS = ["care", "hospitality", "small_business"] as const;
-type Sector = (typeof SECTORS)[number];
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export type OnboardState = { error?: string; ok?: string; link?: string; values?: Record<string, string> };
@@ -45,20 +45,22 @@ const issueOwnerLink = async (
 export async function onboardBusiness(_: OnboardState, form: FormData): Promise<OnboardState> {
   const admin = await requireSuperadmin();
   const name = String(form.get("name") ?? "").trim();
-  const sector = String(form.get("sector") ?? "") as Sector;
+  const pack = packById(String(form.get("kind") ?? ""));
   const ownerName = String(form.get("ownerName") ?? "").trim();
   const email = String(form.get("email") ?? "").trim().toLowerCase();
-  const values = { name, sector, ownerName, email };
+  const values = { name, kind: pack?.id ?? "", ownerName, email };
   if (!name || name.length > 120) return { error: "Enter the business name (up to 120 characters).", values };
-  if (!SECTORS.includes(sector)) return { error: "Choose the type of business.", values };
+  if (!pack) return { error: "Choose the type of business.", values };
+  const { sector } = pack;
   if (!ownerName) return { error: "Enter the owner's name.", values };
   if (!EMAIL.test(email)) return { error: "Enter the owner's email address.", values };
 
   const reference = await requestId();
   const { organisationId, link } = await db.transaction(async (tx) => {
-    const [org] = await tx.insert(schema.organisation).values({ name, sector, requiresEnhancedDbs: sector === "care" }).returning({ id: schema.organisation.id });
+    const [org] = await tx.insert(schema.organisation).values({ name, sector, kind: pack.id, requiresEnhancedDbs: pack.enhancedDbs }).returning({ id: schema.organisation.id });
     const id = org!.id;
     await tx.execute(sql`select set_config('app.organisation_id', ${id}, true)`);
+    await applyPack(tx, id, pack);
     await tx.insert(schema.auditEvent).values({
       organisationId: id,
       actorUserId: admin.id,
@@ -66,7 +68,7 @@ export async function onboardBusiness(_: OnboardState, form: FormData): Promise<
       action: "create",
       entity: "organisation",
       entityId: id,
-      data: { name, sector, by: "VicisRota onboarding" },
+      data: { name, sector, kind: pack.id, by: "VicisRota onboarding" },
     });
     return { organisationId: id, link: await issueOwnerLink(tx, id, ownerName, email, admin.id) };
   });

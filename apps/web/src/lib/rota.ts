@@ -22,7 +22,21 @@ export const loadComplianceContext = async (
   weekStart: string,
   /** Check the week as if this shift were given to this person, e.g. before approving a swap. */
   assume?: { shiftId: string; workerId: string },
-): Promise<Context> => {
+): Promise<Context> => (await loadWeekChecks(tx, organisationId, weekStart, assume)).context;
+
+/** A shift as the compliance engine sees it, before anyone is given it. */
+export type CheckShift = Omit<Context["shifts"][number], "workerId">;
+
+/**
+ * The compliance context for a week, plus its open shifts in the same form, so the rota can try each
+ * open shift against each person ("Who can take this?") without going back to the database.
+ */
+export const loadWeekChecks = async (
+  tx: Transaction,
+  organisationId: string,
+  weekStart: string,
+  assume?: { shiftId: string; workerId: string },
+): Promise<{ context: Context; open: CheckShift[] }> => {
   const { from } = weekBounds(addDays(weekStart, -7 * HISTORY_WEEKS));
   const { to } = weekBounds(weekStart);
 
@@ -58,7 +72,8 @@ export const loadComplianceContext = async (
   const assigned = shifts
     .map((s) => (s.id === assume?.shiftId ? { ...s, workerId: assume.workerId } : s))
     .filter((s) => s.workerId);
-  const ids = assigned.map((s) => s.id);
+  const unassigned = shifts.filter((s) => !s.workerId && s.id !== assume?.shiftId);
+  const ids = [...assigned, ...unassigned].map((s) => s.id);
   const [breaks, requirements] = ids.length
     ? await Promise.all([
         tx.select().from(schema.shiftBreak).where(inArray(schema.shiftBreak.shiftId, ids)),
@@ -66,8 +81,19 @@ export const loadComplianceContext = async (
       ])
     : [[], []];
   const qualificationName = new Map(qualifications.map((q) => [q.id, q.name]));
+  const toCheck = (s: (typeof shifts)[number]): CheckShift => ({
+    id: s.id,
+    start: s.startsAt.toISOString(),
+    end: s.endsAt.toISOString(),
+    breaks: breaks.filter((b) => b.shiftId === s.id).map((b) => ({ start: b.startsAt.toISOString(), end: b.endsAt.toISOString() })),
+    travelMinutesBefore: s.travelMinutes,
+    role: s.roleId ? roleById.get(s.roleId) : undefined,
+    requiredQualifications: requirements
+      .filter((r) => r.shiftId === s.id)
+      .map((r) => ({ id: r.qualificationId, name: qualificationName.get(r.qualificationId) ?? "Training" })),
+  });
 
-  return {
+  const context: Context = {
     // The last day of the week, so 17-week averages end with the week being checked.
     asOf: addDays(weekStart, 6),
     leave: leave.map((l) => ({
@@ -101,21 +127,9 @@ export const loadComplianceContext = async (
       roles: workerRoles.filter((r) => r.workerId === w.id).map((r) => r.roleId),
     })),
     payRates: rates.map((r) => ({ workerId: r.workerId, hourlyPence: r.hourlyPence, effectiveFrom: r.effectiveFrom })),
-    shifts: assigned.map((s) => ({
-      id: s.id,
-      workerId: s.workerId!,
-      start: s.startsAt.toISOString(),
-      end: s.endsAt.toISOString(),
-      breaks: breaks
-        .filter((b) => b.shiftId === s.id)
-        .map((b) => ({ start: b.startsAt.toISOString(), end: b.endsAt.toISOString() })),
-      travelMinutesBefore: s.travelMinutes,
-      role: s.roleId ? roleById.get(s.roleId) : undefined,
-      requiredQualifications: requirements
-        .filter((r) => r.shiftId === s.id)
-        .map((r) => ({ id: r.qualificationId, name: qualificationName.get(r.qualificationId) ?? "Training" })),
-    })),
+    shifts: assigned.map((s) => ({ ...toCheck(s), workerId: s.workerId! })),
   };
+  return { context, open: unassigned.map(toCheck) };
 };
 
 /** Today's date in the UK. */

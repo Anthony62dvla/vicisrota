@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { confirmAsRostered, confirmClockedHours, saveActualHours, undoConfirmation, type FormState } from "./actions";
+import { confirmAsRostered, confirmClockedHours, saveActualHours, setPayItemNames, undoConfirmation, type FormState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 const small = "rounded-lg border border-zinc-400 px-3 py-1 text-sm disabled:opacity-60";
@@ -128,5 +128,24 @@ export function TimesheetList({ rows }: { rows: Row[] }) {
         ))}
       </ul>
     </div>
+  );
+}
+
+/** items: each kind of pay with VicisRota's name for it and the business's own name, if it set one. */
+export function PayItemNamesForm({ items }: { items: { item: string; standard: string; name: string }[] }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(setPayItemNames, {});
+  return (
+    <form action={action} className="mt-3 flex max-w-xl flex-col gap-3">
+      <Message state={state} />
+      {items.map((i) => (
+        <label key={i.item} className="flex flex-col gap-1">
+          <span className="font-medium">{i.standard}</span>
+          <input name={i.item} defaultValue={i.name} placeholder={i.standard} maxLength={60} className={input} />
+        </label>
+      ))}
+      <button type="submit" disabled={pending} className="self-start rounded-lg border border-zinc-400 px-4 py-2 disabled:opacity-60">
+        {pending ? "Saving…" : "Save pay item names"}
+      </button>
+    </form>
   );
 }

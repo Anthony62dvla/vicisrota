@@ -295,6 +295,104 @@
       "when": 1791153657053,
       "tag": "0041_support",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1791154417948,
+      "tag": "0042_rota_changes",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1791181842337,
+      "tag": "0043_split_shifts",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1791182391768,
+      "tag": "0044_qr_clock_in",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1791193410394,
+      "tag": "0045_short_notice_pay",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1791194856000,
+      "tag": "0046_payroll_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1791195731486,
+      "tag": "0047_roll_call",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1791195921612,
+      "tag": "0048_supervision",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1791199365135,
+      "tag": "0049_push_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1791200247959,
+      "tag": "0050_team_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1791200600112,
+      "tag": "0051_checklists",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1791200878689,
+      "tag": "0052_wellbeing",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1791201259071,
+      "tag": "0053_business_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1791201473925,
+      "tag": "0054_hiring",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1791201977151,
+      "tag": "0055_user_language",
+      "breakpoints": true
     }
   ]
 }

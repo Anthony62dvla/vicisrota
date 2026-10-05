@@ -334,22 +334,26 @@ export async function setClockPin(_: FormState, form: FormData): Promise<FormSta
   return { ok: "PIN saved. Use it on the clock-in tablet at work." };
 }
 
-/** The person's own mobile number, and which texts they want: rota changes and shift reminders. */
+/**
+ * What the person wants to be told about (rota changes, shift reminders), and whether they also want it
+ * texted to their mobile. Everything always goes to their page and to any device with app notifications on.
+ */
 export async function saveTextSettings(_: FormState, form: FormData): Promise<FormState> {
   const { user, organisationId, worker } = await requireStaff();
   const raw = String(form.get("mobile") ?? "").trim();
   const mobile = raw ? normaliseUkMobile(raw) : null;
   const textChanges = form.get("textChanges") === "on";
   const remindEvening = form.get("remindEvening") === "on";
+  const byText = form.get("byText") === "on";
   const before = String(form.get("remindBefore") ?? "");
   const remindBeforeMinutes = (BEFORE_CHOICES as readonly number[]).includes(Number(before)) ? Number(before) : null;
-  const values = { mobile: raw, textChanges: textChanges ? "on" : "", remindEvening: remindEvening ? "on" : "", remindBefore: before };
+  const values = { mobile: raw, textChanges: textChanges ? "on" : "", remindEvening: remindEvening ? "on" : "", remindBefore: before, byText: byText ? "on" : "" };
   if (raw && !mobile) return { error: "Enter a UK mobile number, for example 07700 900123.", values };
-  if ((textChanges || remindEvening || remindBeforeMinutes) && !mobile) return { error: "Add your mobile number to get texts.", values };
+  if (byText && !mobile) return { error: "Add your mobile number to get texts.", values };
   await withOrganisation(db, organisationId, async (tx) => {
     await tx
       .update(schema.worker)
-      .set({ mobile, preferences: { ...worker.preferences, textChanges, remindEvening, remindBeforeMinutes } })
+      .set({ mobile, preferences: { ...worker.preferences, textChanges, remindEvening, remindBeforeMinutes, byText } })
       .where(eq(schema.worker.id, worker.id));
     await tx.insert(schema.auditEvent).values({
       organisationId,
@@ -358,7 +362,7 @@ export async function saveTextSettings(_: FormState, form: FormData): Promise<Fo
       action: "text_settings",
       entity: "worker",
       entityId: worker.id,
-      data: { textChanges, remindEvening, remindBeforeMinutes, hasMobile: !!mobile },
+      data: { textChanges, remindEvening, remindBeforeMinutes, byText, hasMobile: !!mobile },
     });
   });
   revalidatePath("/me");
@@ -367,7 +371,8 @@ export async function saveTextSettings(_: FormState, form: FormData): Promise<Fo
     remindEvening && "the evening before each shift",
     remindBeforeMinutes && `${beforeLabel(remindBeforeMinutes)} before each shift`,
   ].filter(Boolean);
-  return { ok: chosen.length ? `Saved. We will text you ${chosen.join(", and ")}.` : "Saved. You will not get texts about your rota." };
+  if (!chosen.length) return { ok: "Saved. We will not send you rota messages. Changes still show on this page." };
+  return { ok: `Saved. We will tell you ${chosen.join(", and ")}${byText ? ", by app notification and by text" : ""}.` };
 }
 
 /** Adds a weekly time the person cannot work. Managers see it, and the rota check warns about clashes. */

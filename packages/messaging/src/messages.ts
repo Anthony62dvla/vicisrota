@@ -2,7 +2,7 @@
 export const SMS_MAX = 306;
 
 /** Plain characters only: curly quotes and dashes can force the whole text into a costlier encoding. */
-const plain = (s: string) =>
+export const plain = (s: string) =>
   s
     .replace(/[‘’]/g, "'")
     .replace(/[“”]/g, '"')
@@ -47,9 +47,10 @@ export const reminderText = (a: { business: string; when: string; detail?: strin
 export const inviteText = (a: { business: string; link: string; days: number }) =>
   fit(plain(`${a.business} has invited you to VicisRota to see your shifts and ask for time off. Set up your login here (works once, for ${a.days} days): ${a.link}`));
 
-export type RotaChangeKind = "added" | "cancelled" | "given_to_you" | "taken_by_colleague";
+export type RotaChangeKind = "added" | "changed" | "cancelled" | "given_to_you" | "taken_by_colleague";
 const CHANGE_LABEL: Record<RotaChangeKind, string> = {
   added: "New shift",
+  changed: "Changed, now",
   cancelled: "Cancelled",
   given_to_you: "Now yours",
   taken_by_colleague: "Covered by a colleague",

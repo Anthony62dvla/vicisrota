@@ -1,17 +1,19 @@
 "use server";
 
-import { addDays, evaluate, londonDateTime, londonParts, type Finding } from "@vicisrota/compliance";
+import { randomUUID } from "node:crypto";
+import { addDays, autoAssign, evaluate, londonDateTime, londonParts, type Finding } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
-import { and, eq, gte, inArray, lt, ne } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, isNull, lt, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
 import { log } from "@/lib/log";
 import { notify, type Notice } from "@/lib/notices";
-import { textRotaChanges } from "@/lib/rota-texts";
+import { notifyRotaChanges } from "@/lib/rota-notify";
 import { requestId } from "@/lib/request";
 import { checkAssignment } from "@/lib/claims";
-import { loadComplianceContext, weekBounds } from "@/lib/rota";
+import { loadComplianceContext, loadWeekChecks, weekBounds } from "@/lib/rota";
+import { owedMessage, recordShortNotice } from "@/lib/short-notice";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME = /^\d{2}:\d{2}$/;
@@ -19,8 +21,75 @@ const MINUTE = 60_000;
 
 export type FormState = { error?: string; ok?: string };
 
-export async function addShift(_: FormState, form: FormData): Promise<FormState> {
-  const { user, organisationId } = await requireManager();
+type Shift = typeof schema.shift.$inferSelect;
+type Tx = Parameters<Parameters<typeof withOrganisation>[2]>[0];
+
+/** Thrown inside a transaction to undo a change that would break the law on a published rota. */
+class Refused extends Error {}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/**
+ * Runs after a shift is added, edited or moved, inside the same transaction. A published shift must stay
+ * legal, so a change that breaks a rule is undone. A draft is saved either way, and the reply says what
+ * to fix before publishing, so problems show while the rota is being built rather than at the end.
+ * People on a published shift are told when it changes.
+ */
+const afterChange = async (tx: Tx, organisationId: string, before: Shift | null, after: Shift) => {
+  const check = after.workerId ? await checkAssignment(tx, organisationId, after.id, after.workerId) : null;
+  const blocks = check?.blocks ?? [];
+  const warnings = check?.warnings ?? [];
+  if (after.status === "published" && blocks.length) throw new Refused(`This shift is published, so the change was not saved: ${blocks.map((f) => f.message).join(" ")}`);
+
+  let notices: Notice[] = [];
+  if (after.status === "published" && before) {
+    const times = { shiftId: after.id, startsAt: after.startsAt, endsAt: after.endsAt };
+    if (before.workerId !== after.workerId) {
+      notices = await notify(tx, organisationId, [
+        { ...times, workerId: after.workerId, kind: "added" },
+        { ...times, workerId: before.workerId, kind: after.workerId ? "taken_by_colleague" : "cancelled" },
+      ]);
+    } else if (before.startsAt.getTime() !== after.startsAt.getTime() || before.endsAt.getTime() !== after.endsAt.getTime()) {
+      notices = await notify(tx, organisationId, [{ ...times, workerId: after.workerId, kind: "changed" }]);
+    }
+  }
+  // The person who had a published shift is paid for time they lose at short notice.
+  const owed = before && after.status === "published" ? await recordShortNotice(tx, organisationId, before, before.workerId === after.workerId ? after : null) : null;
+  if (after.workerId && before?.workerId !== after.workerId) {
+    // Anyone who asked to pick this shift up is told it has gone.
+    await tx
+      .update(schema.shiftClaim)
+      .set({ status: "declined", decidedAt: new Date() })
+      .where(and(eq(schema.shiftClaim.shiftId, after.id), eq(schema.shiftClaim.status, "requested")));
+  }
+  const problems = [...blocks.map((f) => `Must fix: ${f.message}`), ...warnings.map((f) => `Check: ${f.message}`)];
+  return { notices, problems, checked: !!check, published: after.status === "published", owed: owed ? [owedMessage(owed)] : [] };
+};
+
+const savedMessage = (what: string, change: { problems: string[]; checked: boolean; published: boolean; owed?: string[] }) =>
+  [problemsMessage(what, change), ...(change.owed ?? [])].join(" ");
+
+const problemsMessage = (what: string, change: { problems: string[]; checked: boolean; published: boolean }) =>
+  change.problems.length
+    ? `${what} ${plural(change.problems.length, "thing")} to look at${change.published ? "" : " before publishing"}: ${change.problems.join(" ")}`
+    : change.checked
+      ? `${what} No problems found.`
+      : what;
+
+/** A split shift with only one part left is just a shift. Runs inside the transaction. */
+const tidySplit = async (tx: Tx, groupId: string | null) => {
+  if (!groupId) return;
+  const parts = await tx
+    .select({ id: schema.shift.id })
+    .from(schema.shift)
+    .where(and(eq(schema.shift.splitGroupId, groupId), ne(schema.shift.status, "cancelled")));
+  if (parts.length < 2) await tx.update(schema.shift).set({ splitGroupId: null }).where(eq(schema.shift.splitGroupId, groupId));
+};
+
+/** Adds a shift (or a split shift in two parts), or edits one shift or part when the form has a shiftId. */
+export async function saveShift(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId, businessName } = await requireManager();
+  const shiftId = String(form.get("shiftId") ?? "") || null;
   // Empty means an open shift that staff can ask to pick up.
   const workerId = String(form.get("workerId") ?? "") || null;
   const date = String(form.get("date") ?? "");
@@ -48,67 +117,216 @@ export async function addShift(_: FormState, form: FormData): Promise<FormState>
   if (endsAt <= startsAt) endsAt = londonDateTime(addDays(date, 1), end);
   if (breakMinutes * MINUTE >= endsAt - startsAt) return { error: "The break is longer than the shift." };
 
-  const error = await withOrganisation(db, organisationId, async (tx) => {
-    // Foreign keys skip row-level security, so confirm the person and training belong to this business.
-    if (workerId) {
-      const [worker] = await tx.select({ id: schema.worker.id }).from(schema.worker).where(eq(schema.worker.id, workerId));
-      if (!worker) return "That person could not be found.";
-    }
-    if (clientId) {
-      const [found] = await tx.select({ id: schema.client.id }).from(schema.client).where(eq(schema.client.id, clientId));
-      if (!found) return "That client could not be found.";
-    }
-    if (roleId) {
-      const [found] = await tx.select({ id: schema.jobRole.id }).from(schema.jobRole).where(eq(schema.jobRole.id, roleId));
-      if (!found) return "That job role could not be found.";
-    }
-    if (requires.length) {
-      const known = await tx.select({ id: schema.qualification.id }).from(schema.qualification).where(inArray(schema.qualification.id, requires));
-      if (known.length !== requires.length) return "Some of the training chosen could not be found.";
-    }
-    const [shift] = await tx
-      .insert(schema.shift)
-      .values({ organisationId, workerId, clientId, roleId, travelMinutes, loneWorking, checkInMinutes, note, startsAt: new Date(startsAt), endsAt: new Date(endsAt) })
-      .returning({ id: schema.shift.id });
-    if (breakMinutes > 0) {
-      // Place the break in the middle of the shift; exact break times can be edited later.
-      const breakStart = startsAt + Math.round((endsAt - startsAt - breakMinutes * MINUTE) / 2 / MINUTE) * MINUTE;
-      await tx.insert(schema.shiftBreak).values({
+  // A split shift's second part starts after the first finishes, later the same day or that night.
+  let second: { startsAt: number; endsAt: number } | null = null;
+  if (!shiftId && form.get("split") === "on") {
+    const start2 = String(form.get("start2") ?? "");
+    const end2 = String(form.get("end2") ?? "");
+    if (!TIME.test(start2) || !TIME.test(end2)) return { error: "Enter a start and finish time for the second part." };
+    const firstEnd = londonParts(endsAt).date;
+    let from = londonDateTime(firstEnd, start2);
+    if (from <= endsAt) from = londonDateTime(addDays(firstEnd, 1), start2);
+    if (from - endsAt >= 16 * 3_600_000) return { error: "The second part must start after the first part finishes, on the same day." };
+    let to = londonDateTime(londonParts(from).date, end2);
+    if (to <= from) to = londonDateTime(addDays(londonParts(from).date, 1), end2);
+    second = { startsAt: from, endsAt: to };
+  }
+
+  let result: FormState & { notices?: Notice[] };
+  try {
+    result = await withOrganisation(db, organisationId, async (tx): Promise<FormState & { notices?: Notice[] }> => {
+      // Foreign keys skip row-level security, so confirm the person and training belong to this business.
+      if (workerId) {
+        const [worker] = await tx.select({ id: schema.worker.id }).from(schema.worker).where(eq(schema.worker.id, workerId));
+        if (!worker) return { error: "That person could not be found." };
+      }
+      if (clientId) {
+        const [found] = await tx.select({ id: schema.client.id }).from(schema.client).where(eq(schema.client.id, clientId));
+        if (!found) return { error: "That client could not be found." };
+      }
+      if (roleId) {
+        const [found] = await tx.select({ id: schema.jobRole.id }).from(schema.jobRole).where(eq(schema.jobRole.id, roleId));
+        if (!found) return { error: "That job role could not be found." };
+      }
+      if (requires.length) {
+        const known = await tx.select({ id: schema.qualification.id }).from(schema.qualification).where(inArray(schema.qualification.id, requires));
+        if (known.length !== requires.length) return { error: "Some of the training chosen could not be found." };
+      }
+      const splitGroupId = second ? randomUUID() : undefined;
+      const values = { workerId, clientId, roleId, travelMinutes, loneWorking, checkInMinutes, note, startsAt: new Date(startsAt), endsAt: new Date(endsAt), splitGroupId };
+      let before: Shift | null = null;
+      let after: Shift;
+      if (shiftId) {
+        [before = null] = await tx.select().from(schema.shift).where(and(eq(schema.shift.id, shiftId), ne(schema.shift.status, "cancelled")));
+        if (!before) return { error: "That shift no longer exists. It may have been cancelled." };
+        [after] = (await tx.update(schema.shift).set(values).where(eq(schema.shift.id, shiftId)).returning()) as [Shift];
+        await tx.delete(schema.shiftBreak).where(eq(schema.shiftBreak.shiftId, shiftId));
+        await tx.delete(schema.shiftRequirement).where(eq(schema.shiftRequirement.shiftId, shiftId));
+        // A part given to someone else is no longer part of the split.
+        if (before.splitGroupId && before.workerId !== workerId) {
+          await tx.update(schema.shift).set({ splitGroupId: null }).where(eq(schema.shift.id, shiftId));
+          await tidySplit(tx, before.splitGroupId);
+        }
+      } else {
+        [after] = (await tx.insert(schema.shift).values({ organisationId, ...values }).returning()) as [Shift];
+      }
+      if (breakMinutes > 0) {
+        // Place the break in the middle of the shift.
+        const breakStart = startsAt + Math.round((endsAt - startsAt - breakMinutes * MINUTE) / 2 / MINUTE) * MINUTE;
+        await tx.insert(schema.shiftBreak).values({
+          organisationId,
+          shiftId: after.id,
+          startsAt: new Date(breakStart),
+          endsAt: new Date(breakStart + breakMinutes * MINUTE),
+        });
+      }
+      if (requires.length) {
+        await tx.insert(schema.shiftRequirement).values(requires.map((qualificationId) => ({ organisationId, shiftId: after.id, qualificationId })));
+      }
+      const changes = [await afterChange(tx, organisationId, before, after)];
+      if (second) {
+        const [part] = (await tx
+          .insert(schema.shift)
+          .values({ organisationId, ...values, startsAt: new Date(second.startsAt), endsAt: new Date(second.endsAt) })
+          .returning()) as [Shift];
+        if (requires.length) {
+          await tx.insert(schema.shiftRequirement).values(requires.map((qualificationId) => ({ organisationId, shiftId: part.id, qualificationId })));
+        }
+        changes.push(await afterChange(tx, organisationId, null, part));
+      }
+      const change = {
+        notices: changes.flatMap((c) => c.notices),
+        problems: [...new Set(changes.flatMap((c) => c.problems))],
+        checked: changes[0]!.checked,
+        published: changes[0]!.published,
+        owed: changes.flatMap((c) => c.owed),
+      };
+      await tx.insert(schema.auditEvent).values({
         organisationId,
-        shiftId: shift!.id,
-        startsAt: new Date(breakStart),
-        endsAt: new Date(breakStart + breakMinutes * MINUTE),
+        actorUserId: user.id,
+        requestId: await requestId(),
+        action: before ? "update" : "create",
+        entity: "shift",
+        entityId: after.id,
+        data: {
+          workerId, date, start, end, breakMinutes, requires, clientId, roleId, travelMinutes, loneWorking, checkInMinutes, note: !!note,
+          ...(second && { splitGroupId, secondStart: new Date(second.startsAt).toISOString(), secondEnd: new Date(second.endsAt).toISOString() }),
+        },
       });
-    }
-    if (requires.length) {
-      await tx.insert(schema.shiftRequirement).values(requires.map((qualificationId) => ({ organisationId, shiftId: shift!.id, qualificationId })));
-    }
-    await tx.insert(schema.auditEvent).values({
-      organisationId,
-      actorUserId: user.id,
-      requestId: await requestId(),
-      action: "create",
-      entity: "shift",
-      entityId: shift!.id,
-      data: { workerId, date, start, end, breakMinutes, requires, clientId, roleId, travelMinutes, loneWorking, checkInMinutes, note: !!note },
+      const what = before
+        ? change.notices.length
+          ? "Shift saved. The people affected have been told."
+          : "Shift saved."
+        : `${second ? "Split shift" : clientId ? "Visit" : workerId ? "Shift" : "Open shift"} added as a draft.`;
+      return { ok: savedMessage(what, change), notices: change.notices };
     });
-  });
-  if (error) return { error };
+  } catch (error) {
+    if (error instanceof Refused) return { error: error.message };
+    throw error;
+  }
+  const { notices = [], ...state } = result;
+  await notifyRotaChanges(organisationId, businessName, notices);
   revalidatePath("/rota");
-  return { ok: `${clientId ? "Visit" : workerId ? "Shift" : "Open shift"} added as a draft.` };
+  return state;
 }
 
-export async function cancelShift(form: FormData) {
+const wallClock = (d: Date) => {
+  const p = londonParts(d.getTime());
+  return `${String(p.hour).padStart(2, "0")}:${String(p.minute).padStart(2, "0")}`;
+};
+
+/**
+ * Moves a shift to another person or day, keeping its times, length, breaks and everything else. An
+ * empty workerId makes it an open shift. Used by dragging on the rota and by "Give this shift to".
+ */
+export async function moveShift(_: FormState, form: FormData): Promise<FormState> {
   const { user, organisationId, businessName } = await requireManager();
   const shiftId = String(form.get("shiftId") ?? "");
-  const notices = await withOrganisation(db, organisationId, async (tx) => {
+  const workerId = String(form.get("workerId") ?? "") || null;
+  const date = String(form.get("date") ?? "");
+  if (!DATE.test(date)) return { error: "Choose the day." };
+
+  let result: FormState & { notices?: Notice[] };
+  try {
+    result = await withOrganisation(db, organisationId, async (tx): Promise<FormState & { notices?: Notice[] }> => {
+      const [before] = await tx.select().from(schema.shift).where(and(eq(schema.shift.id, shiftId), ne(schema.shift.status, "cancelled")));
+      if (!before) return { error: "That shift no longer exists. It may have been cancelled." };
+      let name = "nobody yet";
+      if (workerId) {
+        const [worker] = await tx.select({ name: schema.worker.fullName }).from(schema.worker).where(eq(schema.worker.id, workerId));
+        if (!worker) return { error: "That person could not be found." };
+        name = worker.name;
+      }
+      const startsAt = new Date(londonDateTime(date, wallClock(before.startsAt)));
+      const shiftBy = startsAt.getTime() - before.startsAt.getTime();
+      if (before.workerId === workerId && shiftBy === 0) return { ok: "The shift is already there." };
+      // Every part of a split shift moves together.
+      const parts = before.splitGroupId
+        ? await tx.select().from(schema.shift).where(and(eq(schema.shift.splitGroupId, before.splitGroupId), ne(schema.shift.status, "cancelled")))
+        : [before];
+      const changes = [];
+      for (const part of parts) {
+        const [after] = (await tx
+          .update(schema.shift)
+          .set({ workerId, startsAt: new Date(part.startsAt.getTime() + shiftBy), endsAt: new Date(part.endsAt.getTime() + shiftBy), coverRequestedAt: null })
+          .where(eq(schema.shift.id, part.id))
+          .returning()) as [Shift];
+        if (shiftBy) {
+          const breaks = await tx.select().from(schema.shiftBreak).where(eq(schema.shiftBreak.shiftId, part.id));
+          for (const b of breaks)
+            await tx
+              .update(schema.shiftBreak)
+              .set({ startsAt: new Date(b.startsAt.getTime() + shiftBy), endsAt: new Date(b.endsAt.getTime() + shiftBy) })
+              .where(eq(schema.shiftBreak.id, b.id));
+        }
+        changes.push({ after, change: await afterChange(tx, organisationId, part, after) });
+      }
+      const change = {
+        notices: changes.flatMap((c) => c.change.notices),
+        problems: [...new Set(changes.flatMap((c) => c.change.problems))],
+        checked: changes[0]!.change.checked,
+        published: changes[0]!.change.published,
+        owed: changes.flatMap((c) => c.change.owed),
+      };
+      await tx.insert(schema.auditEvent).values({
+        organisationId,
+        actorUserId: user.id,
+        requestId: await requestId(),
+        action: "move",
+        entity: "shift",
+        entityId: shiftId,
+        data: { fromWorkerId: before.workerId, toWorkerId: workerId, fromStart: before.startsAt.toISOString(), toStart: startsAt.toISOString() },
+      });
+      const when = `${new Date(`${date}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" })}`;
+      const what = `${parts.length > 1 ? "Split shift" : "Shift"} ${workerId ? `moved to ${name} on ${when}.` : `is now open, on ${when}.`}`;
+      return { ok: savedMessage(what, change), notices: change.notices };
+    });
+  } catch (error) {
+    if (error instanceof Refused) return { error: error.message };
+    throw error;
+  }
+  const { notices = [], ...state } = result;
+  await notifyRotaChanges(organisationId, businessName, notices);
+  revalidatePath("/rota");
+  return state;
+}
+
+/** Cancels a shift and says what happens next, including any short-notice pay owed. */
+export async function cancelShift(form: FormData): Promise<string> {
+  const { user, organisationId, businessName } = await requireManager();
+  const shiftId = String(form.get("shiftId") ?? "");
+  const { notices, owed } = await withOrganisation(db, organisationId, async (tx) => {
     const [cancelled] = await tx
       .update(schema.shift)
       .set({ status: "cancelled" })
-      .where(eq(schema.shift.id, shiftId))
-      .returning({ workerId: schema.shift.workerId, startsAt: schema.shift.startsAt, endsAt: schema.shift.endsAt, publishedAt: schema.shift.publishedAt });
+      .where(and(eq(schema.shift.id, shiftId), ne(schema.shift.status, "cancelled")))
+      .returning({ workerId: schema.shift.workerId, startsAt: schema.shift.startsAt, endsAt: schema.shift.endsAt, publishedAt: schema.shift.publishedAt, splitGroupId: schema.shift.splitGroupId });
+    await tidySplit(tx, cancelled?.splitGroupId ?? null);
+    const owed = cancelled ? await recordShortNotice(tx, organisationId, { ...cancelled, id: shiftId }, null) : null;
     // Staff only knew about it if it had been published.
-    const notices = cancelled?.publishedAt ? await notify(tx, organisationId, [{ ...cancelled, shiftId, kind: "cancelled" }]) : [];
+    const notices = cancelled?.publishedAt
+      ? await notify(tx, organisationId, [{ workerId: cancelled.workerId, startsAt: cancelled.startsAt, endsAt: cancelled.endsAt, shiftId, kind: "cancelled" }])
+      : [];
     await tx.insert(schema.auditEvent).values({
       organisationId,
       actorUserId: user.id,
@@ -117,10 +335,11 @@ export async function cancelShift(form: FormData) {
       entity: "shift",
       entityId: shiftId,
     });
-    return notices;
+    return { notices, owed };
   });
-  await textRotaChanges(organisationId, businessName, notices);
+  await notifyRotaChanges(organisationId, businessName, notices);
   revalidatePath("/rota");
+  return ["Shift cancelled.", ...(owed ? [owedMessage(owed)] : [])].join(" ");
 }
 
 export async function checkAndPublish(_: FormState, form: FormData): Promise<FormState> {
@@ -175,7 +394,7 @@ export async function checkAndPublish(_: FormState, form: FormData): Promise<For
 
   const { notices, ...summary } = result;
   await log("info", "rota checked", { organisationId, weekStart, ...summary });
-  await textRotaChanges(organisationId, businessName, notices);
+  await notifyRotaChanges(organisationId, businessName, notices);
   revalidatePath("/rota");
   if (!result.publishable)
     return { error: `This rota cannot be published yet: ${result.blocking} problem${result.blocking === 1 ? "" : "s"} to fix. See the list below.` };
@@ -233,7 +452,7 @@ export async function decideClaim(_: FormState, form: FormData): Promise<FormSta
     return { ok: `${claim.name} now has this shift.`, notices };
   });
   const { notices = [], ...state } = result;
-  await textRotaChanges(organisationId, businessName, notices);
+  await notifyRotaChanges(organisationId, businessName, notices);
   revalidatePath("/rota");
   return state;
 }
@@ -273,6 +492,13 @@ export async function copyPreviousWeek(_: FormState, form: FormData): Promise<Fo
       tx.select().from(schema.shiftRequirement).where(inArray(schema.shiftRequirement.shiftId, ids)),
     ]);
     let copied = 0;
+    // Copied split shifts get their own new group, so this week's parts stay together.
+    const groups = new Map<string, string>();
+    const groupFor = (id: string | null) => {
+      if (!id) return null;
+      if (!groups.has(id)) groups.set(id, randomUUID());
+      return groups.get(id)!;
+    };
     for (const s of source) {
       const startsAt = aWeekLater(s.startsAt);
       const endsAt = aWeekLater(s.endsAt);
@@ -289,6 +515,7 @@ export async function copyPreviousWeek(_: FormState, form: FormData): Promise<Fo
           travelMinutes: s.travelMinutes,
           loneWorking: s.loneWorking,
           checkInMinutes: s.checkInMinutes,
+          splitGroupId: groupFor(s.splitGroupId),
           startsAt,
           endsAt,
         })
@@ -316,5 +543,66 @@ export async function copyPreviousWeek(_: FormState, form: FormData): Promise<Fo
   if (!result.copied) return { ok: "Every shift from last week is already in this week. Nothing was copied." };
   return {
     ok: `${result.copied} shift${result.copied === 1 ? "" : "s"} copied as drafts${result.skipped ? ` (${result.skipped} already here)` : ""}. Check them, then publish.`,
+  };
+}
+
+/**
+ * Gives this week's open draft shifts to people automatically, using the same rules as publishing. Only
+ * people with nothing to check get a shift, and the shifts stay drafts, so the manager looks over the week
+ * before anyone is told. Split shifts are left for the manager, so both parts go to the same person.
+ */
+export async function fillOpenShifts(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const weekStart = String(form.get("weekStart") ?? "");
+  if (!DATE.test(weekStart)) return { error: "Choose a week." };
+  const { from, to } = weekBounds(weekStart);
+
+  const result = await withOrganisation(db, organisationId, async (tx) => {
+    const drafts = await tx
+      .select({ id: schema.shift.id })
+      .from(schema.shift)
+      .where(
+        and(
+          eq(schema.shift.status, "draft"),
+          isNull(schema.shift.workerId),
+          isNull(schema.shift.splitGroupId),
+          gte(schema.shift.startsAt, from),
+          lt(schema.shift.startsAt, to),
+          gt(schema.shift.startsAt, new Date()),
+        ),
+      );
+    if (!drafts.length) return null;
+    const ids = new Set(drafts.map((d) => d.id));
+    const { context, open } = await loadWeekChecks(tx, organisationId, weekStart);
+    const plan = autoAssign(context, open.filter((s) => ids.has(s.id)), weekStart);
+    for (const a of plan.assigned) {
+      await tx.update(schema.shift).set({ workerId: a.workerId }).where(and(eq(schema.shift.id, a.shiftId), isNull(schema.shift.workerId)));
+    }
+    await tx.insert(schema.auditEvent).values({
+      organisationId,
+      actorUserId: user.id,
+      requestId: await requestId(),
+      action: "auto_fill",
+      entity: "rota",
+      entityId: weekStart,
+      data: { assigned: plan.assigned, unfilled: plan.unfilled },
+    });
+    const names = new Map(context.workers.map((w) => [w.id, w.name]));
+    return { plan, names, total: drafts.length };
+  });
+  revalidatePath("/rota");
+  if (!result) return { ok: "There are no open draft shifts to fill this week. Add shifts without a person, or fill the week from a pattern, then try again." };
+  const { plan, names, total } = result;
+  const people = [...new Set(plan.assigned.map((a) => names.get(a.workerId)!))];
+  const reasons = [...new Set(plan.unfilled.map((u) => u.reason))];
+  return {
+    ok: [
+      plan.assigned.length
+        ? `Filled ${plan.assigned.length} of ${total} open shifts, shared between ${people.join(", ")}. They are still drafts: look over the week, then publish.`
+        : "No open shifts could be filled.",
+      plan.unfilled.length ? `${plan.unfilled.length} left open because ${reasons.join("; ")}.` : "",
+    ]
+      .filter(Boolean)
+      .join(" "),
   };
 }

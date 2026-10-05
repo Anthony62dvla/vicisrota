@@ -61,10 +61,10 @@ export const recordClock = async (
     shiftId: string;
     kind: ClockKind;
     requestId: string | null;
-    source: "phone" | "kiosk";
+    source: "phone" | "kiosk" | "qr";
     /** Phone: where it was, or null if the person did not share it. */
     position?: Position | null;
-    /** Kiosk: the workplace the tablet is at. */
+    /** Kiosk, or a phone that scanned the tablet's QR code: the workplace the tablet is at. */
     kioskLocationId?: string;
   },
 ): Promise<{ error?: string; ok?: string }> => {
@@ -77,7 +77,8 @@ export const recordClock = async (
 
   let place: { locationId: string | null; place: "at_work" | "away" | "unknown" | null; distanceMetres: number | null } = {
     locationId: input.kioskLocationId ?? null,
-    place: input.source === "kiosk" ? "at_work" : null,
+    // Scanning the tablet's code, which changes every 30 seconds, shows the person is at the tablet.
+    place: input.source === "phone" ? null : "at_work",
     distanceMetres: null,
   };
   if (input.source === "phone") {

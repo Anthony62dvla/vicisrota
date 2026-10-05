@@ -11,10 +11,19 @@ import { loadLoneShifts } from "@/lib/lone-working";
 import { SHORT_NOTICE_HOURS } from "@/lib/notices";
 import { todayInUk } from "@/lib/rota";
 import { loadSickness } from "@/lib/sickness";
+import { activeRollCall } from "@/lib/roll-call";
+import { pendingCheckIns } from "@/lib/wellbeing";
+import { iAmSafe } from "../roll-call/actions";
 import { addMyUnavailable, markNoticesSeen, readAnnouncement, removeMyUnavailable, savePreferences, setCoverRequest, withdrawClaim, withdrawRequest } from "./actions";
 import { formatUkMobile } from "@vicisrota/messaging";
+import { tellsChanges, wantsTexts } from "@vicisrota/messaging";
+import { pushPublicKey } from "@/lib/push";
+import { PushSwitch } from "../push-switch";
 import { ClockButtons, LoneCheckIn, PickUpList, PinForm, ReportSickForm, TextSettingsForm, TimeOffForm } from "./forms";
 import { OfflineNotice } from "./offline-notice";
+import { localeOf } from "@vicisrota/messaging";
+import { messagesFor } from "@/lib/i18n";
+import { getLang } from "@/lib/i18n/server";
 import { AvailabilityEditor } from "../availability-editor";
 import { adjustmentLines } from "@/lib/availability-labels";
 
@@ -22,6 +31,7 @@ const MINUTE = 60_000;
 /** How far ahead staff can see published shifts. */
 const WEEKS_AHEAD = 4;
 const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const sentFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 const longDate = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" });
 const shortDate = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "long" });
 const STATUS = { requested: "Waiting for your manager", approved: "Approved", declined: "Not approved", cancelled: "Withdrawn" } as const;
@@ -39,6 +49,7 @@ function More({ calm, children }: { calm: boolean; children: ReactNode }) {
 
 export default async function MyPage() {
   const { user, organisationId, businessName, worker } = await requireStaff();
+  const lang = await getLang();
   const today = todayInUk();
   const from = new Date(londonDateTime(today, "00:00"));
   const to = new Date(londonDateTime(addDays(today, WEEKS_AHEAD * 7), "00:00"));
@@ -107,6 +118,28 @@ export default async function MyPage() {
       .where(and(eq(schema.leaveRequest.workerId, worker.id), gte(schema.leaveRequest.endsOn, addDays(today, -60))))
       .orderBy(desc(schema.leaveRequest.startsOn));
     const { balances, year } = await loadBalances(tx, organisationId, today);
+    // A fire or emergency roll call that includes them.
+    const call = await activeRollCall(tx);
+    const rollCall = call
+      ? ((
+          await tx
+            .select({ safeAt: schema.rollCallPerson.safeAt })
+            .from(schema.rollCallPerson)
+            .where(and(eq(schema.rollCallPerson.rollCallId, call.id), eq(schema.rollCallPerson.workerId, worker.id)))
+        )[0] ?? null)
+      : null;
+    // Pay for their shifts cancelled, moved or cut short at short notice, in the last 13 weeks and still to come.
+    const shortNotice = await tx
+      .select()
+      .from(schema.shortNoticePayment)
+      .where(
+        and(
+          eq(schema.shortNoticePayment.workerId, worker.id),
+          isNull(schema.shortNoticePayment.waivedAt),
+          gte(schema.shortNoticePayment.shiftStartsAt, new Date(londonDateTime(addDays(today, -91), "00:00"))),
+        ),
+      )
+      .orderBy(desc(schema.shortNoticePayment.shiftStartsAt));
     // Staff have a right to see their own tip records.
     const tips = await tx
       .select({ id: schema.tipShare.id, pence: schema.tipShare.pence, hours: schema.tipShare.hours, allocation: schema.tipAllocation })
@@ -150,9 +183,16 @@ export default async function MyPage() {
       .where(isNull(schema.announcement.archivedAt))
       .orderBy(desc(schema.announcement.createdAt))
       .limit(20);
+    const checkIns = await pendingCheckIns(tx, worker.id, now);
+    const recentMessages = await tx
+      .select({ id: schema.notification.id, title: schema.notification.title, body: schema.notification.body, createdAt: schema.notification.createdAt })
+      .from(schema.notification)
+      .where(eq(schema.notification.workerId, worker.id))
+      .orderBy(desc(schema.notification.createdAt))
+      .limit(5);
     const sick = (await loadSickness(tx, addDays(today, 366), [worker.id])).get(worker.id);
     const sickPay = new Map((sick?.records ?? []).filter((r) => !r.ssp.oldRules && r.ssp.pence > 0).map((r) => [r.id, r.ssp.pence]));
-    return { colleagues, roles, sickPay, announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
+    return { checkIns, recentMessages, colleagues, roles, sickPay, announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, shortNotice, rollCall, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
   });
 
   const days = new Map<string, typeof data.shifts>();
@@ -172,9 +212,12 @@ export default async function MyPage() {
     }));
   const unit = worker.irregularHours ? "hours" : "days";
   const { calm = false, largeText = false } = worker.preferences;
+  const pushKey = pushPublicKey();
   const next = data.shifts.find((s) => s.endsAt.getTime() > data.now);
+  const SHORT_NOTICE_KIND = { cancelled: "cancelled", moved: "moved", shortened: "cut short" } as const;
   const NOTICE_TEXT = {
     added: "New shift",
+    changed: "Changed",
     cancelled: "Cancelled",
     given_to_you: "Now yours (you picked it up)",
     taken_by_colleague: "A colleague is covering this",
@@ -185,10 +228,48 @@ export default async function MyPage() {
 
   return (
     <main className={`mx-auto w-full max-w-2xl px-4 py-8 lg:px-8 ${largeText ? "text-lg" : ""}`}>
+      {data.rollCall && (
+        <section role="alert" className="mb-6 rounded-lg border-4 border-red-600 p-4" aria-labelledby="roll-call-heading">
+          <h2 id="roll-call-heading" className="text-xl font-semibold">Roll call</h2>
+          {data.rollCall.safeAt ? (
+            <p className="mt-1">Thank you. Your manager knows you are safe.</p>
+          ) : (
+            <>
+              <p className="mt-1">Your manager is checking everyone is safe. If you are out of the building and safe, tap the button.</p>
+              <form action={iAmSafe} className="mt-3">
+                <button type="submit" className="w-full rounded-lg bg-green-700 px-6 py-4 text-xl font-semibold text-white hover:bg-green-800">I&apos;m safe</button>
+              </form>
+            </>
+          )}
+        </section>
+      )}
       <h1 className="text-2xl font-semibold">Hello, {user.name}</h1>
       <p className="text-zinc-600 dark:text-zinc-400">{businessName}</p>
+      <p className="mt-1 text-sm">
+        {/* Each word in its own language, so someone who does not read English can still find it. */}
+        <Link href="/display?back=/me#language-heading" className="underline">
+          Language · <span lang="cy">Iaith</span> · <span lang="pl">Język</span> · <span lang="ro">Limba</span>
+        </Link>
+      </p>
+      {lang !== "en" && (
+        <p lang={localeOf(lang)} className="mt-3">
+          <Link href="/me/easy-read" className="inline-block rounded-lg border-2 border-brand px-4 py-2 font-medium text-heading">
+            {messagesFor(lang).me.inYourLanguage}
+          </Link>
+        </p>
+      )}
 
       <OfflineNotice updatedAt={updatedAt} />
+
+      {data.checkIns.length > 0 && (
+        <section className="mt-6 rounded-lg border-2 border-brand p-4" aria-labelledby="checkin-heading">
+          <h2 id="checkin-heading" className="text-lg font-semibold">How was your shift?</h2>
+          <p className="mt-1">A quick, private check-in that you asked for. Skip it if you like.</p>
+          <Link href="/me/wellbeing" className="mt-3 inline-block rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover">
+            Check in
+          </Link>
+        </section>
+      )}
 
       {data.clockable.map(({ shift, summary }) => (
         <section key={`clock-${shift.id}`} aria-label="Clock in and out" className="mt-6 rounded-lg border-2 border-brand p-4">
@@ -208,6 +289,9 @@ export default async function MyPage() {
               saved, never where you were.
             </p>
           )}
+          <Link href="/me/checklist" className="mt-3 inline-block underline">
+            Today&rsquo;s checklist and handover
+          </Link>
         </section>
       ))}
 
@@ -258,6 +342,13 @@ export default async function MyPage() {
               <li key={n.id}>
                 <strong>{NOTICE_TEXT[n.kind]}:</strong> {longDate(londonParts(n.startsAt.getTime()).date)}, {timeFmt.format(n.startsAt)} to{" "}
                 {timeFmt.format(n.endsAt)}.
+                {data.shortNotice
+                  .filter((p) => p.shiftId === n.shiftId && n.kind !== "added" && n.kind !== "given_to_you")
+                  .map((p) => (
+                    <span key={p.id} className="block text-sm">
+                      Because this was short notice, you will be paid <strong>£{(p.pence / 100).toFixed(2)}</strong> for the time you lose.
+                    </span>
+                  ))}
                 {n.noticeHours < SHORT_NOTICE_HOURS && n.kind !== "given_to_you" && (
                   <span className="block text-sm text-zinc-600 dark:text-zinc-400">
                     Short notice: {n.kind === "added" ? "added" : "changed"} {n.noticeHours < 48 ? `${n.noticeHours} hours` : `${Math.floor(n.noticeHours / 24)} days`} before the
@@ -312,6 +403,12 @@ export default async function MyPage() {
                           {unpaid > 0 && `, ${Math.round(unpaid / MINUTE)} minute break`}
                         </span>
                       </p>
+                      {s.splitGroupId && shifts.filter((p) => p.splitGroupId === s.splitGroupId).length > 1 && (
+                        <p className="text-sm">
+                          Split shift, part {shifts.filter((p) => p.splitGroupId === s.splitGroupId).findIndex((p) => p.id === s.id) + 1} of{" "}
+                          {shifts.filter((p) => p.splitGroupId === s.splitGroupId).length}. The time in between is your own. Clock in and out for each part.
+                        </p>
+                      )}
                       {client?.postcode && <p className="text-sm">{client.postcode}</p>}
                       {s.travelMinutes > 0 && <p className="text-sm">Allow {s.travelMinutes} minutes to travel from your previous visit.</p>}
                       {client?.visitNotes && <p className="mt-1 rounded-md bg-zinc-100 p-2 text-sm dark:bg-zinc-900">{client.visitNotes}</p>}
@@ -341,7 +438,10 @@ export default async function MyPage() {
             ))}
           </ul>
         )}
-        <a href="/me/calendar.ics" className="mt-3 inline-block underline">Add your shifts to your phone or computer calendar</a>
+        <p className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
+          <Link href="/me/easy-read" className="underline">See your shifts in Easy Read, with pictures and read aloud</Link>
+          <a href="/me/calendar.ics" className="underline">Add your shifts to your phone or computer calendar</a>
+        </p>
       </section>
 
       <More calm={calm}>
@@ -406,6 +506,24 @@ export default async function MyPage() {
           </ul>
         )}
       </section>
+
+      {data.shortNotice.length > 0 && (
+        <section className="mt-10" aria-labelledby="short-notice-heading">
+          <h2 id="short-notice-heading" className="text-lg font-semibold">Short-notice pay</h2>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+            When your manager changes a published shift at short notice, you are paid for the time you lose. It is added to your pay for that week.
+          </p>
+          <ul className="mt-2 flex flex-col gap-1">
+            {data.shortNotice.map((p) => (
+              <li key={p.id}>
+                {longDate(londonParts(p.shiftStartsAt.getTime()).date)}, {timeFmt.format(p.shiftStartsAt)} to {timeFmt.format(p.shiftEndsAt)}:{" "}
+                <strong>£{(p.pence / 100).toFixed(2)}</strong>
+                <span className="text-zinc-600 dark:text-zinc-400"> · {SHORT_NOTICE_KIND[p.kind]}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {(data.tips.length > 0 || data.policy) && (
         <section className="mt-10" aria-labelledby="tips-heading">
@@ -475,8 +593,7 @@ export default async function MyPage() {
       <section className="mt-10" aria-labelledby="concern-heading">
         <h2 id="concern-heading" className="text-lg font-semibold">Worried about something?</h2>
         <p className="mt-1">
-          If you are worried about someone&apos;s safety or how things are done at work, you can tell a manager privately, with or
-          without your name.
+          Worried about someone&apos;s safety, or how things are done at work? You can tell a manager in private. You do not have to give your name.
         </p>
         <Link href="/me/concern" className="mt-2 inline-block rounded-lg border border-zinc-400 px-4 py-2">Raise a concern</Link>
       </section>
@@ -500,18 +617,39 @@ export default async function MyPage() {
       </section>
 
       <section className="mt-10" aria-labelledby="texts-heading">
-        <h2 id="texts-heading" className="text-lg font-semibold">Texts and reminders</h2>
+        <h2 id="texts-heading" className="text-lg font-semibold">Notifications and reminders</h2>
+        <p className="mt-1">Changes always show on this page. You can also have them sent to your phone.</p>
+        {pushKey ? (
+          <PushSwitch publicKey={pushKey} />
+        ) : (
+          <p className="mt-2 text-muted">App notifications are not switched on for VicisRota yet, so for now messages come by text if you choose it.</p>
+        )}
         <TextSettingsForm
           mobile={worker.mobile ? formatUkMobile(worker.mobile) : null}
-          textChanges={!!worker.preferences.textChanges}
+          textChanges={tellsChanges(worker.preferences)}
           remindEvening={!!worker.preferences.remindEvening}
           remindBeforeMinutes={worker.preferences.remindBeforeMinutes ?? null}
+          byText={wantsTexts(worker.preferences, worker.mobile)}
         />
+        {data.recentMessages.length > 0 && (
+          <details className="mt-4 rounded-lg border p-3">
+            <summary className="font-medium">Messages we sent you recently</summary>
+            <ul className="mt-2 flex flex-col gap-3">
+              {data.recentMessages.map((m) => (
+                <li key={m.id}>
+                  <p className="text-sm text-muted">{sentFmt.format(m.createdAt)}</p>
+                  <p className="font-medium">{m.title}</p>
+                  <p className="whitespace-pre-line">{m.body}</p>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
       </section>
 
       <section className="mt-10" aria-labelledby="install-heading">
         <h2 id="install-heading" className="text-lg font-semibold">Put VicisRota on your phone</h2>
-        <p className="mt-1">It then opens like an app, and your shifts are saved on your phone so you can see them with no signal.</p>
+        <p className="mt-1">It then opens like an app. Your shifts are saved on your phone, so you can see them even with no signal.</p>
         <ul className="mt-2 list-disc pl-6">
           <li>iPhone: open this page in Safari, tap Share, then &ldquo;Add to Home Screen&rdquo;.</li>
           <li>Android: open this page in Chrome, tap the menu (three dots), then &ldquo;Add to Home screen&rdquo; or &ldquo;Install app&rdquo;.</li>
@@ -532,7 +670,7 @@ export default async function MyPage() {
             <input type="checkbox" name="largeText" defaultChecked={largeText} /> Larger text
           </label>
           <p className="text-sm">
-            More choices, such as easier reading, softer colours and no movement, are in{" "}
+            More choices, such as your language, easier reading, softer colours and no movement, are in{" "}
             <Link href="/display?back=/me" className="underline">display settings</Link>.
           </p>
           <button type="submit" className="self-start rounded-lg border border-zinc-400 px-4 py-2">Save</button>

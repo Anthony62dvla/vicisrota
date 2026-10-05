@@ -1,30 +1,32 @@
 import { londonParts, remindersDue } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
-import { reminderText } from "@vicisrota/messaging";
-import { and, eq, gt, gte, isNotNull, lt, lte } from "drizzle-orm";
+import { dayWord, langOf, localeOf, reminderNotice, reminderText } from "@vicisrota/messaging";
+import { and, eq, gt, gte, lt, lte } from "drizzle-orm";
 import { db } from "./db";
-import { appUrl, sendTexts } from "./sms";
+import { notifyWorkers } from "./notify";
+import { appUrl } from "./sms";
 
 const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 const dayFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short" });
 
 /**
- * Texts the shift reminders people have asked for, for one business. Each reminder has its own
- * dedupe key, so running this every few minutes sends each one once. No reminder is sent for a day
- * the person has approved leave or sickness. Returns how many texts were sent.
+ * Sends the shift reminders people have asked for, for one business: as app notifications and, if
+ * they chose texts, by text. Each reminder has its own dedupe key, so running this every few minutes
+ * sends each one once. No reminder is sent for a day the person has approved leave or sickness.
+ * Returns how many reminders went out.
  */
 export const sendShiftReminders = async (business: { id: string; name: string }, now: number): Promise<number> => {
   const rows = await withOrganisation(db, business.id, async (tx) => {
     const shifts = await tx
-      .select({ shift: schema.shift, mobile: schema.worker.mobile, preferences: schema.worker.preferences, role: schema.jobRole.name, place: schema.location.name })
+      .select({ shift: schema.shift, preferences: schema.worker.preferences, language: schema.user.language, role: schema.jobRole.name, place: schema.location.name })
       .from(schema.shift)
       .innerJoin(schema.worker, eq(schema.shift.workerId, schema.worker.id))
+      .leftJoin(schema.user, eq(schema.worker.userId, schema.user.id))
       .leftJoin(schema.jobRole, eq(schema.shift.roleId, schema.jobRole.id))
       .leftJoin(schema.location, eq(schema.shift.locationId, schema.location.id))
       .where(
         and(
           eq(schema.shift.status, "published"),
-          isNotNull(schema.worker.mobile),
           gt(schema.shift.startsAt, new Date(now)),
           // The evening reminder is the earliest: at most 30 hours ahead.
           lt(schema.shift.startsAt, new Date(now + 30 * 3_600_000)),
@@ -42,20 +44,30 @@ export const sendShiftReminders = async (business: { id: string; name: string },
     });
   });
 
-  let sent = 0;
   const today = londonParts(now).date;
-  for (const r of rows) {
-    const due = remindersDue(
+  const due = rows.flatMap((r) =>
+    remindersDue(
       { evening: r.preferences.remindEvening, beforeMinutes: r.preferences.remindBeforeMinutes },
       { id: r.shift.id, start: r.shift.startsAt.getTime() },
       now,
-    );
-    for (const reminder of due) {
+    ).map((reminder) => {
       const isToday = londonParts(r.shift.startsAt.getTime()).date === today;
       const when = `${isToday ? "today" : `tomorrow, ${dayFmt.format(r.shift.startsAt)}`}, ${timeFmt.format(r.shift.startsAt)} to ${timeFmt.format(r.shift.endsAt)}`;
-      const body = reminderText({ business: business.name, when, detail: [r.role, r.place].filter(Boolean).join(" at ") || null, note: r.shift.note, link: appUrl("/me") });
-      sent += await sendTexts(business.id, "reminder", [{ to: r.mobile!, body }], reminder.key);
-    }
-  }
-  return sent;
+      const shift = { business: business.name, when, detail: [r.role, r.place].filter(Boolean).join(" at ") || null, note: r.shift.note };
+      const lang = langOf(r.language);
+      const day = new Intl.DateTimeFormat(localeOf(lang), { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short" });
+      // In their language: the day, the times, and role and place joined with a comma, since "at" does not translate.
+      const theirWhen = `${dayWord(lang, isToday)}${isToday ? "" : `, ${day.format(r.shift.startsAt)}`}, ${timeFmt.format(r.shift.startsAt)}-${timeFmt.format(r.shift.endsAt)}`;
+      return {
+        workerId: r.shift.workerId!,
+        purpose: "reminder",
+        ...(lang === "en" ? reminderNotice(shift) : reminderNotice({ ...shift, when: theirWhen, detail: [r.role, r.place].filter(Boolean).join(", ") || null }, lang)),
+        url: "/me",
+        dedupeKey: reminder.key,
+        text: reminderText({ ...shift, link: appUrl("/me") }),
+      };
+    }),
+  );
+  const { pushed, texted } = await notifyWorkers(business.id, due);
+  return pushed + texted;
 };

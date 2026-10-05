@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { currentKiosk } from "@/lib/kiosk";
 import { log } from "@/lib/log";
 import { PIN_LOCK_MINUTES, PIN_MAX_FAILURES, verifyPin } from "@/lib/pin";
+import { tabletQr } from "@/lib/qr-clock";
 import { requestId } from "@/lib/request";
 
 export type KioskState = { error?: string; ok?: string; at?: number };
@@ -63,4 +64,10 @@ export async function kioskClock(_: KioskState, form: FormData): Promise<KioskSt
   await db.update(schema.kioskDevice).set({ lastSeenAt: new Date() }).where(eq(schema.kioskDevice.id, deviceId));
   // A timestamp makes every result distinct, so the screen can reset itself after showing it.
   return { ...result, at: Date.now() };
+}
+
+/** The tablet's current QR code for clocking in by phone. It changes every 30 seconds. */
+export async function kioskQrCode(): Promise<{ svg: string; changesAt: number } | null> {
+  const kiosk = await currentKiosk();
+  return kiosk ? tabletQr(kiosk.device) : null;
 }

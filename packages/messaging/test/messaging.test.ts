@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { formatUkMobile, helpAlert, httpSender, inviteText, lateAlert, reminderText, normaliseUkMobile, overdueAlert, rotaChangeText, senderFromEnv, SMS_MAX } from "../src";
+import { spokenLength, spokenTime, checkInNotice, dayWord, langOf, isQuiet, tellsChanges, wantsTexts, formatUkMobile, helpAlert, httpSender, inviteText, lateAlert, reminderNotice, reminderText, rotaChangeNotice, normaliseUkMobile, overdueAlert, rotaChangeText, senderFromEnv, SMS_MAX } from "../src";
 
 describe("UK mobile numbers", () => {
   it("accepts common formats", () => {
@@ -83,6 +83,97 @@ describe("staff texts", () => {
     const text = rotaChangeText({ business: "Corner Bakery", changes, link: "L" });
     expect(text).toBe("Corner Bakery: your rota has changed.\nNew shift: Mon 5 Oct 08:00-14:00\nNew shift: Tue 6 Oct 08:00-14:00\nNew shift: Wed 7 Oct 08:00-14:00\nand 1 more.\nSee your shifts: L");
     expect(rotaChangeText({ business: "B", changes: [{ kind: "cancelled", when: "Fri 9 Oct 18:00-23:00" }], link: "L" })).toContain("Cancelled: Fri 9 Oct 18:00-23:00");
+    expect(rotaChangeText({ business: "B", changes: [{ kind: "changed", when: "Sat 10 Oct 09:00-15:00" }], link: "L" })).toContain("Changed, now: Sat 10 Oct 09:00-15:00");
     expect(rotaChangeText({ business: "B".repeat(400), changes, link: "L" }).length).toBeLessThanOrEqual(SMS_MAX);
+  });
+});
+
+describe("app notifications", () => {
+  it("lists rota changes without a link, since tapping opens the shifts", () => {
+    const changes = ["Mon 5 Oct", "Tue 6 Oct", "Wed 7 Oct", "Thu 8 Oct"].map((d) => ({ kind: "added" as const, when: `${d} 08:00-14:00` }));
+    expect(rotaChangeNotice({ business: "Corner Bakery", changes })).toEqual({
+      title: "Corner Bakery: your rota has changed",
+      body: "New shift: Mon 5 Oct 08:00-14:00\nNew shift: Tue 6 Oct 08:00-14:00\nNew shift: Wed 7 Oct 08:00-14:00\nand 1 more.",
+    });
+  });
+  it("words a reminder like the text, with the note", () => {
+    expect(reminderNotice({ business: "B", when: "today, 09:00 to 17:00", detail: "Chef at Kitchen", note: "Bring whites" })).toEqual({
+      title: "B: shift reminder",
+      body: "Your shift today, 09:00 to 17:00, Chef at Kitchen. Note: Bring whites.",
+    });
+  });
+  it("speaks the person's own language", () => {
+    const changes = [{ kind: "cancelled" as const, when: "pt. 9 paź 18:00-23:00" }];
+    expect(rotaChangeNotice({ business: "Piekarnia", changes }, "pl")).toEqual({ title: "Piekarnia: twój grafik się zmienił", body: "Odwołana: pt. 9 paź 18:00-23:00" });
+    expect(reminderNotice({ business: "B", when: `${dayWord("cy", true)}, 09:00-17:00`, note: "Dewch â ffedog" }, "cy").body).toBe("Eich shifft heddiw, 09:00-17:00. Nodyn: Dewch â ffedog.");
+    expect(checkInNotice("B", "ro").title).toBe("B: cum a fost tura ta?");
+  });
+  it("falls back to English for anything it does not know", () => {
+    expect(langOf("fr")).toBe("en");
+    expect(langOf(null)).toBe("en");
+    expect(langOf("cy")).toBe("cy");
+  });
+});
+
+describe("who gets texts", () => {
+  it("rota changes are on unless turned off", () => {
+    expect(tellsChanges({})).toBe(true);
+    expect(tellsChanges({ textChanges: false })).toBe(false);
+  });
+  it("texts only go to people who chose them and gave a number", () => {
+    expect(wantsTexts({ byText: true }, "+447700900123")).toBe(true);
+    expect(wantsTexts({ byText: true }, null)).toBe(false);
+    expect(wantsTexts({ byText: false, textChanges: true }, "+447700900123")).toBe(false);
+  });
+  it("people who set up texts before app notifications keep getting them", () => {
+    expect(wantsTexts({ remindEvening: true }, "+447700900123")).toBe(true);
+    expect(wantsTexts({ remindBeforeMinutes: 60 }, "+447700900123")).toBe(true);
+    // A number given only for the invitation does not mean they wanted texts.
+    expect(wantsTexts({}, "+447700900123")).toBe(false);
+  });
+});
+
+describe("quiet hours for team messages", () => {
+  it("are 9pm to 7am by default, across midnight", () => {
+    expect(isQuiet({}, "20:59", false)).toBe(false);
+    expect(isQuiet({}, "21:00", false)).toBe(true);
+    expect(isQuiet({}, "03:00", false)).toBe(true);
+    expect(isQuiet({}, "07:00", false)).toBe(false);
+  });
+  it("cover the whole of a day off unless turned off", () => {
+    expect(isQuiet({}, "12:00", true)).toBe(true);
+    expect(isQuiet({ daysOff: false }, "12:00", true)).toBe(false);
+  });
+  it("can be set within one day, or switched off", () => {
+    expect(isQuiet({ from: "13:00", to: "14:00" }, "13:30", false)).toBe(true);
+    expect(isQuiet({ from: "13:00", to: "14:00" }, "14:00", false)).toBe(false);
+    expect(isQuiet({ from: null, to: null }, "23:00", false)).toBe(false);
+  });
+});
+
+describe("times and lengths said aloud", () => {
+  it("says English times in words", () => {
+    expect(spokenTime("en", 0, 0)).toBe("midnight");
+    expect(spokenTime("en", 13, 30)).toBe("half past 1 in the afternoon");
+    expect(spokenTime("en", 8, 45)).toBe("quarter to 9 in the morning");
+  });
+  it("uses the 24-hour clock in Welsh, Polish and Romanian", () => {
+    expect(spokenTime("pl", 7, 5)).toBe("7:05");
+    expect(spokenTime("ro", 22, 0)).toBe("22:00");
+  });
+  it("gets the grammar of lengths right", () => {
+    expect(spokenLength("en", 450)).toBe("7 and a half hours");
+    expect(spokenLength("en", 60)).toBe("1 hour");
+    expect(spokenLength("cy", 495)).toBe("8 awr a 15 munud");
+    expect(spokenLength("pl", 90)).toBe("półtorej godziny");
+    expect(spokenLength("pl", 120)).toBe("2 godziny");
+    expect(spokenLength("pl", 300)).toBe("5 godzin");
+    expect(spokenLength("pl", 22 * 60)).toBe("22 godziny");
+    expect(spokenLength("pl", 12 * 60 + 22)).toBe("12 godzin i 22 minuty");
+    expect(spokenLength("pl", 45)).toBe("45 minut");
+    expect(spokenLength("ro", 60)).toBe("o oră");
+    expect(spokenLength("ro", 450)).toBe("7 ore și jumătate");
+    expect(spokenLength("ro", 20)).toBe("20 de minute");
+    expect(spokenLength("ro", 15)).toBe("15 minute");
   });
 });
