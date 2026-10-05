@@ -1,4 +1,4 @@
-import { addDays, londonDateTime, londonParts, nextClockActions } from "@vicisrota/compliance";
+import { addDays, courseSite, londonDateTime, londonParts, nextClockActions } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, or } from "drizzle-orm";
 import Link from "next/link";
@@ -184,6 +184,17 @@ export default async function MyPage() {
       .orderBy(desc(schema.announcement.createdAt))
       .limit(20);
     const checkIns = await pendingCheckIns(tx, worker.id, now);
+    const training = await tx
+      .select({ id: schema.workerQualification.id, qualificationId: schema.qualification.id, name: schema.qualification.name, expiresOn: schema.workerQualification.expiresOn, courseUrl: schema.qualification.courseUrl })
+      .from(schema.workerQualification)
+      .innerJoin(schema.qualification, eq(schema.workerQualification.qualificationId, schema.qualification.id))
+      .where(eq(schema.workerQualification.workerId, worker.id))
+      .orderBy(asc(schema.qualification.name));
+    const courses = await tx
+      .select({ id: schema.qualification.id, name: schema.qualification.name, courseUrl: schema.qualification.courseUrl })
+      .from(schema.qualification)
+      .where(isNotNull(schema.qualification.courseUrl))
+      .orderBy(asc(schema.qualification.name));
     const recentMessages = await tx
       .select({ id: schema.notification.id, title: schema.notification.title, body: schema.notification.body, createdAt: schema.notification.createdAt })
       .from(schema.notification)
@@ -192,7 +203,7 @@ export default async function MyPage() {
       .limit(5);
     const sick = (await loadSickness(tx, addDays(today, 366), [worker.id])).get(worker.id);
     const sickPay = new Map((sick?.records ?? []).filter((r) => !r.ssp.oldRules && r.ssp.pence > 0).map((r) => [r.id, r.ssp.pence]));
-    return { checkIns, recentMessages, colleagues, roles, sickPay, announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, shortNotice, rollCall, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
+    return { checkIns, training, courses, recentMessages, colleagues, roles, sickPay, announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, shortNotice, rollCall, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
   });
 
   const days = new Map<string, typeof data.shifts>();
@@ -605,6 +616,46 @@ export default async function MyPage() {
         </section>
       )}
 
+      {(data.training.length > 0 || data.courses.length > 0) && (
+        <section className="mt-10" aria-labelledby="training-heading">
+          <h2 id="training-heading" className="text-lg font-semibold">Your training</h2>
+          {data.training.length > 0 && (
+            <ul className="mt-2 flex flex-col gap-2">
+              {data.training.map((t) => {
+                const expired = !!t.expiresOn && t.expiresOn < today;
+                const soon = !!t.expiresOn && !expired && t.expiresOn <= addDays(today, 30);
+                return (
+                  <li key={t.id} className={`rounded-lg border p-3 ${expired ? "border-amber-500" : "border-zinc-300 dark:border-zinc-700"}`}>
+                    <p className="font-medium">{t.name}</p>
+                    {t.expiresOn && (
+                      <p className="text-sm">
+                        {expired ? `Ran out on ${yearDate(t.expiresOn)}. Please renew it.` : `In date until ${yearDate(t.expiresOn)}.${soon ? " Time to renew it soon." : ""}`}
+                      </p>
+                    )}
+                    {t.courseUrl && <CourseLink url={t.courseUrl} label={expired || soon ? "Renew it on" : "Course on"} />}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {data.courses.some((c) => !data.training.some((t) => t.qualificationId === c.id)) && (
+            <>
+              <p className="mt-4 font-medium">{data.training.length > 0 ? "Other courses from your workplace" : "Courses from your workplace"}</p>
+              <ul className="mt-2 flex flex-col gap-2">
+                {data.courses
+                  .filter((c) => !data.training.some((t) => t.qualificationId === c.id))
+                  .map((c) => (
+                    <li key={c.id} className="rounded-lg border border-zinc-300 p-3 dark:border-zinc-700">
+                      <p className="font-medium">{c.name}</p>
+                      <CourseLink url={c.courseUrl!} label="Course on" />
+                    </li>
+                  ))}
+              </ul>
+            </>
+          )}
+        </section>
+      )}
+
       <section className="mt-10" aria-labelledby="profile-heading">
         <h2 id="profile-heading" className="text-lg font-semibold">How I work best</h2>
         <p className="mt-1">
@@ -680,3 +731,15 @@ export default async function MyPage() {
     </main>
   );
 }
+
+/** Opens in a new tab and names the site, so people know where they are going before they tap. */
+function CourseLink({ url, label }: { url: string; label: string }) {
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block underline">
+      {label} {courseSite(url)}
+      <span className="sr-only"> (opens in a new tab)</span>
+    </a>
+  );
+}
+
+const yearDate = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" });

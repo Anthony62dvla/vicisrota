@@ -355,6 +355,8 @@ export const qualification = pgTable("qualification", {
   id: id(),
   organisationId: orgId(),
   name: text("name").notNull(),
+  /** Where staff can do or renew this training, such as an online course. */
+  courseUrl: text("course_url"),
   createdAt: createdAt(),
 });
 
