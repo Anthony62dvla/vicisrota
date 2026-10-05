@@ -260,6 +260,9 @@ export default async function MyPage() {
               saved, never where you were.
             </p>
           )}
+          <Link href="/me/checklist" className="mt-3 inline-block underline">
+            Today&rsquo;s checklist and handover
+          </Link>
         </section>
       ))}
 

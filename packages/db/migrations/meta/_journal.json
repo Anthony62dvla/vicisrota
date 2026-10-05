@@ -358,6 +358,13 @@
       "when": 1791200247959,
       "tag": "0050_team_messages",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1791200600112,
+      "tag": "0051_checklists",
+      "breakpoints": true
     }
   ]
 }

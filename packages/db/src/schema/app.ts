@@ -1138,3 +1138,57 @@ export const message = pgTable(
   },
   (t) => [index("message_conversation_idx").on(t.conversationId, t.createdAt)],
 );
+
+/**
+ * A list of tasks for a shift, such as opening checks. Shown to whoever works a shift that matches:
+ * a role, a workplace, both, or (when neither is set) every shift.
+ */
+export const checklistTemplate = pgTable(
+  "checklist_template",
+  {
+    id: id(),
+    organisationId: orgId(),
+    name: text("name").notNull(),
+    items: jsonb("items").$type<string[]>().notNull(),
+    roleId: uuid("role_id").references(() => jobRole.id, { onDelete: "set null" }),
+    locationId: uuid("location_id").references(() => location.id, { onDelete: "set null" }),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("checklist_template_org_idx").on(t.organisationId)],
+);
+
+/** A task ticked off on a shift. The task's wording is copied, so later edits to the list do not change the record. */
+export const checklistTick = pgTable(
+  "checklist_tick",
+  {
+    id: id(),
+    organisationId: orgId(),
+    shiftId: uuid("shift_id")
+      .notNull()
+      .references(() => shift.id, { onDelete: "cascade" }),
+    templateId: uuid("template_id")
+      .notNull()
+      .references(() => checklistTemplate.id, { onDelete: "cascade" }),
+    item: smallint("item").notNull(),
+    task: text("task").notNull(),
+    workerId: uuid("worker_id").references(() => worker.id, { onDelete: "set null" }),
+    tickedAt: timestamp("ticked_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("checklist_tick_item_idx").on(t.shiftId, t.templateId, t.item)],
+);
+
+/** A note left at the end of a shift for the next people working at the same workplace. */
+export const handover = pgTable(
+  "handover",
+  {
+    id: id(),
+    organisationId: orgId(),
+    shiftId: uuid("shift_id").references(() => shift.id, { onDelete: "set null" }),
+    workerId: uuid("worker_id").references(() => worker.id, { onDelete: "set null" }),
+    locationId: uuid("location_id").references(() => location.id, { onDelete: "set null" }),
+    body: text("body").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("handover_org_idx").on(t.organisationId, t.createdAt)],
+);
