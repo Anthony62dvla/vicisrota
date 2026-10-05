@@ -1,0 +1,1 @@
+ALTER TABLE "qualification" ADD COLUMN "course_url" text;

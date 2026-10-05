@@ -31,7 +31,7 @@ export default async function StaffRecordPage({ params, searchParams }: PageProp
       worker,
       checks: await tx.select().from(schema.workerCheck).where(eq(schema.workerCheck.workerId, id)).orderBy(desc(schema.workerCheck.checkedOn)),
       training: await tx
-        .select({ id: schema.workerQualification.id, name: schema.qualification.name, achievedOn: schema.workerQualification.achievedOn, expiresOn: schema.workerQualification.expiresOn, reference: schema.workerQualification.reference })
+        .select({ id: schema.workerQualification.id, name: schema.qualification.name, achievedOn: schema.workerQualification.achievedOn, expiresOn: schema.workerQualification.expiresOn, reference: schema.workerQualification.reference, courseUrl: schema.qualification.courseUrl })
         .from(schema.workerQualification)
         .innerJoin(schema.qualification, eq(schema.workerQualification.qualificationId, schema.qualification.id))
         .where(eq(schema.workerQualification.workerId, id))
@@ -189,6 +189,14 @@ export default async function StaffRecordPage({ params, searchParams }: PageProp
                   {t.name}
                   {t.expiresOn && (t.expiresOn < today ? `, expired ${ukDate(t.expiresOn)}` : `, valid until ${ukDate(t.expiresOn)}`)}
                   {t.reference && <span className="text-muted"> · number {t.reference}</span>}
+                  {t.courseUrl && (
+                    <>
+                      {" · "}
+                      <a href={t.courseUrl} target="_blank" rel="noopener noreferrer" className="underline">
+                        Course
+                      </a>
+                    </>
+                  )}
                 </span>
                 <form action={removeTraining}>
                   <input type="hidden" name="id" value={t.id} />
@@ -200,6 +208,9 @@ export default async function StaffRecordPage({ params, searchParams }: PageProp
           </ul>
         )}
         <AddTrainingForm workerId={worker.id} known={known} />
+        <p className="mt-3 text-sm text-muted">
+          Course links for each kind of training are set on the <Link href="/training" className="underline">Training page</Link>.
+        </p>
       </section>
 
       <section className="mt-10">
