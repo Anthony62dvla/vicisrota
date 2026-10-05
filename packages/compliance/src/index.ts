@@ -21,3 +21,4 @@ export * from "./reminders";
 export * from "./patterns";
 export * from "./shortNotice";
 export * from "./payItems";
+export * from "./rules/fatigue";
