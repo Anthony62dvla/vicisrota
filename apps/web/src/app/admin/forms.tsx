@@ -1,5 +1,6 @@
 "use client";
 
+import { PACKS } from "@/lib/sector-packs";
 import { useActionState } from "react";
 import { newOwnerLink, onboardBusiness, type OnboardState } from "./actions";
 
@@ -34,14 +35,10 @@ export function OnboardForm() {
       </label>
       <fieldset className="flex flex-col gap-2">
         <legend className="font-medium">Type of business</legend>
-        {[
-          ["care", "Care provider"],
-          ["hospitality", "Hospitality"],
-          ["small_business", "Small business"],
-        ].map(([value, label]) => (
-          <label key={value} className="flex items-center gap-2">
-            <input type="radio" name="sector" value={value} defaultChecked={v?.sector === value} />
-            {label}
+        {PACKS.map((p) => (
+          <label key={p.id} className="flex items-center gap-2">
+            <input type="radio" name="kind" value={p.id} defaultChecked={v?.kind === p.id} />
+            {p.label}
           </label>
         ))}
       </fieldset>

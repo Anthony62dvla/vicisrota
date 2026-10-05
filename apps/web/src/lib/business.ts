@@ -15,6 +15,7 @@ export const myBusinesses = async (userId: string) =>
       role: schema.membership.role,
       name: schema.organisation.name,
       sector: schema.organisation.sector,
+      kind: schema.organisation.kind,
     })
     .from(schema.membership)
     .innerJoin(schema.organisation, eq(schema.membership.organisationId, schema.organisation.id))
@@ -41,7 +42,7 @@ export const requireManager = async () => {
   const membership = await currentMembership(user.id);
   if (!membership) redirect("/dashboard");
   if (membership.role === "worker") redirect("/me");
-  return { user, organisationId: membership.organisationId, businessName: membership.name, sector: membership.sector };
+  return { user, organisationId: membership.organisationId, businessName: membership.name, sector: membership.sector, kind: membership.kind };
 };
 
 /** The signed-in member of staff and their own staff record. Managers are sent to the dashboard. */

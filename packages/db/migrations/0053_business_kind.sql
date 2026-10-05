@@ -1,0 +1,1 @@
+ALTER TABLE "organisation" ADD COLUMN "kind" text;

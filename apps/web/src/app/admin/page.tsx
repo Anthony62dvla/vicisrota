@@ -1,3 +1,4 @@
+import { kindLabel } from "@/lib/sector-packs";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, count, desc, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import Link from "next/link";
@@ -6,7 +7,6 @@ import { loadSetupSteps } from "@/lib/setup";
 import { recordPlatformAction, requireSuperadmin } from "@/lib/superadmin";
 import { NewOwnerLinkButton, OnboardForm } from "./forms";
 
-const SECTOR = { care: "Care", hospitality: "Hospitality", small_business: "Small business" } as const;
 const when = (d: Date | null | undefined) =>
   d ? d.toLocaleString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "Never";
 
@@ -130,7 +130,7 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
             {rows.map((r) => (
               <li key={r.org.id} className="rounded-lg border border-zinc-300 p-3 dark:border-zinc-700">
                 <p className="font-medium">
-                  {r.org.name} <span className="font-normal text-zinc-600 dark:text-zinc-400">· {SECTOR[r.org.sector]}</span>
+                  {r.org.name} <span className="font-normal text-zinc-600 dark:text-zinc-400">· {kindLabel(r.org.kind, r.org.sector)}</span>
                 </p>
                 <p className="text-sm">
                   Set up {when(r.org.createdAt)} · Setup {r.setupDone} of {r.setupTotal} steps · {r.staff} staff, {r.logins} with a login ·{" "}

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { currentMembership, myBusinesses } from "@/lib/business";
+import { kindLabel, PACKS } from "@/lib/sector-packs";
 import { createBusiness, switchBusiness } from "../actions";
 import { loadSetupSteps } from "@/lib/setup";
 import { isSuperadmin } from "@/lib/superadmin";
@@ -14,11 +15,6 @@ const ROLE_LABELS = {
   manager: "Manager",
   worker: "Staff",
 } as const;
-const SECTOR_LABELS = {
-  care: "Care provider",
-  hospitality: "Hospitality",
-  small_business: "Small business",
-} as const;
 
 export default async function Dashboard() {
   const user = await requireUser();
@@ -26,18 +22,18 @@ export default async function Dashboard() {
   const current = await currentMembership(user.id);
   // Staff have their own page with just their shifts and leave.
   if (current?.role === "worker") redirect("/me");
-  const managed = current ? { id: current.organisationId, name: current.name, sector: current.sector } : undefined;
+  const managed = current ? { id: current.organisationId, name: current.name, sector: current.sector, kind: current.kind } : undefined;
   const setup = managed ? await loadSetupSteps(managed.id) : null;
   const superadmin = await isSuperadmin(user.id);
 
-  const sections = managed ? managerNav(managed.sector, false).filter((sec) => sec.title) : [];
+  const sections = managed ? managerNav(managed.sector, false, managed.kind).filter((sec) => sec.title) : [];
 
   return (
     <main className="mx-auto w-full max-w-4xl px-4 py-8 lg:px-8">
       <h1 className="text-2xl font-semibold sm:text-3xl">Hello, {user.name}</h1>
       {managed && (
         <p className="mt-1 text-muted">
-          {managed.name} · {SECTOR_LABELS[managed.sector]}
+          {managed.name} · {kindLabel(managed.kind, managed.sector)}
         </p>
       )}
       {superadmin && (
@@ -127,12 +123,24 @@ function NewBusinessForm() {
       </label>
       <fieldset className="flex flex-col gap-2">
         <legend className="font-medium">What kind of business is it?</legend>
-        {Object.entries(SECTOR_LABELS).map(([value, label]) => (
-          <label key={value} className="flex items-center gap-2">
-            <input type="radio" name="sector" value={value} required /> {label}
+        <span className="text-sm text-muted">This decides what you see, so the app only shows what fits your work.</span>
+        {PACKS.map((p) => (
+          <label key={p.id} className="flex items-start gap-2">
+            <input type="radio" name="kind" value={p.id} required className="mt-1" />
+            <span>
+              {p.label}
+              <span className="block text-sm text-muted">{p.hint}</span>
+            </span>
           </label>
         ))}
       </fieldset>
+      <label className="flex items-start gap-2">
+        <input type="checkbox" name="starter" defaultChecked className="mt-1" />
+        <span>
+          Start me off with the usual job roles, training and checklists for this kind of business
+          <span className="block text-sm text-muted">You can change or remove any of them later.</span>
+        </span>
+      </label>
       <button type="submit" className="rounded-lg bg-brand px-4 py-2.5 font-medium text-on-brand hover:bg-brand-hover">
         Create business
       </button>

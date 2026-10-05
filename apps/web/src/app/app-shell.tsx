@@ -17,7 +17,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
       businessName: membership.name,
       businesses: (await myBusinesses(session.user.id)).map((b) => ({ id: b.organisationId, name: b.name, current: b.organisationId === membership.organisationId })),
       userName: session.user.name,
-      sections: worker ? staffNav : managerNav(membership.sector, await isSuperadmin(session.user.id)),
+      sections: worker ? staffNav : managerNav(membership.sector, await isSuperadmin(session.user.id), membership.kind),
       phoneBar: worker ? staffPhoneBar : managerPhoneBar,
     };
   }

@@ -1,4 +1,5 @@
 import type { IconName } from "@/app/icons";
+import { featuresFor, type Sector } from "./sector-packs";
 
 export type NavItem = { href: string; label: string; icon: IconName; exact?: boolean };
 export type NavSection = { title: string | null; items: NavItem[] };
@@ -14,8 +15,10 @@ export type Nav = {
 
 const item = (href: string, label: string, icon: IconName, exact = false): NavItem => ({ href, label, icon, exact });
 
-/** The menu for managers and owners. Sector decides between Tips (hospitality, shops) and Clients (care). */
-export const managerNav = (sector: "care" | "hospitality" | "small_business", superadmin: boolean): NavSection[] => [
+/** The menu for managers and owners. The kind of business decides sector pages such as Tips, Clients and the inspection pack. */
+export const managerNav = (sector: Sector, superadmin: boolean, kind: string | null = null): NavSection[] => {
+  const has = featuresFor(kind, sector);
+  return [
   { title: null, items: [item("/dashboard", "Home", "home", true), item("/attendance", "Today", "today")] },
   {
     title: "Plan",
@@ -23,7 +26,7 @@ export const managerNav = (sector: "care" | "hospitality" | "small_business", su
       item("/rota", "Rota", "rota"),
       item("/staff", "Staff", "staff"),
       item("/roles", "Job roles", "roles"),
-      ...(sector === "care" ? [item("/clients", "Clients", "clients")] : []),
+      ...(has.clients ? [item("/clients", "Clients", "clients")] : []),
     ],
   },
   { title: "Time off", items: [item("/leave", "Leave", "leave"), item("/sickness", "Sickness", "sickness")] },
@@ -33,7 +36,7 @@ export const managerNav = (sector: "care" | "hospitality" | "small_business", su
       item("/timesheets", "Timesheets", "timesheets"),
       item("/working-time", "Working time", "workingTime"),
       item("/short-notice", "Short-notice pay", "shortNotice"),
-      ...(sector !== "care" ? [item("/tips", "Tips", "tips")] : []),
+      ...(has.tips ? [item("/tips", "Tips", "tips")] : []),
     ],
   },
   { title: "Your team", items: [item("/messages", "Messages", "messages"), item("/checklists", "Checklists", "checklist"), item("/wellbeing", "Wellbeing", "wellbeing"), item("/announcements", "Announcements", "announcements"), item("/workplaces", "Workplaces", "workplaces")] },
@@ -41,7 +44,7 @@ export const managerNav = (sector: "care" | "hospitality" | "small_business", su
     title: "Safety",
     items: [
       item("/roll-call", "Fire roll call", "rollCall"), item("/lone-working", "Lone working", "loneWorking"), item("/safeguarding", "Safeguarding", "safeguarding"),
-      ...(sector === "care" ? [item("/inspection", "Inspection pack", "inspection")] : []),
+      ...(has.inspection ? [item("/inspection", "Inspection pack", "inspection")] : []),
     ],
   },
   {
@@ -52,7 +55,8 @@ export const managerNav = (sector: "care" | "hospitality" | "small_business", su
       ...(superadmin ? [item("/admin", "VicisRota superadmin", "admin")] : []),
     ],
   },
-];
+  ];
+};
 
 export const managerPhoneBar: NavItem[] = [
   item("/dashboard", "Home", "home", true),

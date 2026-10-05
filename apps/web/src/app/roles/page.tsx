@@ -6,10 +6,11 @@ import { db } from "@/lib/db";
 import { RoleBadge } from "../role-badge";
 import { removeRole } from "./actions";
 import { suggestionsFor } from "@/lib/role-suggestions";
+import { packById } from "@/lib/sector-packs";
 import { AddRoleForm, SuggestedRolesForm } from "./forms";
 
 export default async function RolesPage() {
-  const { organisationId, sector  } = await requireManager();
+  const { organisationId, sector, kind } = await requireManager();
   const { roles, links, workers } = await withOrganisation(db, organisationId, async (tx) => ({
     roles: await tx.select().from(schema.jobRole).orderBy(asc(schema.jobRole.name)),
     links: await tx.select().from(schema.workerRole),
@@ -56,7 +57,7 @@ export default async function RolesPage() {
       <section className="mt-8" aria-labelledby="suggested-heading">
         <h2 id="suggested-heading" className="text-lg font-semibold">Choose from common roles</h2>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">Tick the roles you use, then add them all at once. You can remove any you do not need later.</p>
-        <SuggestedRolesForm groups={suggestionsFor(sector)} have={roles.map((r) => r.name)} />
+        <SuggestedRolesForm groups={suggestionsFor(sector, packById(kind)?.roleGroup)} have={roles.map((r) => r.name)} />
       </section>
 
       <section className="mt-8" aria-labelledby="add-heading">

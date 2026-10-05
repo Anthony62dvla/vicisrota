@@ -93,6 +93,8 @@ export const organisation = pgTable("organisation", {
   id: id(),
   name: text("name").notNull(),
   sector: sector("sector").notNull(),
+  /** The kind of business chosen at setup, such as "nursery" or "security" (see sector-packs.ts). Null for businesses set up before kinds. */
+  kind: text("kind"),
   /** Care providers: every shift needs an enhanced DBS with barred list check. */
   requiresEnhancedDbs: boolean("requires_enhanced_dbs").notNull().default(false),
   /** Month the holiday year starts, 1 = January. */

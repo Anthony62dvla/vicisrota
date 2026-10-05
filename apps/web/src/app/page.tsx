@@ -60,7 +60,10 @@ const SECTORS: { icon: IconName; title: string; text: string }[] = [
     text: "Visits with travel time, DBS and training checks, and lone working, including children’s homes.",
   },
   { icon: "tips", title: "Hospitality", text: "Busy weeks, open shifts staff can pick up, and fair tip sharing under the 2023 Act." },
-  { icon: "workplaces", title: "Small businesses", text: "A simple rota, holiday and payroll export without the paperwork." },
+  { icon: "easyRead", title: "Nurseries and childcare", text: "Enhanced DBS on every shift, paediatric first aid tracking and opening checks." },
+  { icon: "workplaces", title: "Shops", text: "Opening and closing checks, Challenge 25 training and a fair rota." },
+  { icon: "loneWorking", title: "Cleaning and security", text: "Lone working check-ins, site checklists and SIA licence expiry dates." },
+  { icon: "staff", title: "Any small business", text: "A simple rota, holiday and payroll export without the paperwork." },
 ];
 
 export default function Home() {

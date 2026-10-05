@@ -7,24 +7,26 @@ import { requireUser } from "@/lib/auth";
 import { myBusinesses, rememberBusiness } from "@/lib/business";
 import { db } from "@/lib/db";
 import { log } from "@/lib/log";
+import { applyPack } from "@/lib/apply-pack";
 import { requestId } from "@/lib/request";
-
-const SECTORS = ["care", "hospitality", "small_business"] as const;
-type Sector = (typeof SECTORS)[number];
+import { packById } from "@/lib/sector-packs";
 
 export async function createBusiness(formData: FormData) {
   const user = await requireUser();
   const name = String(formData.get("name") ?? "").trim();
-  const sector = String(formData.get("sector") ?? "") as Sector;
-  if (!name || !SECTORS.includes(sector)) throw new Error("Business name and type are required");
+  const pack = packById(String(formData.get("kind") ?? ""));
+  const starter = formData.get("starter") === "on";
+  if (!name || !pack) throw new Error("Business name and type are required");
+  const { sector } = pack;
 
   const reference = await requestId();
   // One transaction, so a failure never leaves a business without an owner or an audit record.
   const organisationId = await db.transaction(async (tx) => {
-    const [org] = await tx.insert(schema.organisation).values({ name, sector, requiresEnhancedDbs: sector === "care" }).returning({ id: schema.organisation.id });
+    const [org] = await tx.insert(schema.organisation).values({ name, sector, kind: pack.id, requiresEnhancedDbs: pack.enhancedDbs }).returning({ id: schema.organisation.id });
     const id = org!.id;
     await tx.insert(schema.membership).values({ organisationId: id, userId: user.id, role: "owner" });
     await tx.execute(sql`select set_config('app.organisation_id', ${id}, true)`);
+    const added = starter ? await applyPack(tx, id, pack) : null;
     await tx.insert(schema.auditEvent).values({
       organisationId: id,
       actorUserId: user.id,
@@ -32,7 +34,7 @@ export async function createBusiness(formData: FormData) {
       action: "create",
       entity: "organisation",
       entityId: id,
-      data: { name, sector },
+      data: { name, sector, kind: pack.id, starter: added },
     });
     return id;
   });

@@ -372,6 +372,13 @@
       "when": 1791200878689,
       "tag": "0052_wellbeing",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1791201259071,
+      "tag": "0053_business_kind",
+      "breakpoints": true
     }
   ]
 }
