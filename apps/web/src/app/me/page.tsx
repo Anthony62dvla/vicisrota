@@ -11,6 +11,8 @@ import { loadLoneShifts } from "@/lib/lone-working";
 import { SHORT_NOTICE_HOURS } from "@/lib/notices";
 import { todayInUk } from "@/lib/rota";
 import { loadSickness } from "@/lib/sickness";
+import { activeRollCall } from "@/lib/roll-call";
+import { iAmSafe } from "../roll-call/actions";
 import { addMyUnavailable, markNoticesSeen, readAnnouncement, removeMyUnavailable, savePreferences, setCoverRequest, withdrawClaim, withdrawRequest } from "./actions";
 import { formatUkMobile } from "@vicisrota/messaging";
 import { ClockButtons, LoneCheckIn, PickUpList, PinForm, ReportSickForm, TextSettingsForm, TimeOffForm } from "./forms";
@@ -107,6 +109,16 @@ export default async function MyPage() {
       .where(and(eq(schema.leaveRequest.workerId, worker.id), gte(schema.leaveRequest.endsOn, addDays(today, -60))))
       .orderBy(desc(schema.leaveRequest.startsOn));
     const { balances, year } = await loadBalances(tx, organisationId, today);
+    // A fire or emergency roll call that includes them.
+    const call = await activeRollCall(tx);
+    const rollCall = call
+      ? ((
+          await tx
+            .select({ safeAt: schema.rollCallPerson.safeAt })
+            .from(schema.rollCallPerson)
+            .where(and(eq(schema.rollCallPerson.rollCallId, call.id), eq(schema.rollCallPerson.workerId, worker.id)))
+        )[0] ?? null)
+      : null;
     // Pay for their shifts cancelled, moved or cut short at short notice, in the last 13 weeks and still to come.
     const shortNotice = await tx
       .select()
@@ -164,7 +176,7 @@ export default async function MyPage() {
       .limit(20);
     const sick = (await loadSickness(tx, addDays(today, 366), [worker.id])).get(worker.id);
     const sickPay = new Map((sick?.records ?? []).filter((r) => !r.ssp.oldRules && r.ssp.pence > 0).map((r) => [r.id, r.ssp.pence]));
-    return { colleagues, roles, sickPay, announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, shortNotice, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
+    return { colleagues, roles, sickPay, announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, shortNotice, rollCall, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
   });
 
   const days = new Map<string, typeof data.shifts>();
@@ -199,6 +211,21 @@ export default async function MyPage() {
 
   return (
     <main className={`mx-auto w-full max-w-2xl px-4 py-8 lg:px-8 ${largeText ? "text-lg" : ""}`}>
+      {data.rollCall && (
+        <section role="alert" className="mb-6 rounded-lg border-4 border-red-600 p-4" aria-labelledby="roll-call-heading">
+          <h2 id="roll-call-heading" className="text-xl font-semibold">Roll call</h2>
+          {data.rollCall.safeAt ? (
+            <p className="mt-1">Thank you. Your manager knows you are safe.</p>
+          ) : (
+            <>
+              <p className="mt-1">Your manager is checking everyone is safe. If you are out of the building and safe, tap the button.</p>
+              <form action={iAmSafe} className="mt-3">
+                <button type="submit" className="w-full rounded-lg bg-green-700 px-6 py-4 text-xl font-semibold text-white hover:bg-green-800">I&apos;m safe</button>
+              </form>
+            </>
+          )}
+        </section>
+      )}
       <h1 className="text-2xl font-semibold">Hello, {user.name}</h1>
       <p className="text-zinc-600 dark:text-zinc-400">{businessName}</p>
 

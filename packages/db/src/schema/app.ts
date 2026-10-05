@@ -631,6 +631,40 @@ export const rotaNotice = pgTable(
   (t) => [index("rota_notice_worker_idx").on(t.workerId, t.createdAt)],
 );
 
+/** A fire or emergency roll call: who should be on site, and who has been accounted for. */
+export const rollCall = pgTable("roll_call", {
+  id: id(),
+  organisationId: orgId(),
+  startedByUserId: text("started_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  startedAt: createdAt(),
+  endedAt: timestamp("ended_at", { withTimezone: true }),
+  endedByUserId: text("ended_by_user_id").references(() => user.id, { onDelete: "set null" }),
+});
+
+export const rollCallExpected = pgEnum("roll_call_expected", ["clocked_in", "not_clocked_in"]);
+
+/** Each person on the roll call, taken when it started, and when they were marked safe and by whom. */
+export const rollCallPerson = pgTable(
+  "roll_call_person",
+  {
+    id: id(),
+    organisationId: orgId(),
+    rollCallId: uuid("roll_call_id")
+      .notNull()
+      .references(() => rollCall.id, { onDelete: "cascade" }),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    expected: rollCallExpected("expected").notNull(),
+    place: text("place"),
+    safeAt: timestamp("safe_at", { withTimezone: true }),
+    /** True when the person marked themselves safe from their phone. */
+    markedBySelf: boolean("marked_by_self").notNull().default(false),
+    markedByUserId: text("marked_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  },
+  (t) => [index("roll_call_person_call_idx").on(t.rollCallId)],
+);
+
 export const shortNoticeKind = pgEnum("short_notice_kind", ["cancelled", "moved", "shortened"]);
 
 /**
