@@ -24,22 +24,22 @@ const FEATURES: { icon: IconName; title: string; text: string }[] = [
   {
     icon: "rota",
     title: "Rotas that check themselves",
-    text: "Rest breaks, weekly hours, under-18 limits and minimum wage are checked before you publish, with a plain explanation of anything to fix.",
+    text: "Drag shifts around the rota board, or let the rota builder fill open shifts fairly. Rest breaks, weekly hours, under-18 limits, minimum wage and tiring patterns are checked before you publish.",
   },
   {
     icon: "profile",
     title: "Built for every mind",
-    text: "Clear words, calm screens, advance notice of changes, and a private “How I work best” profile staff choose whether to share.",
+    text: "Clear words, calm screens and advance notice of changes. Easy Read shifts that can be read aloud, and a private “How I work best” profile staff choose whether to share.",
   },
   {
     icon: "safeguarding",
     title: "Safeguarding at the centre",
-    text: "Staff can raise a concern in a few taps. Lone workers check in, and someone is told straight away if they need help.",
+    text: "Staff can raise a concern in a few taps. Lone workers check in, and someone is told straight away if they need help. A fire roll call shows who is safe.",
   },
   {
     icon: "today",
     title: "Clocking in, your way",
-    text: "From a phone at work or a shared tablet with a PIN. Late or missed starts are spotted before they become a gap in care.",
+    text: "Scan a code on the shared tablet, use a PIN, or clock in from a phone at work. Late or missed starts are spotted before they become a gap.",
   },
   {
     icon: "leave",
@@ -48,8 +48,23 @@ const FEATURES: { icon: IconName; title: string; text: string }[] = [
   },
   {
     icon: "timesheets",
-    title: "Payroll in one export",
-    text: "Confirmed hours, holiday, tips and sick pay in one file for your payroll, with a record of every export.",
+    title: "Pay that adds up",
+    text: "Confirmed hours, holiday, tips, sick pay and short-notice pay in one file for your payroll software.",
+  },
+  {
+    icon: "messages",
+    title: "Messages without the noise",
+    text: "Free phone notifications for new shifts and changes, and team messages with quiet hours, so nobody is disturbed on a day off.",
+  },
+  {
+    icon: "checklist",
+    title: "Checklists, handovers and wellbeing",
+    text: "Opening and closing checklists, handover notes between shifts, and optional check-ins after long or night shifts.",
+  },
+  {
+    icon: "hiring",
+    title: "Hiring made simple",
+    text: "Share a short job advert, take applications without a CV, and add the right person to your team in one step.",
   },
 ];
 
@@ -57,13 +72,13 @@ const SECTORS: { icon: IconName; title: string; text: string }[] = [
   {
     icon: "clients",
     title: "Care providers",
-    text: "Visits with travel time, DBS and training checks, and lone working, including children’s homes.",
+    text: "Visits with travel time, DBS and training checks, lone working and an inspection pack, including children’s homes.",
   },
   { icon: "tips", title: "Hospitality", text: "Busy weeks, open shifts staff can pick up, and fair tip sharing under the 2023 Act." },
   { icon: "easyRead", title: "Nurseries and childcare", text: "Enhanced DBS on every shift, paediatric first aid tracking and opening checks." },
   { icon: "workplaces", title: "Shops", text: "Opening and closing checks, Challenge 25 training and a fair rota." },
   { icon: "loneWorking", title: "Cleaning and security", text: "Lone working check-ins, site checklists and SIA licence expiry dates." },
-  { icon: "staff", title: "Any small business", text: "A simple rota, holiday and payroll export without the paperwork." },
+  { icon: "staff", title: "Any small business", text: "A simple rota, holiday and payroll export without the paperwork, and one login if you run more than one business." },
 ];
 
 export default function Home() {
@@ -153,6 +168,11 @@ export default function Home() {
                 </li>
               ))}
             </ul>
+            <p className="mt-10 rounded-xl bg-brand-soft p-4 text-heading">
+              <span className="font-semibold">In your team’s language.</span> Staff can choose English, <span lang="cy">Cymraeg</span>,{" "}
+              <span lang="pl">Polski</span> or <span lang="ro">Română</span> for their menu, Easy Read shifts, notifications and raising a
+              concern.
+            </p>
           </div>
         </section>
 

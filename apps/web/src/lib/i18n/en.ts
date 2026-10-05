@@ -11,7 +11,7 @@ export const en = {
     "/me/wellbeing": "Wellbeing",
     "/me/profile": "How I work best",
     "/me/concern": "Raise a concern",
-    "/display": "Display settings",
+    "/display": "Display and language",
     "/help": "Report a problem",
   } as Record<string, string>,
 
