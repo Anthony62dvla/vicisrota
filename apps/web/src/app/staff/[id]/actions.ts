@@ -1,16 +1,18 @@
 "use server";
 
 import { schema, withOrganisation, type Transaction } from "@vicisrota/db";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, sql } from "drizzle-orm";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { addUnavailable, parseSlot, removeUnavailable } from "@/lib/availability";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
 import { hashInviteToken, INVITE_DAYS, newInviteToken } from "@/lib/invite";
+import { addingBlocked } from "@/lib/plan";
 import { requestId } from "@/lib/request";
 import { appUrl, sendTexts, smsConfigured } from "@/lib/sms";
 import { formatUkMobile, inviteText, normaliseUkMobile } from "@vicisrota/messaging";
+import { addDays, londonDateTime } from "@vicisrota/compliance";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const DBS_LEVELS = ["basic", "standard", "enhanced", "enhanced_barred"] as const;
@@ -340,4 +342,66 @@ export async function saveAdjustments(_: FormState, form: FormData): Promise<For
   });
   revalidatePath(`/staff/${workerId}`);
   return result;
+}
+
+/**
+ * Marks someone as having left. Their records stay for payroll and working-time checks, but they are no
+ * longer put on rotas or counted in the price. Shifts after their last day become open shifts.
+ */
+export async function markLeft(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  const leftOn = String(form.get("leftOn") ?? "");
+  if (!DATE.test(leftOn)) return { error: "Enter their last day." };
+  const freed = await withOrganisation(db, organisationId, async (tx) => {
+    const worker = await findWorker(tx, workerId);
+    if (!worker) return null;
+    await tx.update(schema.worker).set({ leftOn }).where(eq(schema.worker.id, workerId));
+    const after = new Date(londonDateTime(addDays(leftOn, 1), "00:00"));
+    const shifts = await tx
+      .update(schema.shift)
+      .set({ workerId: null })
+      .where(and(eq(schema.shift.workerId, workerId), gte(schema.shift.startsAt, after)))
+      .returning({ id: schema.shift.id });
+    await tx.insert(schema.auditEvent).values({
+      organisationId,
+      actorUserId: user.id,
+      requestId: await requestId(),
+      action: "update",
+      entity: "worker",
+      entityId: workerId,
+      data: { leftOn, shiftsOpened: shifts.length },
+    });
+    return shifts.length;
+  });
+  if (freed === null) return { error: "This person could not be found." };
+  revalidatePath("/staff", "layout");
+  revalidatePath("/rota");
+  return { ok: freed ? `Saved. ${freed} shift${freed === 1 ? "" : "s"} after their last day ${freed === 1 ? "is" : "are"} now open on the rota.` : "Saved." };
+}
+
+/** Undoes markLeft, for someone who comes back or was marked by mistake. */
+export async function markBack(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  const full = await addingBlocked(organisationId);
+  if (full) return { error: full };
+  const found = await withOrganisation(db, organisationId, async (tx) => {
+    const worker = await findWorker(tx, workerId);
+    if (!worker) return false;
+    await tx.update(schema.worker).set({ leftOn: null }).where(eq(schema.worker.id, workerId));
+    await tx.insert(schema.auditEvent).values({
+      organisationId,
+      actorUserId: user.id,
+      requestId: await requestId(),
+      action: "update",
+      entity: "worker",
+      entityId: workerId,
+      data: { leftOn: null },
+    });
+    return true;
+  });
+  if (!found) return { error: "This person could not be found." };
+  revalidatePath("/staff", "layout");
+  return { ok: "Saved. They are back on the team." };
 }

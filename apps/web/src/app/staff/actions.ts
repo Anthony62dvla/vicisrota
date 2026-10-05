@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
 import { requestId } from "@/lib/request";
+import { addingBlocked } from "@/lib/plan";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -24,6 +25,8 @@ export async function addWorker(_: FormState, form: FormData): Promise<FormState
   const daysPerWeek = Number(form.get("daysPerWeek") ?? 5);
   if (employmentStart && !DATE.test(employmentStart)) return { error: "Enter a valid start date." };
   if (!(daysPerWeek > 0 && daysPerWeek <= 7)) return { error: "Enter the usual days worked a week, between 0.5 and 7." };
+  const full = await addingBlocked(organisationId);
+  if (full) return { error: full };
 
   await withOrganisation(db, organisationId, async (tx) => {
     const [worker] = await tx

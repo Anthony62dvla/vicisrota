@@ -1,14 +1,37 @@
 import { kindLabel } from "@/lib/sector-packs";
 import { schema, withOrganisation } from "@vicisrota/db";
-import { and, count, desc, eq, inArray, isNotNull, ne } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { loadSetupSteps } from "@/lib/setup";
 import { recordPlatformAction, requireSuperadmin } from "@/lib/superadmin";
-import { NewOwnerLinkButton, OnboardForm } from "./forms";
+import { planState } from "@vicisrota/compliance";
+import { ApproveCharityButton, NewOwnerLinkButton, OnboardForm } from "./forms";
 
 const when = (d: Date | null | undefined) =>
   d ? d.toLocaleString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "Never";
+
+const planLine = (org: typeof schema.organisation.$inferSelect, staff: number) => {
+  const state = planState({
+    now: new Date(),
+    staff,
+    trialEndsAt: org.trialEndsAt,
+    subscription: org.subscriptionStatus ? { status: org.subscriptionStatus, pastDueSince: org.pastDueSince } : null,
+  });
+  const charity = org.charityApproved ? ", charity price" : "";
+  switch (state.kind) {
+    case "free":
+      return `free (${staff} people)${charity}`;
+    case "trial":
+      return `trial, ${state.daysLeft} days left${charity}`;
+    case "paid":
+      return `paying ${org.billingInterval === "year" ? "yearly" : "monthly"}, up to ${org.planBand ?? "?"} people${charity}`;
+    case "late":
+      return `payment failed, ${state.daysLeft} days before planning pauses${charity}`;
+    case "paused":
+      return `planning paused (${state.why.replace("-", " ")})${charity}`;
+  }
+};
 
 /**
  * The superadmin area: every customer business at a glance, onboarding, and finding what happened behind an
@@ -40,7 +63,7 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
       const [facts, steps] = await Promise.all([
         withOrganisation(db, o.id, async (tx) => {
           const [[staff], [logins], [last], found] = await Promise.all([
-            tx.select({ n: count() }).from(schema.worker),
+            tx.select({ n: count() }).from(schema.worker).where(isNull(schema.worker.leftOn)),
             tx.select({ n: count() }).from(schema.worker).where(isNotNull(schema.worker.userId)),
             tx.select({ at: schema.auditEvent.at }).from(schema.auditEvent).orderBy(desc(schema.auditEvent.at)).limit(1),
             ref
@@ -146,6 +169,16 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
                   </div>
                 )}
                 {r.link?.acceptedAt && <p className="mt-1 text-sm">Owner joined {when(r.link.acceptedAt)}.</p>}
+                <p className="mt-1 text-sm">Plan: {planLine(r.org, r.staff)}</p>
+                {r.org.charityNumber && !r.org.charityApproved && (
+                  <div className="mt-2 text-sm">
+                    <p>
+                      Asked for the charity price with number <span className="font-mono">{r.org.charityNumber}</span>. Check it on the Charity
+                      Commission or Companies House (CIC) register first.
+                    </p>
+                    <ApproveCharityButton organisationId={r.org.id} />
+                  </div>
+                )}
               </li>
             ))}
           </ul>

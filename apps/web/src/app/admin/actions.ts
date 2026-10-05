@@ -11,6 +11,7 @@ import { OWNER_INVITE_DAYS } from "@/lib/owner-invite";
 import { requestId } from "@/lib/request";
 import { packById } from "@/lib/sector-packs";
 import { appUrl } from "@/lib/sms";
+import { applyCharityPrice, stripeConfigured } from "@/lib/stripe";
 import { recordPlatformAction, requireSuperadmin } from "@/lib/superadmin";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -95,4 +96,20 @@ export async function newOwnerLink(_: OnboardState, form: FormData): Promise<Onb
   await recordPlatformAction(admin.id, "new_owner_link", organisationId, { ownerEmail: last.email });
   revalidatePath("/admin");
   return { ok: `New link for ${last.ownerName} (${last.email}). The old one no longer works.`, link };
+}
+
+/** Turns on the charity price for a business once its charity or CIC number has been checked. */
+export async function approveCharity(_: OnboardState, form: FormData): Promise<OnboardState> {
+  const admin = await requireSuperadmin();
+  const organisationId = String(form.get("organisationId") ?? "");
+  const [org] = await db
+    .select({ number: schema.organisation.charityNumber, subscriptionId: schema.organisation.stripeSubscriptionId })
+    .from(schema.organisation)
+    .where(eq(schema.organisation.id, organisationId));
+  if (!org?.number) return { error: "This business has not given a charity or CIC number." };
+  await db.update(schema.organisation).set({ charityApproved: true }).where(eq(schema.organisation.id, organisationId));
+  if (org.subscriptionId && stripeConfigured()) await applyCharityPrice(org.subscriptionId);
+  await recordPlatformAction(admin.id, "approve_charity", organisationId, { number: org.number });
+  revalidatePath("/admin");
+  return { ok: "Charity price turned on." };
 }

@@ -9,6 +9,7 @@ import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
 import { STATUS_LABEL, UUID, type ApplicantStatus } from "@/lib/hiring";
 import { requestId } from "@/lib/request";
+import { addingBlocked } from "@/lib/plan";
 
 export type FormState = { error?: string; ok?: string; values?: Record<string, string> };
 
@@ -93,6 +94,8 @@ export async function hireApplicant(_: FormState, form: FormData): Promise<FormS
   if (!DATE.test(dateOfBirth)) return { error: "Enter their date of birth. It is needed for minimum wage and working time rules." };
   if (!DATE.test(employmentStart)) return { error: "Enter the date they start." };
   if (!(rate > 0 && rate < 1000)) return { error: "Enter an hourly rate in pounds, for example 12.71." };
+  const full = await addingBlocked(organisationId);
+  if (full) return { error: full };
 
   const workerId = await withOrganisation(db, organisationId, async (tx) => {
     const [a] = await tx.select().from(schema.applicant).where(eq(schema.applicant.id, id));

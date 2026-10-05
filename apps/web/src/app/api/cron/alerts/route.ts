@@ -9,6 +9,7 @@ import { loadLoneShifts } from "@/lib/lone-working";
 import { sendShiftReminders } from "@/lib/reminders-send";
 import { deleteOldApplications } from "@/lib/hiring";
 import { offerCheckIns } from "@/lib/wellbeing";
+import { syncBands } from "@/lib/stripe";
 import { appUrl, textAlertContacts } from "@/lib/sms";
 
 const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
@@ -90,5 +91,6 @@ export async function GET(request: Request) {
     }
   }
   await log("info", "alert check ran", { businesses: businesses.length, overdue, late, texts, reminders });
-  return Response.json({ businesses: businesses.length, overdue, late, texts, reminders });
+  const billing = await syncBands();
+  return Response.json({ businesses: businesses.length, overdue, late, texts, reminders, billing });
 }

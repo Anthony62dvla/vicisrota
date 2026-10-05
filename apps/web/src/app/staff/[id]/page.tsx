@@ -11,7 +11,7 @@ import { AvailabilityEditor } from "../../availability-editor";
 import { addStaffUnavailable, removeStaffUnavailable, removeTraining } from "./actions";
 import { formatUkMobile } from "@vicisrota/messaging";
 import { WorkerRolesForm } from "../../roles/forms";
-import { AddCheckForm, AddTrainingForm, AdjustmentsForm, HolidaySettingsForm, InviteForm, MobileForm, PayrollIdForm, SupervisionForm } from "./forms";
+import { AddCheckForm, AddTrainingForm, AdjustmentsForm, HolidaySettingsForm, InviteForm, LeavingForm, MobileForm, PayrollIdForm, SupervisionForm } from "./forms";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DBS_LABEL = { basic: "Basic", standard: "Standard", enhanced: "Enhanced", enhanced_barred: "Enhanced with barred list" };
@@ -64,6 +64,12 @@ export default async function StaffRecordPage({ params, searchParams }: PageProp
         <Link href="/staff" className="text-sm text-muted underline">All staff</Link>
       </p>
       <h1 className="mt-2 text-2xl font-semibold">{worker.fullName}</h1>
+      {worker.leftOn && (
+        <p role="status" className="mt-3 rounded-lg border border-line bg-brand-soft p-3">
+          {worker.fullName} left on {worker.leftOn}. Their records are kept, but they are not put on rotas or counted in your price.{" "}
+          <a href="#leaving" className="underline">Change this</a>
+        </p>
+      )}
       {welcome && (
         <div role="status" className="mt-4 rounded-lg border border-brand bg-brand-soft p-4">
           <p className="font-medium">{worker.fullName} has been added to your staff. Next steps:</p>
@@ -231,6 +237,16 @@ export default async function StaffRecordPage({ params, searchParams }: PageProp
           </ul>
         )}
         <SupervisionForm workerId={worker.id} />
+      </section>
+
+      <section id="leaving" className="mt-8 scroll-mt-4" aria-labelledby="leaving-heading">
+        <h2 id="leaving-heading" className="text-lg font-semibold">Leaving</h2>
+        <p className="mt-1 text-muted">
+          {worker.leftOn
+            ? "If they come back, or were marked by mistake, put them back on the team."
+            : `When ${worker.fullName} leaves, their records are kept for payroll and working-time checks. Shifts after their last day become open shifts.`}
+        </p>
+        <LeavingForm workerId={worker.id} name={worker.fullName} leftOn={worker.leftOn} today={today} />
       </section>
     </main>
   );

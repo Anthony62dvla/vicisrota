@@ -1,5 +1,5 @@
 import { schema, withOrganisation } from "@vicisrota/db";
-import { asc, desc, eq, isNotNull } from "drizzle-orm";
+import { asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
 import { activeRollCall, peopleOnSite } from "@/lib/roll-call";
@@ -34,7 +34,7 @@ export default async function RollCallPage() {
         .innerJoin(schema.worker, eq(schema.worker.id, schema.rollCallPerson.workerId))
         .where(eq(schema.rollCallPerson.rollCallId, call.id))
         .orderBy(asc(schema.worker.fullName)),
-      staff: await tx.select({ id: schema.worker.id, name: schema.worker.fullName }).from(schema.worker).orderBy(asc(schema.worker.fullName)),
+      staff: await tx.select({ id: schema.worker.id, name: schema.worker.fullName }).from(schema.worker).where(isNull(schema.worker.leftOn)).orderBy(asc(schema.worker.fullName)),
     };
   });
 

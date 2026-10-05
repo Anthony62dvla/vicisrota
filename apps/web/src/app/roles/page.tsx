@@ -1,5 +1,5 @@
 import { schema, withOrganisation } from "@vicisrota/db";
-import { asc } from "drizzle-orm";
+import { asc, isNull } from "drizzle-orm";
 import Link from "next/link";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
@@ -14,7 +14,7 @@ export default async function RolesPage() {
   const { roles, links, workers } = await withOrganisation(db, organisationId, async (tx) => ({
     roles: await tx.select().from(schema.jobRole).orderBy(asc(schema.jobRole.name)),
     links: await tx.select().from(schema.workerRole),
-    workers: await tx.select({ id: schema.worker.id, name: schema.worker.fullName }).from(schema.worker).orderBy(asc(schema.worker.fullName)),
+    workers: await tx.select({ id: schema.worker.id, name: schema.worker.fullName }).from(schema.worker).where(isNull(schema.worker.leftOn)).orderBy(asc(schema.worker.fullName)),
   }));
   const name = new Map(workers.map((w) => [w.id, w.name]));
 
