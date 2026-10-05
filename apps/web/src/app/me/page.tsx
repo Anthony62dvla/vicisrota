@@ -395,7 +395,10 @@ export default async function MyPage() {
             ))}
           </ul>
         )}
-        <a href="/me/calendar.ics" className="mt-3 inline-block underline">Add your shifts to your phone or computer calendar</a>
+        <p className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
+          <Link href="/me/easy-read" className="underline">See your shifts in Easy Read, with pictures and read aloud</Link>
+          <a href="/me/calendar.ics" className="underline">Add your shifts to your phone or computer calendar</a>
+        </p>
       </section>
 
       <More calm={calm}>

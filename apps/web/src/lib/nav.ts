@@ -67,6 +67,7 @@ export const staffNav: NavSection[] = [
     title: null,
     items: [
       item("/me", "My shifts", "rota", true),
+      item("/me/easy-read", "Easy Read shifts", "easyRead"),
       item("/me/profile", "How I work best", "profile"),
       item("/me/concern", "Raise a concern", "concern"),
       item("/display", "Display settings", "display"),
