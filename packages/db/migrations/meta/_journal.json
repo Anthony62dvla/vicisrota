@@ -351,6 +351,13 @@
       "when": 1791199365135,
       "tag": "0049_push_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1791200247959,
+      "tag": "0050_team_messages",
+      "breakpoints": true
     }
   ]
 }

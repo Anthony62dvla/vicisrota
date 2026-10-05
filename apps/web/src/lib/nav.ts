@@ -36,7 +36,7 @@ export const managerNav = (sector: "care" | "hospitality" | "small_business", su
       ...(sector !== "care" ? [item("/tips", "Tips", "tips")] : []),
     ],
   },
-  { title: "Your team", items: [item("/announcements", "Announcements", "announcements"), item("/workplaces", "Workplaces", "workplaces")] },
+  { title: "Your team", items: [item("/messages", "Messages", "messages"), item("/announcements", "Announcements", "announcements"), item("/workplaces", "Workplaces", "workplaces")] },
   {
     title: "Safety",
     items: [
@@ -58,7 +58,7 @@ export const managerPhoneBar: NavItem[] = [
   item("/dashboard", "Home", "home", true),
   item("/attendance", "Today", "today"),
   item("/rota", "Rota", "rota"),
-  item("/staff", "Staff", "staff"),
+  item("/messages", "Messages", "messages"),
 ];
 
 /** The menu for staff: their own shifts and nothing about anyone else. */
@@ -67,6 +67,7 @@ export const staffNav: NavSection[] = [
     title: null,
     items: [
       item("/me", "My shifts", "rota", true),
+      item("/messages", "Messages", "messages"),
       item("/me/easy-read", "Easy Read shifts", "easyRead"),
       item("/me/profile", "How I work best", "profile"),
       item("/me/concern", "Raise a concern", "concern"),
@@ -76,7 +77,8 @@ export const staffNav: NavSection[] = [
   },
 ];
 
-export const staffPhoneBar: NavItem[] = staffNav[0]!.items.slice(0, 4);
+/** My shifts, Messages, Easy Read and Raise a concern: a concern is always one tap away. */
+export const staffPhoneBar: NavItem[] = ["/me", "/messages", "/me/easy-read", "/me/concern"].map((href) => staffNav[0]!.items.find((i) => i.href === href)!);
 
 /** Pages that show without the app menu: signing in, joining, the shared clock-in tablet and the public home page. */
 export const showsMenu = (pathname: string) =>

@@ -17,7 +17,7 @@ import { addMyUnavailable, markNoticesSeen, readAnnouncement, removeMyUnavailabl
 import { formatUkMobile } from "@vicisrota/messaging";
 import { tellsChanges, wantsTexts } from "@vicisrota/messaging";
 import { pushPublicKey } from "@/lib/push";
-import { PushSwitch } from "./push-switch";
+import { PushSwitch } from "../push-switch";
 import { ClockButtons, LoneCheckIn, PickUpList, PinForm, ReportSickForm, TextSettingsForm, TimeOffForm } from "./forms";
 import { OfflineNotice } from "./offline-notice";
 import { AvailabilityEditor } from "../availability-editor";

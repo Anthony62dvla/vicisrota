@@ -68,6 +68,12 @@ export type WorkerPreferences = {
   byText?: boolean;
 };
 
+/**
+ * Quiet hours for team messages. Messages still arrive in VicisRota; only the notification waits. Unset
+ * means the defaults: quiet from 9pm to 7am, and all day on days off (staff with no shift that day).
+ */
+export type MessageQuiet = { from?: string | null; to?: string | null; daysOff?: boolean };
+
 export type WorkProfile = {
   strengths?: string;
   helps?: string;
@@ -115,6 +121,8 @@ export const membership = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     role: role("role").notNull(),
+    /** When this person does not want message notifications from this business. See MessageQuiet. */
+    messageQuiet: jsonb("message_quiet").$type<MessageQuiet>().notNull().default({}),
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.organisationId, t.userId] }), index("membership_user_idx").on(t.userId)],
@@ -1079,4 +1087,54 @@ export const notification = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("notification_dedupe_idx").on(t.organisationId, t.workerId, t.dedupeKey), index("notification_worker_idx").on(t.workerId, t.createdAt)],
+);
+
+/**
+ * A conversation between people in one business: one-to-one (name is null) or a group a manager set up.
+ * Only its members can read it, managers included: a manager who is not in a conversation cannot see it.
+ */
+export const conversation = pgTable(
+  "conversation",
+  {
+    id: id(),
+    organisationId: orgId(),
+    /** A group's name, e.g. "Kitchen team". Null for one-to-one. */
+    name: text("name"),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("conversation_org_idx").on(t.organisationId, t.lastMessageAt)],
+);
+
+export const conversationMember = pgTable(
+  "conversation_member",
+  {
+    organisationId: orgId(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversation.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** Messages after this are shown as new. */
+    lastReadAt: timestamp("last_read_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.conversationId, t.userId] }), index("conversation_member_user_idx").on(t.organisationId, t.userId)],
+);
+
+export const message = pgTable(
+  "message",
+  {
+    id: id(),
+    organisationId: orgId(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversation.id, { onDelete: "cascade" }),
+    senderUserId: text("sender_user_id").references(() => user.id, { onDelete: "set null" }),
+    body: text("body").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("message_conversation_idx").on(t.conversationId, t.createdAt)],
 );

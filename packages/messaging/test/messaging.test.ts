@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { tellsChanges, wantsTexts, formatUkMobile, helpAlert, httpSender, inviteText, lateAlert, reminderNotice, reminderText, rotaChangeNotice, normaliseUkMobile, overdueAlert, rotaChangeText, senderFromEnv, SMS_MAX } from "../src";
+import { isQuiet, tellsChanges, wantsTexts, formatUkMobile, helpAlert, httpSender, inviteText, lateAlert, reminderNotice, reminderText, rotaChangeNotice, normaliseUkMobile, overdueAlert, rotaChangeText, senderFromEnv, SMS_MAX } from "../src";
 
 describe("UK mobile numbers", () => {
   it("accepts common formats", () => {
@@ -119,5 +119,23 @@ describe("who gets texts", () => {
     expect(wantsTexts({ remindBeforeMinutes: 60 }, "+447700900123")).toBe(true);
     // A number given only for the invitation does not mean they wanted texts.
     expect(wantsTexts({}, "+447700900123")).toBe(false);
+  });
+});
+
+describe("quiet hours for team messages", () => {
+  it("are 9pm to 7am by default, across midnight", () => {
+    expect(isQuiet({}, "20:59", false)).toBe(false);
+    expect(isQuiet({}, "21:00", false)).toBe(true);
+    expect(isQuiet({}, "03:00", false)).toBe(true);
+    expect(isQuiet({}, "07:00", false)).toBe(false);
+  });
+  it("cover the whole of a day off unless turned off", () => {
+    expect(isQuiet({}, "12:00", true)).toBe(true);
+    expect(isQuiet({ daysOff: false }, "12:00", true)).toBe(false);
+  });
+  it("can be set within one day, or switched off", () => {
+    expect(isQuiet({ from: "13:00", to: "14:00" }, "13:30", false)).toBe(true);
+    expect(isQuiet({ from: "13:00", to: "14:00" }, "14:00", false)).toBe(false);
+    expect(isQuiet({ from: null, to: null }, "23:00", false)).toBe(false);
   });
 });

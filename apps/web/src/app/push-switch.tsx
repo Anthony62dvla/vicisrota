@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { removePushDevice, savePushDevice, sendTestNotification } from "./actions";
+import { removePushDevice, savePushDevice, sendTestNotification } from "./push-actions";
 
 type Status = "checking" | "unsupported" | "iphone-install" | "blocked" | "off" | "on";
 
@@ -123,7 +123,7 @@ export function PushSwitch({ publicKey }: { publicKey: string }) {
       )}
       {status === "on" && (
         <>
-          <p className="mt-1">On. Rota changes and the reminders you choose below will arrive here.</p>
+          <p className="mt-1">On. Messages, rota changes and the reminders you choose will arrive here.</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button type="button" onClick={test} disabled={busy} className="rounded-lg border border-zinc-400 px-4 py-2 disabled:opacity-60">
               Send me a test

@@ -55,3 +55,11 @@ export const requireStaff = async () => {
   if (!worker) redirect("/dashboard");
   return { user, organisationId: membership.organisationId, businessName: membership.name, worker };
 };
+
+/** Anyone signed in to a business, manager or staff: for pages everyone uses, such as team messages. */
+export const requireMember = async () => {
+  const user = await requireUser();
+  const membership = await currentMembership(user.id);
+  if (!membership) redirect("/dashboard");
+  return { user, organisationId: membership.organisationId, businessName: membership.name, role: membership.role, isManager: membership.role !== "worker" };
+};

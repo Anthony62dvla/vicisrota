@@ -15,7 +15,6 @@ import { helpAlert, normaliseUkMobile } from "@vicisrota/messaging";
 import { LEAVE_KINDS, LEAVE_LABEL } from "@/lib/leave";
 import { log } from "@/lib/log";
 import { requestId } from "@/lib/request";
-import { sendPush } from "@/lib/push";
 import { appUrl, textAlertContacts } from "@/lib/sms";
 import { todayInUk } from "@/lib/rota";
 
@@ -374,38 +373,6 @@ export async function saveTextSettings(_: FormState, form: FormData): Promise<Fo
   ].filter(Boolean);
   if (!chosen.length) return { ok: "Saved. We will not send you rota messages. Changes still show on this page." };
   return { ok: `Saved. We will tell you ${chosen.join(", and ")}${byText ? ", by app notification and by text" : ""}.` };
-}
-
-/** The browsers' own push services. Anything else is refused, so the server never posts to an address someone made up. */
-const PUSH_HOST = /^https:\/\/(fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|[a-z0-9-]+\.push\.apple\.com|[a-z0-9.-]+\.notify\.windows\.com)\//;
-const KEY = /^[A-Za-z0-9_-]{16,200}$/;
-
-/** Remembers this device so app notifications reach it. Called from the browser after the person allows notifications. */
-export async function savePushDevice(device: { endpoint: string; keys: { p256dh: string; auth: string } }): Promise<{ ok: boolean }> {
-  const { user, organisationId } = await requireStaff();
-  const { endpoint, keys } = device ?? {};
-  if (typeof endpoint !== "string" || endpoint.length > 1000 || !PUSH_HOST.test(endpoint) || !KEY.test(keys?.p256dh ?? "") || !KEY.test(keys?.auth ?? "")) return { ok: false };
-  await db
-    .insert(schema.pushSubscription)
-    .values({ userId: user.id, endpoint, p256dh: keys.p256dh, auth: keys.auth })
-    .onConflictDoUpdate({ target: schema.pushSubscription.endpoint, set: { userId: user.id, p256dh: keys.p256dh, auth: keys.auth } });
-  await log("info", "app notifications turned on", { organisationId });
-  return { ok: true };
-}
-
-/** Forgets this device: no more app notifications on it. */
-export async function removePushDevice(endpoint: string): Promise<{ ok: boolean }> {
-  const { user } = await requireStaff();
-  if (typeof endpoint !== "string") return { ok: false };
-  await db.delete(schema.pushSubscription).where(and(eq(schema.pushSubscription.endpoint, endpoint), eq(schema.pushSubscription.userId, user.id)));
-  return { ok: true };
-}
-
-/** Sends a test notification to the person's own devices. */
-export async function sendTestNotification(): Promise<{ sent: number }> {
-  const { user, businessName } = await requireStaff();
-  const sent = await sendPush([user.id], { title: businessName, body: "Notifications are working. This is how rota changes and reminders will look.", url: "/me", tag: "test" });
-  return { sent };
 }
 
 /** Adds a weekly time the person cannot work. Managers see it, and the rota check warns about clashes. */
