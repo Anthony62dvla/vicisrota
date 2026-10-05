@@ -58,7 +58,11 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
     const clock = clocked.summary;
     const awayEvent = clocked.events.find((e) => e.place === "away");
     const unknownIn = clocked.events.find((e) => e.kind === "in" && e.place === "unknown");
-    const how = clocked.events.some((e) => e.source === "kiosk") ? " on the in-store tablet" : "";
+    const how = clocked.events.some((e) => e.source === "kiosk")
+      ? " on the in-store tablet"
+      : clocked.events.some((e) => e.source === "qr")
+        ? " by scanning the tablet's code"
+        : "";
     const worked = entry ? (entry.endsAt.getTime() - entry.startsAt.getTime()) / 3_600_000 - entry.breakMinutes / 60 : 0;
     return {
       shiftId: shift.id,

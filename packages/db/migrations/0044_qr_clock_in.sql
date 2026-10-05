@@ -1,0 +1,1 @@
+ALTER TYPE "public"."clock_source" ADD VALUE 'qr';

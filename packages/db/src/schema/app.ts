@@ -39,7 +39,7 @@ export const loneCheckKind = pgEnum("lone_check_kind", ["start", "ok", "finished
 export const noticeKind = pgEnum("notice_kind", ["added", "changed", "cancelled", "given_to_you", "taken_by_colleague"]);
 export const clockKind = pgEnum("clock_kind", ["in", "break_start", "break_end", "out"]);
 export const clockLocationRule = pgEnum("clock_location_rule", ["off", "record", "require"]);
-export const clockSource = pgEnum("clock_source", ["phone", "kiosk"]);
+export const clockSource = pgEnum("clock_source", ["phone", "kiosk", "qr"]);
 export const clockPlace = pgEnum("clock_place", ["at_work", "away", "unknown"]);
 export const dbsLevel = pgEnum("dbs_level", ["basic", "standard", "enhanced", "enhanced_barred"]);
 

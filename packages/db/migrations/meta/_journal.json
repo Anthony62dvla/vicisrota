@@ -309,6 +309,13 @@
       "when": 1791181842337,
       "tag": "0043_split_shifts",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1791182391768,
+      "tag": "0044_qr_clock_in",
+      "breakpoints": true
     }
   ]
 }

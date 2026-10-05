@@ -5,6 +5,7 @@ import { CLOCK_IN_EARLY_MS, CLOCK_OUT_LATE_MS, clockSummaries } from "@/lib/cloc
 import { db } from "@/lib/db";
 import { currentKiosk } from "@/lib/kiosk";
 import { Kiosk, type KioskPerson } from "./kiosk";
+import { KioskQr } from "./qr";
 
 const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 const STATUS = { not_in: "Not clocked in", in: "Clocked in", on_break: "On a break", out: "Clocked out" } as const;
@@ -69,6 +70,7 @@ export default async function KioskPage() {
       <h1 className="text-3xl font-semibold">Clock in at {people.place}</h1>
       <p className="mt-1 text-lg">Tap your name and what you are doing, then enter your PIN.</p>
       <Kiosk people={people.list} />
+      <KioskQr />
     </main>
   );
 }
