@@ -42,7 +42,7 @@ export function AddWorkerForm() {
         <input name="irregularHours" type="checkbox" /> Works irregular hours (holiday counted in hours)
       </label>
       <label className="flex items-center gap-2">
-        <input name="optedOut" type="checkbox" /> Has signed an opt-out from the 48-hour week
+        <input name="optedOut" type="checkbox" /> Has signed to say they choose to work more than 48 hours a week (an opt-out)
       </label>
       <label className="flex items-center gap-2">
         <input name="apprentice" type="checkbox" /> Paid the apprentice rate

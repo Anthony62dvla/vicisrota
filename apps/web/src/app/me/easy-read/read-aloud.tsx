@@ -2,8 +2,11 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 
-/** Reads text aloud with the device's own voice. Nothing is sent anywhere. */
-export function ReadAloud({ text, label = "Read aloud" }: { text: string; label?: string }) {
+/**
+ * Reads text aloud with the device's own voice, in the person's language where the device has a voice
+ * for it. Nothing is sent anywhere.
+ */
+export function ReadAloud({ text, label = "Read aloud", stop = "Stop", locale = "en-GB" }: { text: string; label?: string; stop?: string; locale?: string }) {
   const [speaking, setSpeaking] = useState(false);
   // Whether this device can speak never changes while the page is open, so there is nothing to subscribe to.
   const supported = useSyncExternalStore(
@@ -22,9 +25,10 @@ export function ReadAloud({ text, label = "Read aloud" }: { text: string; label?
     synth.cancel();
     if (speaking) return setSpeaking(false);
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-GB";
+    utterance.lang = locale;
     utterance.rate = 0.9;
-    const voice = synth.getVoices().find((v) => v.lang === "en-GB");
+    const voices = synth.getVoices();
+    const voice = voices.find((v) => v.lang === locale) ?? voices.find((v) => v.lang.startsWith(locale.slice(0, 2)));
     if (voice) utterance.voice = voice;
     utterance.onend = () => setSpeaking(false);
     utterance.onerror = () => setSpeaking(false);
@@ -36,7 +40,7 @@ export function ReadAloud({ text, label = "Read aloud" }: { text: string; label?
       <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         {speaking ? <path d="M7 6h3v12H7zM14 6h3v12h-3z" /> : <path d="M4 9v6h4l5 4V5L8 9H4zM16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" />}
       </svg>
-      {speaking ? "Stop" : label}
+      {speaking ? stop : label}
     </button>
   );
 }

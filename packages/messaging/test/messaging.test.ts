@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { isQuiet, tellsChanges, wantsTexts, formatUkMobile, helpAlert, httpSender, inviteText, lateAlert, reminderNotice, reminderText, rotaChangeNotice, normaliseUkMobile, overdueAlert, rotaChangeText, senderFromEnv, SMS_MAX } from "../src";
+import { spokenLength, spokenTime, checkInNotice, dayWord, langOf, isQuiet, tellsChanges, wantsTexts, formatUkMobile, helpAlert, httpSender, inviteText, lateAlert, reminderNotice, reminderText, rotaChangeNotice, normaliseUkMobile, overdueAlert, rotaChangeText, senderFromEnv, SMS_MAX } from "../src";
 
 describe("UK mobile numbers", () => {
   it("accepts common formats", () => {
@@ -102,6 +102,17 @@ describe("app notifications", () => {
       body: "Your shift today, 09:00 to 17:00, Chef at Kitchen. Note: Bring whites.",
     });
   });
+  it("speaks the person's own language", () => {
+    const changes = [{ kind: "cancelled" as const, when: "pt. 9 paź 18:00-23:00" }];
+    expect(rotaChangeNotice({ business: "Piekarnia", changes }, "pl")).toEqual({ title: "Piekarnia: twój grafik się zmienił", body: "Odwołana: pt. 9 paź 18:00-23:00" });
+    expect(reminderNotice({ business: "B", when: `${dayWord("cy", true)}, 09:00-17:00`, note: "Dewch â ffedog" }, "cy").body).toBe("Eich shifft heddiw, 09:00-17:00. Nodyn: Dewch â ffedog.");
+    expect(checkInNotice("B", "ro").title).toBe("B: cum a fost tura ta?");
+  });
+  it("falls back to English for anything it does not know", () => {
+    expect(langOf("fr")).toBe("en");
+    expect(langOf(null)).toBe("en");
+    expect(langOf("cy")).toBe("cy");
+  });
 });
 
 describe("who gets texts", () => {
@@ -137,5 +148,32 @@ describe("quiet hours for team messages", () => {
     expect(isQuiet({ from: "13:00", to: "14:00" }, "13:30", false)).toBe(true);
     expect(isQuiet({ from: "13:00", to: "14:00" }, "14:00", false)).toBe(false);
     expect(isQuiet({ from: null, to: null }, "23:00", false)).toBe(false);
+  });
+});
+
+describe("times and lengths said aloud", () => {
+  it("says English times in words", () => {
+    expect(spokenTime("en", 0, 0)).toBe("midnight");
+    expect(spokenTime("en", 13, 30)).toBe("half past 1 in the afternoon");
+    expect(spokenTime("en", 8, 45)).toBe("quarter to 9 in the morning");
+  });
+  it("uses the 24-hour clock in Welsh, Polish and Romanian", () => {
+    expect(spokenTime("pl", 7, 5)).toBe("7:05");
+    expect(spokenTime("ro", 22, 0)).toBe("22:00");
+  });
+  it("gets the grammar of lengths right", () => {
+    expect(spokenLength("en", 450)).toBe("7 and a half hours");
+    expect(spokenLength("en", 60)).toBe("1 hour");
+    expect(spokenLength("cy", 495)).toBe("8 awr a 15 munud");
+    expect(spokenLength("pl", 90)).toBe("półtorej godziny");
+    expect(spokenLength("pl", 120)).toBe("2 godziny");
+    expect(spokenLength("pl", 300)).toBe("5 godzin");
+    expect(spokenLength("pl", 22 * 60)).toBe("22 godziny");
+    expect(spokenLength("pl", 12 * 60 + 22)).toBe("12 godzin i 22 minuty");
+    expect(spokenLength("pl", 45)).toBe("45 minut");
+    expect(spokenLength("ro", 60)).toBe("o oră");
+    expect(spokenLength("ro", 450)).toBe("7 ore și jumătate");
+    expect(spokenLength("ro", 20)).toBe("20 de minute");
+    expect(spokenLength("ro", 15)).toBe("15 minute");
   });
 });

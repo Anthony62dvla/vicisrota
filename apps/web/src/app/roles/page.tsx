@@ -22,8 +22,7 @@ export default async function RolesPage() {
     <main className="mx-auto w-full max-w-3xl px-4 py-8 lg:px-8">
       <h1 className="text-2xl font-semibold">Job roles</h1>
       <p className="mt-2 text-zinc-700 dark:text-zinc-300">
-        Give shifts a role so everyone can see who is on the kitchen, the bar or the senior round. Open shifts are only offered to people set up
-        for the role, and the rota warns if someone is put on a role they are not set up for. Roles are optional.
+        Give shifts a role so everyone can see who is on the kitchen, the bar or the senior round. Open shifts are only offered to people who can do the role. The rota warns you if someone is put on a role they are not set up for. Roles are optional.
       </p>
 
       <section className="mt-8" aria-labelledby="roles-heading">

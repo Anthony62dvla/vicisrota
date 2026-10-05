@@ -75,7 +75,7 @@ export default async function AttendancePage() {
           Late texts
         </h2>
         <p className="mt-1">
-          VicisRota can text your alert contacts when someone has not clocked in for a shift, so a gap is noticed before it matters. In care, that can
+          VicisRota can text your alert contacts when someone has not clocked in. That way a gap is noticed before it matters. In care, that can
           be a missed visit. Each shift is texted about once. Only turn this on if your staff clock in, from their phone or the tablet at work.
         </p>
         {contacts === 0 && (
