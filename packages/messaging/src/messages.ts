@@ -44,8 +44,15 @@ export const reminderText = (a: { business: string; when: string; detail?: strin
   );
 };
 
-export const inviteText = (a: { business: string; link: string; days: number }) =>
-  fit(plain(`${a.business} has invited you to VicisRota to see your shifts and ask for time off. Set up your login here (works once, for ${a.days} days): ${a.link}`));
+/** One standard SMS. A text over this is charged as two. */
+export const SMS_SINGLE = 160;
+
+/** Fits in one text with a full invite link: long business names are shortened, the link never is. */
+export const inviteText = (a: { business: string; link: string; days: number }) => {
+  const business = plain(a.business);
+  const name = business.length <= 25 ? business : business.slice(0, 24).trimEnd() + ".";
+  return plain(`${name} invited you to VicisRota. Set up your login within ${a.days} days: ${a.link}`);
+};
 
 export type RotaChangeKind = "added" | "changed" | "cancelled" | "given_to_you" | "taken_by_colleague";
 const CHANGE_LABEL: Record<RotaChangeKind, string> = {
