@@ -2,7 +2,7 @@ import { schema } from "@vicisrota/db";
 import { desc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { firstMembership } from "@/lib/business";
+import { currentMembership } from "@/lib/business";
 import { db } from "@/lib/db";
 import { safeNextPath } from "@/lib/next-path";
 import { SUPPORT_MAX } from "@/lib/support";
@@ -13,7 +13,7 @@ const STATUS = { new: "Waiting to be read", triaged: "Being looked at", replied:
 
 export default async function HelpPage({ searchParams }: PageProps<"/help">) {
   const user = await requireUser();
-  const membership = await firstMembership(user.id);
+  const membership = await currentMembership(user.id);
   const params = await searchParams;
   const from = safeNextPath(String(params.from ?? "")) ?? "";
   const ref = String(params.ref ?? "").slice(0, 40);

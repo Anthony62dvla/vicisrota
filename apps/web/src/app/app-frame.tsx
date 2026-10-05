@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { isActive, showsMenu, type Nav, type NavItem } from "@/lib/nav";
+import { switchBusiness } from "./actions";
 import { SignOutButton } from "./dashboard/sign-out";
 import { Icon, Logo } from "./icons";
 
@@ -52,7 +53,11 @@ export function AppFrame({ nav, children }: { nav: Nav | null; children: ReactNo
             <span className="text-lg font-semibold tracking-tight text-heading">VicisRota</span>
           </Link>
           <span aria-hidden className="hidden h-6 w-px bg-line sm:block" />
-          <span className="hidden truncate text-muted sm:block">{nav.businessName}</span>
+          {nav.businesses.length > 1 ? (
+            <BusinessSwitcher nav={nav} className="hidden sm:block" />
+          ) : (
+            <span className="hidden truncate text-muted sm:block">{nav.businessName}</span>
+          )}
           <div className="ml-auto flex items-center gap-3">
             <span className="hidden text-sm text-muted md:block">{nav.userName}</span>
             <SignOutButton />
@@ -160,7 +165,7 @@ function MoreSheet({ nav, pathname, onClose }: { nav: Nav; pathname: string; onC
       className="fixed inset-0 z-40 overflow-y-auto bg-surface px-3 pb-24 pt-4 md:hidden"
     >
       <div className="mb-4 flex items-center justify-between px-3">
-        <p className="font-semibold text-heading">{nav.businessName}</p>
+        {nav.businesses.length > 1 ? <BusinessSwitcher nav={nav} /> : <p className="font-semibold text-heading">{nav.businessName}</p>}
         <button ref={closeRef} type="button" onClick={onClose} className="flex items-center gap-1 rounded-lg border border-zinc-400 px-3 py-1.5">
           <Icon name="close" className="h-4 w-4" />
           Close
@@ -168,5 +173,40 @@ function MoreSheet({ nav, pathname, onClose }: { nav: Nav; pathname: string; onC
       </div>
       <MenuSections nav={nav} pathname={pathname} />
     </div>
+  );
+}
+
+/** For people who belong to more than one business: shows the one open now and lets them move to another. */
+function BusinessSwitcher({ nav, className = "" }: { nav: Nav; className?: string }) {
+  return (
+    <details className={`relative ${className}`}>
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-2 py-1.5 font-medium text-heading hover:bg-brand-soft">
+        <span className="max-w-48 truncate">{nav.businessName}</span>
+        <span aria-hidden className="text-xs text-muted">▾</span>
+        <span className="sr-only">, switch business</span>
+      </summary>
+      <div className="absolute left-0 z-50 mt-1 w-72 rounded-xl border border-line bg-surface p-2 shadow-lg">
+        <p className="px-2 pb-1 pt-1 text-xs font-semibold uppercase tracking-wider text-muted">Your businesses</p>
+        <ul>
+          {nav.businesses.map((b) => (
+            <li key={b.id}>
+              {b.current ? (
+                <p aria-current="true" className="flex items-center justify-between rounded-lg bg-brand-soft px-3 py-2 font-medium text-heading">
+                  {b.name}
+                  <Icon name="check" className="h-4 w-4" />
+                </p>
+              ) : (
+                <form action={switchBusiness}>
+                  <input type="hidden" name="organisationId" value={b.id} />
+                  <button type="submit" className="w-full rounded-lg px-3 py-2 text-left hover:bg-brand-soft">
+                    {b.name}
+                  </button>
+                </form>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </details>
   );
 }

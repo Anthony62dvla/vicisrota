@@ -4,6 +4,8 @@ export type NavItem = { href: string; label: string; icon: IconName; exact?: boo
 export type NavSection = { title: string | null; items: NavItem[] };
 export type Nav = {
   businessName: string;
+  /** Every business this login belongs to, so people who work for more than one can switch. */
+  businesses: { id: string; name: string; current: boolean }[];
   userName: string;
   sections: NavSection[];
   /** Shown in the bar along the bottom of a phone screen. Everything else is under "More". */

@@ -4,6 +4,7 @@ import { schema } from "@vicisrota/db";
 import { sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
+import { myBusinesses, rememberBusiness } from "@/lib/business";
 import { db } from "@/lib/db";
 import { log } from "@/lib/log";
 import { requestId } from "@/lib/request";
@@ -36,5 +37,16 @@ export async function createBusiness(formData: FormData) {
     return id;
   });
   await log("info", "business created", { organisationId, sector });
+  await rememberBusiness(organisationId);
   redirect("/dashboard");
+}
+
+/** Moves to another business the user belongs to, on this device. */
+export async function switchBusiness(formData: FormData) {
+  const user = await requireUser();
+  const target = String(formData.get("organisationId") ?? "");
+  const membership = (await myBusinesses(user.id)).find((b) => b.organisationId === target);
+  if (!membership) redirect("/dashboard");
+  await rememberBusiness(membership.organisationId);
+  redirect(membership.role === "worker" ? "/me" : "/dashboard");
 }
