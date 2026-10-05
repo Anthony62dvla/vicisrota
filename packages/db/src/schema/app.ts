@@ -128,6 +128,8 @@ export const organisation = pgTable("organisation", {
   pastDueSince: timestamp("past_due_since", { withTimezone: true }),
   /** The band Stripe is charging for (its upTo), so Stripe is only told when the team moves band. */
   planBand: integer("plan_band"),
+  /** When managers were last sent the weekly reminder about checks coming due. */
+  checksRemindedOn: date("checks_reminded_on"),
   createdAt: createdAt(),
 });
 
@@ -336,9 +338,11 @@ export const workerCheck = pgTable(
       .references(() => worker.id, { onDelete: "cascade" }),
     kind: checkKind("kind").notNull(),
     checkedOn: date("checked_on").notNull(),
-    /** Time-limited permission to work: when a follow-up check is due. */
+    /** Right to work: when a follow-up check is due for time-limited permission. DBS: when the business rechecks. */
     expiresOn: date("expires_on"),
     dbsLevel: dbsLevel("dbs_level"),
+    /** DBS: the person is on the DBS Update Service, so a recheck is an online status check. */
+    updateService: boolean("update_service").notNull().default(false),
     /** Share code, DBS certificate number or similar. */
     reference: text("reference"),
     createdAt: createdAt(),
@@ -367,6 +371,8 @@ export const workerQualification = pgTable(
       .references(() => qualification.id, { onDelete: "cascade" }),
     achievedOn: date("achieved_on"),
     expiresOn: date("expires_on"),
+    /** Licence or certificate number, such as an SIA licence number. */
+    reference: text("reference"),
     createdAt: createdAt(),
   },
   (t) => [index("worker_qualification_worker_idx").on(t.workerId)],
