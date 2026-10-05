@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { log } from "@/lib/log";
 import { loadLoneShifts } from "@/lib/lone-working";
 import { sendShiftReminders } from "@/lib/reminders-send";
+import { offerCheckIns } from "@/lib/wellbeing";
 import { appUrl, textAlertContacts } from "@/lib/sms";
 
 const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
@@ -61,6 +62,7 @@ export async function GET(request: Request) {
     }
 
     reminders += await sendShiftReminders(business, now);
+    reminders += await offerCheckIns(business.id, business.name, now);
 
     if (business.lateAlertMinutes === null) continue;
     // Late texts stop half an hour after a shift ends, so only shifts still running or just finished matter.

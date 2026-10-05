@@ -66,6 +66,8 @@ export type WorkerPreferences = {
   remindEvening?: boolean;
   remindBeforeMinutes?: number | null;
   byText?: boolean;
+  /** Wellbeing check-ins: off unless the person turns them on, and private unless they choose to share. */
+  wellbeing?: { on?: boolean; after?: "every" | "hard"; share?: boolean };
 };
 
 /**
@@ -1191,4 +1193,29 @@ export const handover = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("handover_org_idx").on(t.organisationId, t.createdAt)],
+);
+
+/**
+ * A wellbeing check-in after a shift, given only by people who turned them on. Private to the person
+ * unless shared was true when they gave it. Asking for a chat always reaches a manager, but only as
+ * "would like a chat", never the answer or note.
+ */
+export const wellbeingCheckIn = pgTable(
+  "wellbeing_check_in",
+  {
+    id: id(),
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    shiftId: uuid("shift_id").references(() => shift.id, { onDelete: "set null" }),
+    /** 1 good, 2 OK, 3 tiring, 4 hard, 5 really hard. Null when they chose to skip. */
+    answer: smallint("answer"),
+    note: text("note"),
+    shared: boolean("shared").notNull().default(false),
+    wantsChat: boolean("wants_chat").notNull().default(false),
+    chatHandledAt: timestamp("chat_handled_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("wellbeing_check_in_shift_idx").on(t.workerId, t.shiftId), index("wellbeing_check_in_org_idx").on(t.organisationId, t.createdAt)],
 );

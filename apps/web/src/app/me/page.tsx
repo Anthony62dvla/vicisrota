@@ -12,6 +12,7 @@ import { SHORT_NOTICE_HOURS } from "@/lib/notices";
 import { todayInUk } from "@/lib/rota";
 import { loadSickness } from "@/lib/sickness";
 import { activeRollCall } from "@/lib/roll-call";
+import { pendingCheckIns } from "@/lib/wellbeing";
 import { iAmSafe } from "../roll-call/actions";
 import { addMyUnavailable, markNoticesSeen, readAnnouncement, removeMyUnavailable, savePreferences, setCoverRequest, withdrawClaim, withdrawRequest } from "./actions";
 import { formatUkMobile } from "@vicisrota/messaging";
@@ -178,6 +179,7 @@ export default async function MyPage() {
       .where(isNull(schema.announcement.archivedAt))
       .orderBy(desc(schema.announcement.createdAt))
       .limit(20);
+    const checkIns = await pendingCheckIns(tx, worker.id, now);
     const recentMessages = await tx
       .select({ id: schema.notification.id, title: schema.notification.title, body: schema.notification.body, createdAt: schema.notification.createdAt })
       .from(schema.notification)
@@ -186,7 +188,7 @@ export default async function MyPage() {
       .limit(5);
     const sick = (await loadSickness(tx, addDays(today, 366), [worker.id])).get(worker.id);
     const sickPay = new Map((sick?.records ?? []).filter((r) => !r.ssp.oldRules && r.ssp.pence > 0).map((r) => [r.id, r.ssp.pence]));
-    return { recentMessages, colleagues, roles, sickPay, announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, shortNotice, rollCall, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
+    return { checkIns, recentMessages, colleagues, roles, sickPay, announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, shortNotice, rollCall, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
   });
 
   const days = new Map<string, typeof data.shifts>();
@@ -241,6 +243,16 @@ export default async function MyPage() {
       <p className="text-zinc-600 dark:text-zinc-400">{businessName}</p>
 
       <OfflineNotice updatedAt={updatedAt} />
+
+      {data.checkIns.length > 0 && (
+        <section className="mt-6 rounded-lg border-2 border-brand p-4" aria-labelledby="checkin-heading">
+          <h2 id="checkin-heading" className="text-lg font-semibold">How was your shift?</h2>
+          <p className="mt-1">A quick, private check-in that you asked for. Skip it if you like.</p>
+          <Link href="/me/wellbeing" className="mt-3 inline-block rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover">
+            Check in
+          </Link>
+        </section>
+      )}
 
       {data.clockable.map(({ shift, summary }) => (
         <section key={`clock-${shift.id}`} aria-label="Clock in and out" className="mt-6 rounded-lg border-2 border-brand p-4">

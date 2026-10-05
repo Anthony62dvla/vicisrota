@@ -23,3 +23,4 @@ export * from "./shortNotice";
 export * from "./payItems";
 export * from "./rules/fatigue";
 export * from "./autoAssign";
+export * from "./wellbeing";

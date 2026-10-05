@@ -36,7 +36,7 @@ export const managerNav = (sector: "care" | "hospitality" | "small_business", su
       ...(sector !== "care" ? [item("/tips", "Tips", "tips")] : []),
     ],
   },
-  { title: "Your team", items: [item("/messages", "Messages", "messages"), item("/checklists", "Checklists", "checklist"), item("/announcements", "Announcements", "announcements"), item("/workplaces", "Workplaces", "workplaces")] },
+  { title: "Your team", items: [item("/messages", "Messages", "messages"), item("/checklists", "Checklists", "checklist"), item("/wellbeing", "Wellbeing", "wellbeing"), item("/announcements", "Announcements", "announcements"), item("/workplaces", "Workplaces", "workplaces")] },
   {
     title: "Safety",
     items: [
@@ -70,6 +70,7 @@ export const staffNav: NavSection[] = [
       item("/messages", "Messages", "messages"),
       item("/me/checklist", "Today's checklist", "checklist"),
       item("/me/easy-read", "Easy Read shifts", "easyRead"),
+      item("/me/wellbeing", "Wellbeing", "wellbeing"),
       item("/me/profile", "How I work best", "profile"),
       item("/me/concern", "Raise a concern", "concern"),
       item("/display", "Display settings", "display"),
