@@ -31,7 +31,7 @@ export default async function StaffPage() {
               <th className="py-2">Name</th>
               <th className="py-2">Date of birth</th>
               <th className="py-2">Hourly rate</th>
-              <th className="py-2">48-hour opt-out</th>
+              <th className="py-2">Works over 48 hours</th>
               <th className="py-2">Right to work</th>
             </tr>
           </thead>

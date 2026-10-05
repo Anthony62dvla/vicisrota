@@ -115,8 +115,7 @@ export default async function WorkingTimePage() {
       <section className="mt-10" aria-labelledby="download-heading">
         <h2 id="download-heading" className="text-lg font-semibold">Download records</h2>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          Keep working time records for 2 years. The file lists every confirmed piece of work with its breaks and night hours (23:00 to 06:00),
-          and each person&apos;s opt-out. Up to a year at a time.
+          Keep working time records for 2 years. The file lists all confirmed work, with breaks and night hours (23:00 to 06:00). It also shows who has chosen to work more than 48 hours a week. Up to a year at a time.
         </p>
         <form action="/working-time/export" className="mt-3 flex flex-wrap items-end gap-4">
           <label className="flex flex-col gap-1">

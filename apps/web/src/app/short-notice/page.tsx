@@ -38,20 +38,17 @@ export default async function ShortNoticePage() {
     <main className="mx-auto w-full max-w-3xl px-4 py-8 lg:px-8">
       <h1 className="text-2xl font-semibold">Short-notice pay</h1>
       <p className="mt-1">
-        When you cancel, move or cut short someone&apos;s published shift at short notice, they are paid for the time they lose. VicisRota works this out
-        when you save the change and adds it to their pay for the week the shift was in.
+        If you cancel, move or shorten someone&apos;s shift at short notice, they are paid for the time they lose. VicisRota works out the amount when you save the change. It is added to their pay for that week.
       </p>
 
       <section className="mt-8" aria-labelledby="settings-heading">
         <h2 id="settings-heading" className="text-lg font-semibold">Your rule</h2>
         <p className="mt-2">
-          The Employment Rights Act 2025 gives workers a right to this pay. It is not in force yet: the government expects it in 2027, and regulations
-          will set the notice period and how much is paid. Until then you choose both here. Switching it on now gives your staff steadier pay and gets
+          The Employment Rights Act 2025 gives workers a right to this pay. It is not law yet. The government expects it in 2027. New rules will then set the notice period and how much is paid. Until then you choose both here. Switching it on now gives your staff steadier pay and gets
           you ready early. When the regulations are published, VicisRota will be updated to match them.
         </p>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          It applies to everyone on the rota. Changes a person asks for, like a swap they request, are never counted, because those go through
-          shift requests rather than a manager changing the rota.
+          It applies to everyone on the rota. Changes a person asks for themselves, like a swap, never count. Only changes a manager makes count.
         </p>
         <ShortNoticeForm hours={settings.hours} percent={settings.percent} />
       </section>

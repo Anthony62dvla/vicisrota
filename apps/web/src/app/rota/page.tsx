@@ -226,8 +226,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
       <section className="mt-8" aria-labelledby="check-heading">
         <h2 id="check-heading" className="text-lg font-semibold">Check and publish</h2>
         <p className="mt-1">
-          {drafts === 0 ? "No draft shifts this week." : `${drafts} draft shift${drafts === 1 ? "" : "s"} waiting to be published.`} Every
-          shift is checked against UK working time, under-18 and minimum wage rules, right to work, DBS, required training and booked leave before it is published.
+          {drafts === 0 ? "No draft shifts this week." : `${drafts} draft shift${drafts === 1 ? "" : "s"} waiting to be published.`} Before you publish, every shift is checked against the law and your records. That includes working time, under-18 rules, minimum wage, right to work, DBS, training and booked leave.
         </p>
         <PublishForm weekStart={week} />
         {shifts.length > 0 && (

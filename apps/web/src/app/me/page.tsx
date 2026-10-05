@@ -593,8 +593,7 @@ export default async function MyPage() {
       <section className="mt-10" aria-labelledby="concern-heading">
         <h2 id="concern-heading" className="text-lg font-semibold">Worried about something?</h2>
         <p className="mt-1">
-          If you are worried about someone&apos;s safety or how things are done at work, you can tell a manager privately, with or
-          without your name.
+          Worried about someone&apos;s safety, or how things are done at work? You can tell a manager in private. You do not have to give your name.
         </p>
         <Link href="/me/concern" className="mt-2 inline-block rounded-lg border border-zinc-400 px-4 py-2">Raise a concern</Link>
       </section>
@@ -650,7 +649,7 @@ export default async function MyPage() {
 
       <section className="mt-10" aria-labelledby="install-heading">
         <h2 id="install-heading" className="text-lg font-semibold">Put VicisRota on your phone</h2>
-        <p className="mt-1">It then opens like an app, and your shifts are saved on your phone so you can see them with no signal.</p>
+        <p className="mt-1">It then opens like an app. Your shifts are saved on your phone, so you can see them even with no signal.</p>
         <ul className="mt-2 list-disc pl-6">
           <li>iPhone: open this page in Safari, tap Share, then &ldquo;Add to Home Screen&rdquo;.</li>
           <li>Android: open this page in Chrome, tap the menu (three dots), then &ldquo;Add to Home screen&rdquo; or &ldquo;Install app&rdquo;.</li>

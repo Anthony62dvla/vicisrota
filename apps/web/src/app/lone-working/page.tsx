@@ -84,7 +84,7 @@ export default async function LoneWorkingPage() {
       <section className="mt-10" aria-labelledby="texts-heading">
         <h2 id="texts-heading" className="text-lg font-semibold">Text alerts</h2>
         <p className="mt-1">
-          These people get a text straight away when someone asks for help, and when someone misses a check-in by more than 15 minutes.
+          These people get a text straight away when someone asks for help. They also get one when someone is more than 15 minutes late for a check-in.
         </p>
         {!smsConfigured() && (
           <p className="mt-2 rounded-lg border border-amber-500 p-3">

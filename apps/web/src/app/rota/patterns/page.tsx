@@ -35,7 +35,7 @@ export default async function PatternsPage({ searchParams }: PageProps<"/rota/pa
       </p>
       <h1 className="mt-2 text-2xl font-semibold">Rota patterns</h1>
       <p className="mt-2">
-        If your rota is the same each week, or rotates every two to four weeks, save it once as a pattern. Then fill the weeks ahead from it
+        Does your rota repeat every week, or every two to four weeks? Save it once as a pattern. Then fill the weeks ahead from it
         in one go. Everything is added as drafts, so nothing changes for staff until you check and publish each week.
       </p>
 
@@ -93,8 +93,8 @@ export default async function PatternsPage({ searchParams }: PageProps<"/rota/pa
         <h2 id="how-heading" className="font-semibold">Good to know</h2>
         <ul className="mt-2 list-disc space-y-1 pl-5">
           <li>Shifts keep their clock times when the clocks change, so 22:00 to 08:00 stays 22:00 to 08:00.</li>
-          <li>A shift already on the rota for the same person at the same time is skipped, so filling twice adds nothing.</li>
-          <li>If someone is on approved leave or off sick that day, their shift is added as an open shift so you can find cover.</li>
+          <li>Shifts already on the rota are not added twice.</li>
+          <li>If someone is on leave or off sick that day, their shift becomes an open shift, so you can find cover.</li>
           <li>The rota check still runs when you publish, including rest breaks, availability and agreed adjustments.</li>
         </ul>
       </section>

@@ -88,7 +88,7 @@ export default async function WorkplacesPage() {
       <section className="mt-10" aria-labelledby="kiosk-heading">
         <h2 id="kiosk-heading" className="text-lg font-semibold">Clock-in tablets</h2>
         <p className="mt-1">
-          Staff clock in on these with a PIN they choose on their own home page, or by scanning the tablet&apos;s QR code with their own phone. The code
+          Staff clock in on the tablet in one of two ways. They type a PIN they chose on their home page, or they scan the QR code with their own phone. The code
           changes every 30 seconds, so it only works for someone standing at the tablet.
         </p>
         {kiosks.length === 0 ? (
