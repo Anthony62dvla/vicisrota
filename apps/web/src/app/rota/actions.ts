@@ -13,6 +13,7 @@ import { textRotaChanges } from "@/lib/rota-texts";
 import { requestId } from "@/lib/request";
 import { checkAssignment } from "@/lib/claims";
 import { loadComplianceContext, weekBounds } from "@/lib/rota";
+import { owedMessage, recordShortNotice } from "@/lib/short-notice";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME = /^\d{2}:\d{2}$/;
@@ -52,6 +53,8 @@ const afterChange = async (tx: Tx, organisationId: string, before: Shift | null,
       notices = await notify(tx, organisationId, [{ ...times, workerId: after.workerId, kind: "changed" }]);
     }
   }
+  // The person who had a published shift is paid for time they lose at short notice.
+  const owed = before && after.status === "published" ? await recordShortNotice(tx, organisationId, before, before.workerId === after.workerId ? after : null) : null;
   if (after.workerId && before?.workerId !== after.workerId) {
     // Anyone who asked to pick this shift up is told it has gone.
     await tx
@@ -60,10 +63,13 @@ const afterChange = async (tx: Tx, organisationId: string, before: Shift | null,
       .where(and(eq(schema.shiftClaim.shiftId, after.id), eq(schema.shiftClaim.status, "requested")));
   }
   const problems = [...blocks.map((f) => `Must fix: ${f.message}`), ...warnings.map((f) => `Check: ${f.message}`)];
-  return { notices, problems, checked: !!check, published: after.status === "published" };
+  return { notices, problems, checked: !!check, published: after.status === "published", owed: owed ? [owedMessage(owed)] : [] };
 };
 
-const savedMessage = (what: string, change: { problems: string[]; checked: boolean; published: boolean }) =>
+const savedMessage = (what: string, change: { problems: string[]; checked: boolean; published: boolean; owed?: string[] }) =>
+  [problemsMessage(what, change), ...(change.owed ?? [])].join(" ");
+
+const problemsMessage = (what: string, change: { problems: string[]; checked: boolean; published: boolean }) =>
   change.problems.length
     ? `${what} ${plural(change.problems.length, "thing")} to look at${change.published ? "" : " before publishing"}: ${change.problems.join(" ")}`
     : change.checked
@@ -193,6 +199,7 @@ export async function saveShift(_: FormState, form: FormData): Promise<FormState
         problems: [...new Set(changes.flatMap((c) => c.problems))],
         checked: changes[0]!.checked,
         published: changes[0]!.published,
+        owed: changes.flatMap((c) => c.owed),
       };
       await tx.insert(schema.auditEvent).values({
         organisationId,
@@ -279,6 +286,7 @@ export async function moveShift(_: FormState, form: FormData): Promise<FormState
         problems: [...new Set(changes.flatMap((c) => c.change.problems))],
         checked: changes[0]!.change.checked,
         published: changes[0]!.change.published,
+        owed: changes.flatMap((c) => c.change.owed),
       };
       await tx.insert(schema.auditEvent).values({
         organisationId,
@@ -303,16 +311,18 @@ export async function moveShift(_: FormState, form: FormData): Promise<FormState
   return state;
 }
 
-export async function cancelShift(form: FormData) {
+/** Cancels a shift and says what happens next, including any short-notice pay owed. */
+export async function cancelShift(form: FormData): Promise<string> {
   const { user, organisationId, businessName } = await requireManager();
   const shiftId = String(form.get("shiftId") ?? "");
-  const notices = await withOrganisation(db, organisationId, async (tx) => {
+  const { notices, owed } = await withOrganisation(db, organisationId, async (tx) => {
     const [cancelled] = await tx
       .update(schema.shift)
       .set({ status: "cancelled" })
-      .where(eq(schema.shift.id, shiftId))
+      .where(and(eq(schema.shift.id, shiftId), ne(schema.shift.status, "cancelled")))
       .returning({ workerId: schema.shift.workerId, startsAt: schema.shift.startsAt, endsAt: schema.shift.endsAt, publishedAt: schema.shift.publishedAt, splitGroupId: schema.shift.splitGroupId });
     await tidySplit(tx, cancelled?.splitGroupId ?? null);
+    const owed = cancelled ? await recordShortNotice(tx, organisationId, { ...cancelled, id: shiftId }, null) : null;
     // Staff only knew about it if it had been published.
     const notices = cancelled?.publishedAt
       ? await notify(tx, organisationId, [{ workerId: cancelled.workerId, startsAt: cancelled.startsAt, endsAt: cancelled.endsAt, shiftId, kind: "cancelled" }])
@@ -325,10 +335,11 @@ export async function cancelShift(form: FormData) {
       entity: "shift",
       entityId: shiftId,
     });
-    return notices;
+    return { notices, owed };
   });
   await textRotaChanges(organisationId, businessName, notices);
   revalidatePath("/rota");
+  return ["Shift cancelled.", ...(owed ? [owedMessage(owed)] : [])].join(" ");
 }
 
 export async function checkAndPublish(_: FormState, form: FormData): Promise<FormState> {

@@ -43,6 +43,16 @@ export const loadPayroll = async (tx: Transaction, organisationId: string, from:
       ),
   ]);
 
+  // Pay for shifts cancelled, moved or cut short at short notice, in the period the original shift fell in.
+  const shortNoticePence = new Map<string, number>();
+  for (const p of await tx
+    .select({ workerId: schema.shortNoticePayment.workerId, pence: schema.shortNoticePayment.pence })
+    .from(schema.shortNoticePayment)
+    .where(
+      and(gte(schema.shortNoticePayment.shiftStartsAt, start), lt(schema.shortNoticePayment.shiftStartsAt, end), isNull(schema.shortNoticePayment.waivedAt)),
+    ))
+    shortNoticePence.set(p.workerId, (shortNoticePence.get(p.workerId) ?? 0) + p.pence);
+
   const lines = payrollSummary({
     from,
     to,
@@ -66,7 +76,7 @@ export const loadPayroll = async (tx: Transaction, organisationId: string, from:
     payRates: rates.map((r) => ({ workerId: r.workerId, hourlyPence: r.hourlyPence, effectiveFrom: r.effectiveFrom })),
     leave: leave.map((l) => ({ ...l, status: "approved" as const })),
     paysTravelTime: organisation?.paysTravelTime ?? false,
-  }).filter((l) => l.hours > 0 || l.travelHours > 0 || l.holidayDays > 0 || l.holidayHours > 0 || l.sickDays > 0 || l.otherLeaveDays > 0);
+  }).filter((l) => l.hours > 0 || l.travelHours > 0 || l.holidayDays > 0 || l.holidayHours > 0 || l.sickDays > 0 || l.otherLeaveDays > 0 || shortNoticePence.has(l.workerId));
 
   // Tips shared for periods ending in this pay period are paid with it.
   const shares = await tx
@@ -84,5 +94,5 @@ export const loadPayroll = async (tx: Transaction, organisationId: string, from:
     if (pence > 0) sspPence.set(workerId, pence);
   }
 
-  return { lines, unconfirmed: unconfirmed.length, tipsPence, sspPence };
+  return { lines, unconfirmed: unconfirmed.length, tipsPence, sspPence, shortNoticePence };
 };

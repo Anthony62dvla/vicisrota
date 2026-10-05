@@ -26,7 +26,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
 
   const previous = weekBounds(addDays(week, -7));
 
-  const { workers, training, clients, shifts, claims, leave, decision, rates, breaks, paysTravelTime, lastWeek, roles, requirements, unavailable, workerRoles, recent, checks } = await withOrganisation(db, organisationId, async (tx) => ({
+  const { workers, training, clients, shifts, claims, leave, decision, rates, breaks, paysTravelTime, shortNoticeHours, lastWeek, roles, requirements, unavailable, workerRoles, recent, checks } = await withOrganisation(db, organisationId, async (tx) => ({
     workers: await tx.select().from(schema.worker).orderBy(asc(schema.worker.fullName)),
     clients:
       sector === "care"
@@ -78,7 +78,10 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
       .from(schema.shiftBreak)
       .innerJoin(schema.shift, eq(schema.shiftBreak.shiftId, schema.shift.id))
       .where(and(gte(schema.shift.startsAt, from), lt(schema.shift.startsAt, to))),
-    paysTravelTime: (await tx.select({ pays: schema.organisation.paysTravelTime }).from(schema.organisation).where(eq(schema.organisation.id, organisationId)))[0]?.pays ?? false,
+    ...(await tx
+      .select({ paysTravelTime: schema.organisation.paysTravelTime, shortNoticeHours: schema.organisation.shortNoticeHours })
+      .from(schema.organisation)
+      .where(eq(schema.organisation.id, organisationId)))[0]!,
     lastWeek: (
       await tx
         .select({ id: schema.shift.id })
@@ -212,6 +215,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
           training={training}
           clients={sector === "care" ? clients.filter((c) => c.active) : undefined}
           usualTimes={usualTimes(recent)}
+          shortNoticeHours={shortNoticeHours}
         />
       )}
 

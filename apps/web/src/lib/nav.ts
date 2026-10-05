@@ -32,6 +32,7 @@ export const managerNav = (sector: "care" | "hospitality" | "small_business", su
     items: [
       item("/timesheets", "Timesheets", "timesheets"),
       item("/working-time", "Working time", "workingTime"),
+      item("/short-notice", "Short-notice pay", "shortNotice"),
       ...(sector !== "care" ? [item("/tips", "Tips", "tips")] : []),
     ],
   },

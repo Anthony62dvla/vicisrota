@@ -316,6 +316,13 @@
       "when": 1791182391768,
       "tag": "0044_qr_clock_in",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1791193410394,
+      "tag": "0045_short_notice_pay",
+      "breakpoints": true
     }
   ]
 }

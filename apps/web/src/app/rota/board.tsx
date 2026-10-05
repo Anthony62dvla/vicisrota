@@ -43,6 +43,8 @@ type Props = {
   /** Care providers only: clients a shift can be a visit to. */
   clients?: { id: string; name: string }[];
   usualTimes: { start: string; end: string }[];
+  /** Hours of notice under which a change to a published shift earns short-notice pay. Null when the business has not switched it on. */
+  shortNoticeHours: number | null;
 };
 
 /** A pale fill in the role's colour, so a week of shifts can be read by role at a glance. The badge names the role too. */
@@ -298,6 +300,7 @@ function ShiftDialog({
   training,
   clients,
   usualTimes,
+  shortNoticeHours,
   nameById,
   onClose,
   onGive,
@@ -548,7 +551,10 @@ function ShiftDialog({
             </fieldset>
           )}
           {shift?.status === "published" && (
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">This shift is published. If you change the person or the times, they are told straight away.</p>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              This shift is published. If you change the person or the times, they are told straight away.
+              {shortNoticeHours !== null && ` If it starts within ${shortNoticeHours} hours, they get short-notice pay for any time they lose.`}
+            </p>
           )}
           <div className="flex flex-wrap gap-3">
             <button type="submit" disabled={pending} className={button}>
@@ -564,6 +570,7 @@ function ShiftDialog({
           <div className="border-t border-line pt-4">
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
               {shift.status === "published" && shift.workerId ? "Cancelling tells the person straight away." : "Cancelling removes it from the rota."}
+              {shift.status === "published" && shift.workerId && shortNoticeHours !== null && ` If it starts within ${shortNoticeHours} hours, they get short-notice pay for it.`}
             </p>
             <button
               type="button"
@@ -572,8 +579,7 @@ function ShiftDialog({
                 startCancel(async () => {
                   const form = new FormData();
                   form.set("shiftId", shift.id);
-                  await cancelShift(form);
-                  onClose({ ok: "Shift cancelled." });
+                  onClose({ ok: await cancelShift(form) });
                 })
               }
               className="mt-2 rounded-lg border border-red-600 px-4 py-2 text-red-700 hover:bg-red-50 disabled:opacity-60 dark:text-red-400 dark:hover:bg-red-950"

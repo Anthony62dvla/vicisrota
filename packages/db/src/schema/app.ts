@@ -82,6 +82,10 @@ export const organisation = pgTable("organisation", {
   clockLocationRule: clockLocationRule("clock_location_rule").notNull().default("off"),
   /** Text the alert contacts when nobody has clocked in this many minutes after a shift starts. Null is off. */
   lateAlertMinutes: smallint("late_alert_minutes"),
+  /** Pay staff when a published shift is cancelled, moved or cut short with less than this many hours' notice. Null is off. */
+  shortNoticeHours: smallint("short_notice_hours"),
+  /** Share of the lost pay owed for a short-notice change, 100 = full pay. */
+  shortNoticePayPercent: smallint("short_notice_pay_percent").notNull().default(100),
   createdAt: createdAt(),
 });
 
@@ -621,6 +625,37 @@ export const rotaNotice = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("rota_notice_worker_idx").on(t.workerId, t.createdAt)],
+);
+
+export const shortNoticeKind = pgEnum("short_notice_kind", ["cancelled", "moved", "shortened"]);
+
+/**
+ * Pay owed because a published shift was cancelled, moved or cut short at short notice (Employment Rights
+ * Act 2025). Worked out when the change is saved, from the original times, and paid with the pay period the
+ * original shift fell in. A manager can mark it not owed, with a reason; the row is kept either way.
+ */
+export const shortNoticePayment = pgTable(
+  "short_notice_payment",
+  {
+    id: id(),
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    shiftId: uuid("shift_id")
+      .notNull()
+      .references(() => shift.id, { onDelete: "cascade" }),
+    kind: shortNoticeKind("kind").notNull(),
+    shiftStartsAt: timestamp("shift_starts_at", { withTimezone: true }).notNull(),
+    shiftEndsAt: timestamp("shift_ends_at", { withTimezone: true }).notNull(),
+    lostMinutes: integer("lost_minutes").notNull(),
+    noticeHours: integer("notice_hours").notNull(),
+    pence: integer("pence").notNull(),
+    waivedAt: timestamp("waived_at", { withTimezone: true }),
+    waivedReason: text("waived_reason"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("short_notice_payment_worker_idx").on(t.workerId, t.shiftStartsAt)],
 );
 
 /** Regular weekly times someone cannot work, in UK time. weekday: 1 = Monday to 7 = Sunday; ends_at may be "24:00". */

@@ -101,8 +101,8 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
       },
     };
   });
-  const { lines, unconfirmed, sspPence } = data.payroll;
-  const total = lines.reduce((s, l) => s + l.grossPence, 0);
+  const { lines, unconfirmed, sspPence, shortNoticePence } = data.payroll;
+  const total = lines.reduce((s, l) => s + l.grossPence + (shortNoticePence.get(l.workerId) ?? 0), 0);
   const hasTravel = lines.some((l) => l.travelHours > 0);
   const query$ = `from=${from}&to=${to}`;
 
@@ -173,7 +173,14 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
                       <td className="py-2">{l.hours}</td>
                       {hasTravel && <td className="py-2">{l.travelHours} hours</td>}
                       <td className="py-2">{l.ratesPence.map(pounds).join(" / ") || "None"}</td>
-                      <td className="py-2">{pounds(l.grossPence)}</td>
+                      <td className="py-2">
+                        {pounds(l.grossPence)}
+                        {shortNoticePence.has(l.workerId) && (
+                          <p className="mt-1">
+                            plus <Link href="/short-notice" className="underline">{pounds(shortNoticePence.get(l.workerId)!)} short-notice pay</Link>
+                          </p>
+                        )}
+                      </td>
                       <td className="py-2">{l.holidayHoursAccrued === null ? "n/a" : `${l.holidayHoursAccrued} hours`}</td>
                       <td className="py-2">
                         {[
@@ -190,7 +197,7 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
                 </tbody>
                 <tfoot>
                   <tr>
-                    <th className="py-2" colSpan={hasTravel ? 4 : 3}>Total gross pay</th>
+                    <th className="py-2" colSpan={hasTravel ? 4 : 3}>Total gross pay{shortNoticePence.size > 0 && ", including short-notice pay"}</th>
                     <td className="py-2 font-semibold">{pounds(total)}</td>
                   </tr>
                 </tfoot>

@@ -107,6 +107,18 @@ export default async function MyPage() {
       .where(and(eq(schema.leaveRequest.workerId, worker.id), gte(schema.leaveRequest.endsOn, addDays(today, -60))))
       .orderBy(desc(schema.leaveRequest.startsOn));
     const { balances, year } = await loadBalances(tx, organisationId, today);
+    // Pay for their shifts cancelled, moved or cut short at short notice, in the last 13 weeks and still to come.
+    const shortNotice = await tx
+      .select()
+      .from(schema.shortNoticePayment)
+      .where(
+        and(
+          eq(schema.shortNoticePayment.workerId, worker.id),
+          isNull(schema.shortNoticePayment.waivedAt),
+          gte(schema.shortNoticePayment.shiftStartsAt, new Date(londonDateTime(addDays(today, -91), "00:00"))),
+        ),
+      )
+      .orderBy(desc(schema.shortNoticePayment.shiftStartsAt));
     // Staff have a right to see their own tip records.
     const tips = await tx
       .select({ id: schema.tipShare.id, pence: schema.tipShare.pence, hours: schema.tipShare.hours, allocation: schema.tipAllocation })
@@ -152,7 +164,7 @@ export default async function MyPage() {
       .limit(20);
     const sick = (await loadSickness(tx, addDays(today, 366), [worker.id])).get(worker.id);
     const sickPay = new Map((sick?.records ?? []).filter((r) => !r.ssp.oldRules && r.ssp.pence > 0).map((r) => [r.id, r.ssp.pence]));
-    return { colleagues, roles, sickPay, announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
+    return { colleagues, roles, sickPay, announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, shortNotice, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
   });
 
   const days = new Map<string, typeof data.shifts>();
@@ -173,6 +185,7 @@ export default async function MyPage() {
   const unit = worker.irregularHours ? "hours" : "days";
   const { calm = false, largeText = false } = worker.preferences;
   const next = data.shifts.find((s) => s.endsAt.getTime() > data.now);
+  const SHORT_NOTICE_KIND = { cancelled: "cancelled", moved: "moved", shortened: "cut short" } as const;
   const NOTICE_TEXT = {
     added: "New shift",
     changed: "Changed",
@@ -259,6 +272,13 @@ export default async function MyPage() {
               <li key={n.id}>
                 <strong>{NOTICE_TEXT[n.kind]}:</strong> {longDate(londonParts(n.startsAt.getTime()).date)}, {timeFmt.format(n.startsAt)} to{" "}
                 {timeFmt.format(n.endsAt)}.
+                {data.shortNotice
+                  .filter((p) => p.shiftId === n.shiftId && n.kind !== "added" && n.kind !== "given_to_you")
+                  .map((p) => (
+                    <span key={p.id} className="block text-sm">
+                      Because this was short notice, you will be paid <strong>£{(p.pence / 100).toFixed(2)}</strong> for the time you lose.
+                    </span>
+                  ))}
                 {n.noticeHours < SHORT_NOTICE_HOURS && n.kind !== "given_to_you" && (
                   <span className="block text-sm text-zinc-600 dark:text-zinc-400">
                     Short notice: {n.kind === "added" ? "added" : "changed"} {n.noticeHours < 48 ? `${n.noticeHours} hours` : `${Math.floor(n.noticeHours / 24)} days`} before the
@@ -413,6 +433,24 @@ export default async function MyPage() {
           </ul>
         )}
       </section>
+
+      {data.shortNotice.length > 0 && (
+        <section className="mt-10" aria-labelledby="short-notice-heading">
+          <h2 id="short-notice-heading" className="text-lg font-semibold">Short-notice pay</h2>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+            When your manager changes a published shift at short notice, you are paid for the time you lose. It is added to your pay for that week.
+          </p>
+          <ul className="mt-2 flex flex-col gap-1">
+            {data.shortNotice.map((p) => (
+              <li key={p.id}>
+                {longDate(londonParts(p.shiftStartsAt.getTime()).date)}, {timeFmt.format(p.shiftStartsAt)} to {timeFmt.format(p.shiftEndsAt)}:{" "}
+                <strong>£{(p.pence / 100).toFixed(2)}</strong>
+                <span className="text-zinc-600 dark:text-zinc-400"> · {SHORT_NOTICE_KIND[p.kind]}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {(data.tips.length > 0 || data.policy) && (
         <section className="mt-10" aria-labelledby="tips-heading">
