@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { checkAndPublish, copyPreviousWeek, decideClaim, type FormState } from "./actions";
+import { checkAndPublish, copyPreviousWeek, decideClaim, fillOpenShifts, type FormState } from "./actions";
 
 const button = "rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover disabled:opacity-60";
 
@@ -19,6 +19,20 @@ export function PublishForm({ weekStart }: { weekStart: string }) {
       <Message state={state} />
       <button type="submit" disabled={pending} className={button}>
         {pending ? "Checking…" : "Check and publish this week"}
+      </button>
+    </form>
+  );
+}
+
+/** Fills this week's open draft shifts with people who fit, then leaves the week as drafts to look over. */
+export function FillOpenShiftsForm({ weekStart, open }: { weekStart: string; open: number }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(fillOpenShifts, {});
+  return (
+    <form action={action} className="mt-3 flex flex-col items-start gap-3">
+      <input type="hidden" name="weekStart" value={weekStart} />
+      <Message state={state} />
+      <button type="submit" disabled={pending || open === 0} className="rounded-lg border-2 border-brand px-4 py-2 font-medium disabled:opacity-60">
+        {pending ? "Finding the best fit…" : open === 0 ? "No open draft shifts to fill" : `Fill ${open === 1 ? "the open shift" : `the ${open} open shifts`} automatically`}
       </button>
     </form>
   );

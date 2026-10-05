@@ -1,9 +1,9 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { addDays, evaluate, londonDateTime, londonParts, type Finding } from "@vicisrota/compliance";
+import { addDays, autoAssign, evaluate, londonDateTime, londonParts, type Finding } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
-import { and, eq, gte, inArray, lt, ne } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, isNull, lt, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
@@ -12,7 +12,7 @@ import { notify, type Notice } from "@/lib/notices";
 import { textRotaChanges } from "@/lib/rota-texts";
 import { requestId } from "@/lib/request";
 import { checkAssignment } from "@/lib/claims";
-import { loadComplianceContext, weekBounds } from "@/lib/rota";
+import { loadComplianceContext, loadWeekChecks, weekBounds } from "@/lib/rota";
 import { owedMessage, recordShortNotice } from "@/lib/short-notice";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -543,5 +543,66 @@ export async function copyPreviousWeek(_: FormState, form: FormData): Promise<Fo
   if (!result.copied) return { ok: "Every shift from last week is already in this week. Nothing was copied." };
   return {
     ok: `${result.copied} shift${result.copied === 1 ? "" : "s"} copied as drafts${result.skipped ? ` (${result.skipped} already here)` : ""}. Check them, then publish.`,
+  };
+}
+
+/**
+ * Gives this week's open draft shifts to people automatically, using the same rules as publishing. Only
+ * people with nothing to check get a shift, and the shifts stay drafts, so the manager looks over the week
+ * before anyone is told. Split shifts are left for the manager, so both parts go to the same person.
+ */
+export async function fillOpenShifts(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const weekStart = String(form.get("weekStart") ?? "");
+  if (!DATE.test(weekStart)) return { error: "Choose a week." };
+  const { from, to } = weekBounds(weekStart);
+
+  const result = await withOrganisation(db, organisationId, async (tx) => {
+    const drafts = await tx
+      .select({ id: schema.shift.id })
+      .from(schema.shift)
+      .where(
+        and(
+          eq(schema.shift.status, "draft"),
+          isNull(schema.shift.workerId),
+          isNull(schema.shift.splitGroupId),
+          gte(schema.shift.startsAt, from),
+          lt(schema.shift.startsAt, to),
+          gt(schema.shift.startsAt, new Date()),
+        ),
+      );
+    if (!drafts.length) return null;
+    const ids = new Set(drafts.map((d) => d.id));
+    const { context, open } = await loadWeekChecks(tx, organisationId, weekStart);
+    const plan = autoAssign(context, open.filter((s) => ids.has(s.id)), weekStart);
+    for (const a of plan.assigned) {
+      await tx.update(schema.shift).set({ workerId: a.workerId }).where(and(eq(schema.shift.id, a.shiftId), isNull(schema.shift.workerId)));
+    }
+    await tx.insert(schema.auditEvent).values({
+      organisationId,
+      actorUserId: user.id,
+      requestId: await requestId(),
+      action: "auto_fill",
+      entity: "rota",
+      entityId: weekStart,
+      data: { assigned: plan.assigned, unfilled: plan.unfilled },
+    });
+    const names = new Map(context.workers.map((w) => [w.id, w.name]));
+    return { plan, names, total: drafts.length };
+  });
+  revalidatePath("/rota");
+  if (!result) return { ok: "There are no open draft shifts to fill this week. Add shifts without a person, or fill the week from a pattern, then try again." };
+  const { plan, names, total } = result;
+  const people = [...new Set(plan.assigned.map((a) => names.get(a.workerId)!))];
+  const reasons = [...new Set(plan.unfilled.map((u) => u.reason))];
+  return {
+    ok: [
+      plan.assigned.length
+        ? `Filled ${plan.assigned.length} of ${total} open shifts, shared between ${people.join(", ")}. They are still drafts: look over the week, then publish.`
+        : "No open shifts could be filled.",
+      plan.unfilled.length ? `${plan.unfilled.length} left open because ${reasons.join("; ")}.` : "",
+    ]
+      .filter(Boolean)
+      .join(" "),
   };
 }

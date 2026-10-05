@@ -8,7 +8,7 @@ import { LEAVE_LABEL } from "@/lib/leave";
 import { candidatesFor, usualTimes } from "@/lib/board";
 import { loadWeekChecks, todayInUk, weekBounds } from "@/lib/rota";
 import { RotaBoard, type BoardShift } from "./board";
-import { ClaimList, CopyWeekForm, PublishForm } from "./forms";
+import { ClaimList, CopyWeekForm, FillOpenShiftsForm, PublishForm } from "./forms";
 
 const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" });
 const dayFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" });
@@ -108,6 +108,8 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
     return shift ? [{ ...c, shift }] : [];
   });
   const drafts = shifts.filter((s) => s.status === "draft").length;
+  // Open drafts the rota builder can fill. Split shift parts are left for the manager.
+  const openDrafts = shifts.filter((s) => !s.workerId && s.status === "draft" && !s.splitGroupId).length;
   const cost = weekCost(
     shifts.map((s) => ({
       id: s.id,
@@ -189,6 +191,8 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
       {workers.length > 0 && (
         <div className="mt-4 flex flex-wrap items-start gap-4">
           {lastWeek > 0 && <CopyWeekForm weekStart={week} count={lastWeek} />}
+          {/* Stays on the page once the shifts are filled, so its message can be read. */}
+          {shifts.length > 0 && <FillOpenShiftsForm weekStart={week} open={openDrafts} />}
           <Link href={`/rota/patterns?week=${week}`} className="rounded-lg border border-zinc-400 px-4 py-2">Rota patterns</Link>
         </div>
       )}
