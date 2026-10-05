@@ -38,7 +38,7 @@ export default async function SicknessPage() {
     <main className="mx-auto w-full max-w-3xl px-4 py-8 lg:px-8">
       <h1 className="text-2xl font-semibold">Sickness</h1>
       <p className="mt-2 text-zinc-700 dark:text-zinc-300">
-        Record time off sick and see the Statutory Sick Pay each person is due. Sick pay goes into the payroll export.
+        Record time off sick. See the sick pay the law says each person must get (Statutory Sick Pay). Sick pay goes into the payroll export.
       </p>
 
       {reported.length > 0 && (
@@ -101,10 +101,9 @@ export default async function SicknessPage() {
       <section className="mt-10 rounded-lg border border-zinc-300 p-4 text-sm dark:border-zinc-700" aria-labelledby="rules-heading">
         <h2 id="rules-heading" className="font-semibold">How sick pay is worked out</h2>
         <ul className="mt-2 list-disc space-y-1 pl-5">
-          <li>Since 6 April 2026 Statutory Sick Pay is paid from the first day off sick, including single days.</li>
+          <li>Since 6 April 2026, Statutory Sick Pay starts from the first day off sick, even for one day.</li>
           <li>
-            It is the lower of {pounds(rate.pence)} a week and 80% of the person&apos;s average weekly earnings, split across the days they
-            normally work. Days they would not have worked are not paid.
+            It is {pounds(rate.pence)} a week, or 80% of what the person usually earns in a week if that is less. It is split across the days they normally work. Days they would not have worked are not paid.
           </li>
           <li>Time off sick 56 days or less apart counts as one period, using the earnings from its start. SSP stops after 28 weeks in a period.</li>
           <li>People can self-certify for the first 7 days. After that you can ask for a fit note.</li>

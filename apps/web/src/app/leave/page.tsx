@@ -71,14 +71,14 @@ export default async function LeavePage() {
           <section className="mt-8" aria-labelledby="balance-heading">
             <h2 id="balance-heading" className="text-lg font-semibold">Holiday balances</h2>
             <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-              Leave year {ukDate(year.start)} to {ukDate(year.end)}. Statutory minimum: 5.6 weeks, up to 28 days, pro rata for new starters.
+              Leave year {ukDate(year.start)} to {ukDate(year.end)}. The legal minimum is 5.6 weeks, up to 28 days. People who start part way through the year get a share of it.
               People on irregular hours build up 12.07% of the hours they work.
             </p>
             <table className="mt-3 w-full text-left">
               <thead>
                 <tr className="border-b border-zinc-300 dark:border-zinc-700">
                   <th className="py-2">Name</th>
-                  <th className="py-2">Entitlement</th>
+                  <th className="py-2">Holiday for the year</th>
                   <th className="py-2">Approved</th>
                   <th className="py-2">Requested</th>
                   <th className="py-2">Left</th>
