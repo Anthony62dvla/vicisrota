@@ -35,7 +35,14 @@ export const managerNav = (sector: "care" | "hospitality" | "small_business", su
   },
   { title: "Your team", items: [item("/announcements", "Announcements", "announcements"), item("/workplaces", "Workplaces", "workplaces")] },
   { title: "Safety", items: [item("/lone-working", "Lone working", "loneWorking"), item("/safeguarding", "Safeguarding", "safeguarding")] },
-  { title: null, items: [item("/display", "Display settings", "display"), ...(superadmin ? [item("/admin", "VicisRota superadmin", "admin")] : [])] },
+  {
+    title: null,
+    items: [
+      item("/display", "Display settings", "display"),
+      item("/help", "Report a problem", "help"),
+      ...(superadmin ? [item("/admin", "VicisRota superadmin", "admin")] : []),
+    ],
+  },
 ];
 
 export const managerPhoneBar: NavItem[] = [
@@ -54,11 +61,12 @@ export const staffNav: NavSection[] = [
       item("/me/profile", "How I work best", "profile"),
       item("/me/concern", "Raise a concern", "concern"),
       item("/display", "Display settings", "display"),
+      item("/help", "Report a problem", "help"),
     ],
   },
 ];
 
-export const staffPhoneBar: NavItem[] = staffNav[0]!.items;
+export const staffPhoneBar: NavItem[] = staffNav[0]!.items.slice(0, 4);
 
 /** Pages that show without the app menu: signing in, joining, the shared clock-in tablet and the public home page. */
 export const showsMenu = (pathname: string) =>
