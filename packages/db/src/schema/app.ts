@@ -86,6 +86,8 @@ export const organisation = pgTable("organisation", {
   shortNoticeHours: smallint("short_notice_hours"),
   /** Share of the lost pay owed for a short-notice change, 100 = full pay. */
   shortNoticePayPercent: smallint("short_notice_pay_percent").notNull().default(100),
+  /** What the business's payroll software calls each kind of pay, where it differs from VicisRota's names. */
+  payItemNames: jsonb("pay_item_names").$type<Partial<Record<"basic" | "travel" | "holiday" | "ssp" | "tips" | "shortNotice", string>>>().notNull().default({}),
   createdAt: createdAt(),
 });
 
@@ -130,6 +132,8 @@ export const worker = pgTable(
     daysPerWeek: numeric("days_per_week", { precision: 3, scale: 1, mode: "number" }).notNull().default(5),
     /** Irregular hours or part-year: leave accrues at 12.07% of hours worked instead. */
     irregularHours: boolean("irregular_hours").notNull().default(false),
+    /** The person's employee number in the business's payroll software, so imported pay lands on the right person. */
+    payrollId: text("payroll_id"),
     /** Hashed PIN for clocking in on an in-store tablet. */
     pinHash: text("pin_hash"),
     pinFailures: smallint("pin_failures").notNull().default(0),

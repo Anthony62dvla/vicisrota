@@ -165,6 +165,23 @@ export async function updateHolidaySettings(_: FormState, form: FormData): Promi
   return result;
 }
 
+/** The person's employee number in the business's payroll software. */
+export async function updatePayrollId(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  const payrollId = String(form.get("payrollId") ?? "").trim() || null;
+  if (payrollId && payrollId.length > 40) return { error: "Keep the payroll ID under 40 characters." };
+  const result = await withOrganisation(db, organisationId, async (tx) => {
+    const rows = await tx.update(schema.worker).set({ payrollId }).where(eq(schema.worker.id, workerId)).returning({ name: schema.worker.fullName });
+    if (!rows.length) return { error: "That person could not be found." };
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "update", entity: "worker", entityId: workerId, data: { payrollId } });
+    return { ok: payrollId ? `Payroll ID saved for ${rows[0]!.name}.` : `Payroll ID removed for ${rows[0]!.name}.` };
+  });
+  revalidatePath(`/staff/${workerId}`);
+  revalidatePath("/timesheets");
+  return result;
+}
+
 export type InviteState = FormState & { link?: string };
 
 /** Creates a fresh invitation link for a member of staff; any earlier unused link stops working. */

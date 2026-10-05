@@ -1,6 +1,6 @@
 "use server";
 
-import { addDays, londonDateTime, londonParts } from "@vicisrota/compliance";
+import { addDays, londonDateTime, londonParts, PAY_ITEMS } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, eq, inArray, lt } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -168,4 +168,21 @@ export async function confirmClockedHours(_: FormState, form: FormData): Promise
   });
   revalidatePath("/timesheets");
   return result;
+}
+
+/** Saves what the business's payroll software calls each kind of pay. A blank name uses VicisRota's own. */
+export async function setPayItemNames(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const names: Partial<Record<(typeof PAY_ITEMS)[number], string>> = {};
+  for (const item of PAY_ITEMS) {
+    const name = String(form.get(item) ?? "").trim();
+    if (name.length > 60) return { error: "Keep each pay item name under 60 characters." };
+    if (name) names[item] = name;
+  }
+  await withOrganisation(db, organisationId, async (tx) => {
+    await tx.update(schema.organisation).set({ payItemNames: names }).where(eq(schema.organisation.id, organisationId));
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "update", entity: "pay_item_names", entityId: organisationId, data: names });
+  });
+  revalidatePath("/timesheets");
+  return { ok: "Saved. The pay items file now uses these names." };
 }

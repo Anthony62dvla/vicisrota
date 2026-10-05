@@ -11,7 +11,7 @@ import { AvailabilityEditor } from "../../availability-editor";
 import { addStaffUnavailable, removeStaffUnavailable, removeTraining } from "./actions";
 import { formatUkMobile } from "@vicisrota/messaging";
 import { WorkerRolesForm } from "../../roles/forms";
-import { AddCheckForm, AddTrainingForm, AdjustmentsForm, HolidaySettingsForm, InviteForm, MobileForm } from "./forms";
+import { AddCheckForm, AddTrainingForm, AdjustmentsForm, HolidaySettingsForm, InviteForm, MobileForm, PayrollIdForm } from "./forms";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DBS_LABEL = { basic: "Basic", standard: "Standard", enhanced: "Enhanced", enhanced_barred: "Enhanced with barred list" };
@@ -193,6 +193,11 @@ export default async function StaffRecordPage({ params }: PageProps<"/staff/[id]
           daysPerWeek={worker.daysPerWeek}
           irregularHours={worker.irregularHours}
         />
+      </section>
+
+      <section className="mt-10" id="payroll">
+        <h2 className="text-lg font-semibold">Payroll</h2>
+        <PayrollIdForm workerId={worker.id} payrollId={worker.payrollId} />
       </section>
     </main>
   );

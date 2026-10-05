@@ -1,4 +1,4 @@
-import { addDays, londonParts } from "@vicisrota/compliance";
+import { addDays, DEFAULT_PAY_ITEM_NAMES, londonParts, PAY_ITEMS } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, asc, desc, eq, gte, inArray, lt } from "drizzle-orm";
 import Link from "next/link";
@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import { clockSummaries } from "@/lib/clock";
 import { loadPayroll, periodBounds } from "@/lib/payroll";
 import { todayInUk } from "@/lib/rota";
-import { TimesheetList, type Row } from "./forms";
+import { PayItemNamesForm, TimesheetList, type Row } from "./forms";
 import { parsePeriod } from "./period";
 
 const MINUTE = 60_000;
@@ -46,6 +46,7 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
       breaks,
       payroll: await loadPayroll(tx, organisationId, from, to),
       exports: await tx.select().from(schema.payrollExport).orderBy(desc(schema.payrollExport.createdAt)).limit(5),
+      payItemNames: (await tx.select({ names: schema.organisation.payItemNames }).from(schema.organisation).where(eq(schema.organisation.id, organisationId)))[0]?.names ?? {},
     };
   });
 
@@ -102,6 +103,7 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
     };
   });
   const { lines, unconfirmed, sspPence, shortNoticePence } = data.payroll;
+  const missingIds = lines.filter((l) => !data.payroll.payrollIds.get(l.workerId));
   const total = lines.reduce((s, l) => s + l.grossPence + (shortNoticePence.get(l.workerId) ?? 0), 0);
   const hasTravel = lines.some((l) => l.travelHours > 0);
   const query$ = `from=${from}&to=${to}`;
@@ -212,6 +214,38 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
               normally works; sickness that began before 6 April 2026 is not included.
             </p>
           </>
+        )}
+        {lines.length > 0 && (
+          <div className="mt-8">
+            <h3 id="send-heading" className="font-semibold">Send to your payroll software</h3>
+            <p className="mt-1">
+              The pay items file has one line per person for each kind of pay, with their payroll ID. Most payroll software, such as BrightPay, Sage,
+              Xero or QuickBooks, can import a file like this once you match its columns the first time. Holiday is sent as time taken, so your payroll
+              software works out holiday pay.
+            </p>
+            {missingIds.length > 0 && (
+              <p role="alert" className="mt-3 rounded-lg border border-amber-500 p-3">
+                Add a payroll ID for {missingIds.map((l, i) => (
+                  <span key={l.workerId}>
+                    {i > 0 && (i === missingIds.length - 1 ? " and " : ", ")}
+                    <Link href={`/staff/${l.workerId}#payroll`} className="underline">{l.name}</Link>
+                  </span>
+                ))}{" "}
+                so their pay lands on the right person. It is the employee number in your payroll software.
+              </p>
+            )}
+            <a href={`/timesheets/pay-items?${query$}`} className="mt-3 inline-block rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover">
+              Download pay items file (CSV)
+            </a>
+            <details className="mt-3">
+              <summary className="cursor-pointer underline">Use your payroll software&apos;s names for each kind of pay</summary>
+              <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+                If your payroll software calls basic pay something else, for example &quot;Hourly&quot;, type its name here so the import matches. Leave a box empty
+                to use the name shown.
+              </p>
+              <PayItemNamesForm items={PAY_ITEMS.map((item) => ({ item, standard: DEFAULT_PAY_ITEM_NAMES[item], name: data.payItemNames[item] ?? "" }))} />
+            </details>
+          </div>
         )}
         {data.exports.length > 0 && (
           <div className="mt-6">

@@ -94,5 +94,14 @@ export const loadPayroll = async (tx: Transaction, organisationId: string, from:
     if (pence > 0) sspPence.set(workerId, pence);
   }
 
-  return { lines, unconfirmed: unconfirmed.length, tipsPence, sspPence, shortNoticePence };
+  return {
+    lines,
+    unconfirmed: unconfirmed.length,
+    tipsPence,
+    sspPence,
+    shortNoticePence,
+    paysTravelTime: organisation?.paysTravelTime ?? false,
+    payrollIds: new Map(workers.map((w) => [w.id, w.payrollId])),
+    irregularHours: new Set(workers.filter((w) => w.irregularHours).map((w) => w.id)),
+  };
 };
