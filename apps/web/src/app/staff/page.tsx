@@ -11,11 +11,13 @@ const pounds = (pence: number) => `£${(pence / 100).toFixed(2)}`;
 export default async function StaffPage() {
   const { organisationId } = await requireManager();
   const today = todayInUk();
-  const { workers, rates, rtw } = await withOrganisation(db, organisationId, async (tx) => ({
-    workers: await tx.select().from(schema.worker).orderBy(asc(schema.worker.fullName)),
+  const { everyone, rates, rtw } = await withOrganisation(db, organisationId, async (tx) => ({
+    everyone: await tx.select().from(schema.worker).orderBy(asc(schema.worker.fullName)),
     rates: await tx.select().from(schema.payRate).orderBy(desc(schema.payRate.effectiveFrom)),
     rtw: await tx.select().from(schema.workerCheck).where(eq(schema.workerCheck.kind, "right_to_work")),
   }));
+  const workers = everyone.filter((w) => !w.leftOn);
+  const leavers = everyone.filter((w) => w.leftOn).sort((a, b) => b.leftOn!.localeCompare(a.leftOn!));
   const hasRightToWork = (workerId: string) =>
     rtw.some((c) => c.workerId === workerId && c.checkedOn <= today && (!c.expiresOn || c.expiresOn >= today));
 
@@ -52,6 +54,20 @@ export default async function StaffPage() {
             })}
           </tbody>
         </table>
+      )}
+      {leavers.length > 0 && (
+        <details className="mt-6">
+          <summary className="cursor-pointer font-medium">People who have left ({leavers.length})</summary>
+          <p className="mt-2 text-sm text-muted">Their records are kept for payroll and working-time checks. They are not put on rotas or counted in your price.</p>
+          <ul className="mt-2 flex flex-col gap-1">
+            {leavers.map((w) => (
+              <li key={w.id}>
+                <Link href={`/staff/${w.id}`} className="underline">{w.fullName}</Link>
+                <span className="text-muted">, last day {w.leftOn}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
       <AddWorkerForm />
     </main>

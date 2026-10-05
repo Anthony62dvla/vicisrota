@@ -113,6 +113,21 @@ export const organisation = pgTable("organisation", {
   shortNoticePayPercent: smallint("short_notice_pay_percent").notNull().default(100),
   /** What the business's payroll software calls each kind of pay, where it differs from VicisRota's names. */
   payItemNames: jsonb("pay_item_names").$type<Partial<Record<"basic" | "travel" | "holiday" | "ssp" | "tips" | "shortNotice", string>>>().notNull().default({}),
+  /** Unlimited staff until then. Afterwards the first five people stay free (see PRICING). */
+  trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }).default(sql`now() + interval '30 days'`),
+  /** The registered charity or CIC number the business gave, if any. */
+  charityNumber: text("charity_number"),
+  /** Set by VicisRota once the charity or CIC number has been checked: halves the price. */
+  charityApproved: boolean("charity_approved").notNull().default(false),
+  stripeCustomerId: text("stripe_customer_id").unique(),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  /** Stripe's status for the subscription, such as active or past_due. Null without one. */
+  subscriptionStatus: text("subscription_status"),
+  billingInterval: text("billing_interval").$type<"month" | "year">(),
+  /** When payments started failing, for the 14 days' grace. */
+  pastDueSince: timestamp("past_due_since", { withTimezone: true }),
+  /** The band Stripe is charging for (its upTo), so Stripe is only told when the team moves band. */
+  planBand: integer("plan_band"),
   createdAt: createdAt(),
 });
 
@@ -161,6 +176,11 @@ export const worker = pgTable(
     irregularHours: boolean("irregular_hours").notNull().default(false),
     /** The person's employee number in the business's payroll software, so imported pay lands on the right person. */
     payrollId: text("payroll_id"),
+    /**
+     * The person's last day, once they have left. Their records are kept, but they are no longer put on
+     * rotas, sent messages or counted for the price.
+     */
+    leftOn: date("left_on"),
     /** Hashed PIN for clocking in on an in-store tablet. */
     pinHash: text("pin_hash"),
     pinFailures: smallint("pin_failures").notNull().default(0),

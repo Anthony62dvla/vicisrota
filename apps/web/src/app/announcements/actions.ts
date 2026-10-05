@@ -33,7 +33,7 @@ export async function postAnnouncement(_: FormState, form: FormData): Promise<Fo
       entityId: row!.id,
       data: { title, needsConfirmation },
     });
-    const staff = await tx.select({ id: schema.worker.id }).from(schema.worker).where(isNotNull(schema.worker.userId));
+    const staff = await tx.select({ id: schema.worker.id }).from(schema.worker).where(and(isNotNull(schema.worker.userId), isNull(schema.worker.leftOn)));
     return { id: row!.id, staff };
   });
   // App notifications only: they are free, and announcements are never urgent enough to text.

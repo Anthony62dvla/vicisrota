@@ -1,6 +1,6 @@
 import { addDays, evaluate, londonParts, weekCost, weekStart as mondayOf, type Finding } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
-import { and, asc, desc, eq, gte, inArray, lt, lte, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, ne, or } from "drizzle-orm";
 import Link from "next/link";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
@@ -27,7 +27,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
   const previous = weekBounds(addDays(week, -7));
 
   const { workers, training, clients, shifts, claims, leave, decision, rates, breaks, paysTravelTime, shortNoticeHours, lastWeek, roles, requirements, unavailable, workerRoles, recent, checks } = await withOrganisation(db, organisationId, async (tx) => ({
-    workers: await tx.select().from(schema.worker).orderBy(asc(schema.worker.fullName)),
+    workers: await tx.select().from(schema.worker).where(or(isNull(schema.worker.leftOn), gte(schema.worker.leftOn, week))).orderBy(asc(schema.worker.fullName)),
     clients:
       sector === "care"
         ? await tx

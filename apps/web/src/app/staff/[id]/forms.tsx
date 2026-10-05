@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { addCheck, addTraining, inviteStaff, saveAdjustments, setMobile, updateHolidaySettings, updatePayrollId, addSupervision, type FormState, type InviteState } from "./actions";
+import { addCheck, addTraining, inviteStaff, markBack, markLeft, saveAdjustments, setMobile, updateHolidaySettings, updatePayrollId, addSupervision, type FormState, type InviteState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 const button = "rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover disabled:opacity-60";
@@ -249,6 +249,32 @@ export function AdjustmentsForm({ workerId, current }: { workerId: string; curre
         <textarea name="note" rows={3} defaultValue={v?.note ?? current.note ?? ""} className={input} />
       </label>
       <button type="submit" disabled={pending} className={`${button} self-start`}>{pending ? "Saving…" : "Save adjustments"}</button>
+    </form>
+  );
+}
+
+/** Marking someone as having left, or bringing them back. */
+export function LeavingForm({ workerId, name, leftOn, today }: { workerId: string; name: string; leftOn: string | null; today: string }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(leftOn ? markBack : markLeft, {});
+  return (
+    <form action={action} className="mt-3 flex max-w-md flex-col gap-3">
+      <Message state={state} />
+      <input type="hidden" name="workerId" value={workerId} />
+      {leftOn ? (
+        <button type="submit" disabled={pending} className={`${button} self-start`}>
+          {name} is back on the team
+        </button>
+      ) : (
+        <>
+          <label className="flex flex-col gap-1">
+            <span className="font-medium">Their last day</span>
+            <input name="leftOn" type="date" required defaultValue={today} className={input} />
+          </label>
+          <button type="submit" disabled={pending} className={`${button} self-start`}>
+            Mark {name} as left
+          </button>
+        </>
+      )}
     </form>
   );
 }

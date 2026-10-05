@@ -14,6 +14,7 @@ import { requestId } from "@/lib/request";
 import { checkAssignment } from "@/lib/claims";
 import { loadComplianceContext, loadWeekChecks, weekBounds } from "@/lib/rota";
 import { owedMessage, recordShortNotice } from "@/lib/short-notice";
+import { planningBlocked } from "@/lib/plan";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME = /^\d{2}:\d{2}$/;
@@ -346,6 +347,8 @@ export async function checkAndPublish(_: FormState, form: FormData): Promise<For
   const { user, organisationId, businessName } = await requireManager();
   const weekStart = String(form.get("weekStart") ?? "");
   if (!DATE.test(weekStart)) return { error: "Choose a week." };
+  const paused = await planningBlocked(organisationId);
+  if (paused) return { error: paused };
   const reference = await requestId();
   const { from, to } = weekBounds(weekStart);
 
@@ -574,7 +577,11 @@ export async function fillOpenShifts(_: FormState, form: FormData): Promise<Form
     if (!drafts.length) return null;
     const ids = new Set(drafts.map((d) => d.id));
     const { context, open } = await loadWeekChecks(tx, organisationId, weekStart);
-    const plan = autoAssign(context, open.filter((s) => ids.has(s.id)), weekStart);
+    // Nobody who has left, or leaves this week, is given new shifts.
+    const leaving = new Set(
+      (await tx.select({ id: schema.worker.id }).from(schema.worker).where(lt(schema.worker.leftOn, addDays(weekStart, 6)))).map((w) => w.id),
+    );
+    const plan = autoAssign({ ...context, workers: context.workers.filter((w) => !leaving.has(w.id)) }, open.filter((s) => ids.has(s.id)), weekStart);
     for (const a of plan.assigned) {
       await tx.update(schema.shift).set({ workerId: a.workerId }).where(and(eq(schema.shift.id, a.shiftId), isNull(schema.shift.workerId)));
     }

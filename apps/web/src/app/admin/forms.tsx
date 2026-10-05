@@ -2,7 +2,7 @@
 
 import { PACKS } from "@/lib/sector-packs";
 import { useActionState } from "react";
-import { newOwnerLink, onboardBusiness, type OnboardState } from "./actions";
+import { approveCharity, newOwnerLink, onboardBusiness, type OnboardState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 const button = "self-start rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover disabled:opacity-60";
@@ -64,6 +64,17 @@ export function NewOwnerLinkButton({ organisationId }: { organisationId: string 
       <button type="submit" disabled={pending} className="self-start rounded-lg border border-zinc-500 px-3 py-1 text-sm disabled:opacity-60">
         {pending ? "Making link…" : "Make a new owner link"}
       </button>
+    </form>
+  );
+}
+
+export function ApproveCharityButton({ organisationId }: { organisationId: string }) {
+  const [state, action, pending] = useActionState<OnboardState, FormData>(approveCharity, {});
+  return (
+    <form action={action} className="mt-2 flex flex-col gap-2">
+      <Result state={state} />
+      <input type="hidden" name="organisationId" value={organisationId} />
+      <button type="submit" disabled={pending} className={button}>Number checked: turn on charity price</button>
     </form>
   );
 }

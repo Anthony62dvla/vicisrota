@@ -1,4 +1,4 @@
-import { evaluate, type Context } from "@vicisrota/compliance";
+import { BANDS, evaluate, PRICING, type Context } from "@vicisrota/compliance";
 import Link from "next/link";
 import { Icon, Logo, type IconName } from "./icons";
 
@@ -191,7 +191,38 @@ export default function Home() {
           </ul>
         </section>
 
-        <section className="mx-auto max-w-6xl px-4 pb-16 lg:px-8">
+        <section aria-labelledby="pricing" className="border-y border-line bg-surface py-16">
+          <div className="mx-auto max-w-6xl px-4 lg:px-8">
+            <h2 id="pricing" className="text-2xl font-semibold sm:text-3xl">
+              Simple pricing
+            </h2>
+            <p className="mt-2 max-w-2xl text-muted">
+              One price for your team size, with every feature included. Free for up to {PRICING.freeStaff} people, for good. Pay yearly and get{" "}
+              {12 - PRICING.yearlyMonths} months free. Charities and CICs pay half.
+            </p>
+            <ul className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+              <li className="rounded-xl border border-line p-5">
+                <p className="font-semibold">Up to {PRICING.freeStaff} people</p>
+                <p className="mt-2 text-3xl font-bold text-heading">Free</p>
+              </li>
+              {BANDS.map((b, i) => (
+                <li key={b.upTo} className="rounded-xl border border-line p-5">
+                  <p className="font-semibold">
+                    {(i === 0 ? PRICING.freeStaff : BANDS[i - 1]!.upTo) + 1} to {b.upTo} people
+                  </p>
+                  <p className="mt-2 text-3xl font-bold text-heading">£{b.monthPence / 100}</p>
+                  <p className="text-sm text-muted">a month</p>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-4 text-muted">
+              More than {BANDS.at(-1)!.upTo} people? We agree a price with you. Start with a {PRICING.trialDays}-day free trial for any size of team, with no card needed. Safety features never switch off, whatever
+              happens with payment.
+            </p>
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-6xl px-4 py-16 lg:px-8">
           <div className="rounded-2xl bg-[#164e63] px-6 py-10 text-center sm:px-10 dark:bg-[#0c3442]">
             <h2 className="text-2xl font-semibold text-white sm:text-3xl">Ready for your first rota?</h2>
             <p className="mx-auto mt-3 max-w-xl text-cyan-50">Set up takes a few minutes, and a checklist guides you one step at a time.</p>

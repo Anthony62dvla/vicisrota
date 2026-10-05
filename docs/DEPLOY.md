@@ -109,6 +109,16 @@ Until then, texts are written to the log and not sent. Send me the provider's AP
 
 **Turning on the support assistant.** Customers report problems from **Report a problem**, and you answer them from **Open support inbox** in the superadmin area. To have the assistant suggest a triage and a reply for each report, create an API key at https://platform.claude.com, paste it into `ANTHROPIC_API_KEY` in `app.env`, then run `./update.sh`. Nothing is sent to a customer until you send it.
 
+**Switching on payments.** Until this is done, nothing is ever paused or charged. Do it in Stripe's test mode first, so no real money moves:
+
+1. In Stripe, switch to **Test mode**, then go to **Developers → API keys** and copy the secret key (it starts `sk_test_`).
+2. Go to **Developers → Webhooks → Add endpoint**. Use `https://www.vicisrota.app/api/stripe/webhook` and choose these events: `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`. Copy its signing secret (it starts `whsec_`).
+3. Go to **Settings → Billing → Customer portal** and press **Save**, so customers can change their card and cancel.
+4. Run `nano /opt/vicisrota/deploy/app.env`, fill in `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`, save, and run `./update.sh`.
+5. Try **Plan and billing** with Stripe's test card 4242 4242 4242 4242, any future date and any 3 digits.
+
+When it all works, repeat steps 1 to 4 with Stripe's live keys. Prices and bands are set in `packages/compliance/src/plan.ts`.
+
 **Backups.**
 
 - A backup of the database is saved every night at about 02:30 to `/opt/vicisrota/deploy/backups`, and the last 30 are kept.

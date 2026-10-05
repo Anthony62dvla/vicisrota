@@ -59,6 +59,7 @@ export const managerNav = (sector: Sector, superadmin: boolean, kind: string | n
     title: null,
     items: [
       item("/display", "Display and language", "display"),
+      item("/billing", "Plan and billing", "billing"),
       item("/help", "Report a problem", "help"),
       ...(superadmin ? [item("/admin", "VicisRota superadmin", "admin")] : []),
     ],
