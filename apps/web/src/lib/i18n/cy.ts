@@ -10,7 +10,7 @@ export const cy: Messages = {
     "/me/wellbeing": "Llesiant",
     "/me/profile": "Sut rwy'n gweithio orau",
     "/me/concern": "Codi pryder",
-    "/display": "Gosodiadau arddangos",
+    "/display": "Arddangos ac iaith",
     "/help": "Rhoi gwybod am broblem",
   },
 

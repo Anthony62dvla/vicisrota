@@ -29,7 +29,11 @@ export function AppFrame({ nav, children }: { nav: Nav | null; children: ReactNo
         <div className="flex-1">{children}</div>
         <footer className="mx-auto w-full max-w-6xl px-4 pb-6 text-sm text-muted lg:px-8">
           <Link href="/display" className="underline">
-            Display settings
+            Display and language
+          </Link>
+          <span aria-hidden> · </span>
+          <Link href="/display#language-heading" className="underline">
+            <span lang="cy">Iaith</span> · <span lang="pl">Język</span> · <span lang="ro">Limba</span>
           </Link>
         </footer>
       </>

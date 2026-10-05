@@ -10,7 +10,7 @@ export const ro: Messages = {
     "/me/wellbeing": "Starea ta",
     "/me/profile": "Cum lucrez cel mai bine",
     "/me/concern": "Semnalează o îngrijorare",
-    "/display": "Setări de afișare",
+    "/display": "Afișare și limbă",
     "/help": "Raportează o problemă",
   },
 

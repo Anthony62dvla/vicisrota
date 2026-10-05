@@ -18,9 +18,9 @@ export default async function DisplayPage({ searchParams }: PageProps<"/display"
           <Link href={back} className="underline">Go back</Link>
         </p>
       )}
-      <h1 className="mt-2 text-2xl font-semibold">Display settings</h1>
+      <h1 className="mt-2 text-2xl font-semibold">Display and language</h1>
       <p className="mt-2">
-        Choose how VicisRota looks for you. These settings are saved on this phone or computer only, so you can set each device the way
+        Choose your language and how VicisRota looks for you. The look settings are saved on this phone or computer only, so you can set each device the way
         that suits you. Your workplace cannot see them.
       </p>
       <section lang={localeOf(lang)} className="mt-6 rounded-lg border border-zinc-300 p-4 dark:border-zinc-700" aria-labelledby="language-heading">

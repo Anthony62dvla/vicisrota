@@ -58,7 +58,7 @@ export const managerNav = (sector: Sector, superadmin: boolean, kind: string | n
   {
     title: null,
     items: [
-      item("/display", "Display settings", "display"),
+      item("/display", "Display and language", "display"),
       item("/help", "Report a problem", "help"),
       ...(superadmin ? [item("/admin", "VicisRota superadmin", "admin")] : []),
     ],
@@ -85,7 +85,7 @@ export const staffNav: NavSection[] = [
       item("/me/wellbeing", "Wellbeing", "wellbeing"),
       item("/me/profile", "How I work best", "profile"),
       item("/me/concern", "Raise a concern", "concern"),
-      item("/display", "Display settings", "display"),
+      item("/display", "Display and language", "display"),
       item("/help", "Report a problem", "help"),
     ],
   },

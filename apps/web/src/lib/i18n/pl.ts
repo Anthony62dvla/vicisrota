@@ -10,7 +10,7 @@ export const pl: Messages = {
     "/me/wellbeing": "Samopoczucie",
     "/me/profile": "Jak najlepiej pracuję",
     "/me/concern": "Zgłoś obawę",
-    "/display": "Ustawienia wyświetlania",
+    "/display": "Wyświetlanie i język",
     "/help": "Zgłoś błąd w aplikacji",
   },
 
