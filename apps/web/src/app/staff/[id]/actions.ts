@@ -547,3 +547,45 @@ export async function saveSundayOptOut(_: FormState, form: FormData): Promise<Fo
   revalidatePath("/rota");
   return result;
 }
+
+/** Records or removes the council work permit for a child of school age. */
+export async function saveChildPermit(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  const council = String(form.get("council") ?? "").trim().slice(0, 120);
+  const reference = String(form.get("reference") ?? "").trim().slice(0, 60);
+  const expiresOn = String(form.get("permitExpiresOn") ?? "");
+  if (expiresOn && !DATE.test(expiresOn)) return { error: "Enter the date the permit ends, or leave it blank." };
+  const childWorkPermit = council ? { council, ...(reference ? { reference } : {}), ...(expiresOn ? { expiresOn } : {}) } : null;
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
+    const rows = await tx.update(schema.worker).set({ childWorkPermit }).where(eq(schema.worker.id, workerId)).returning({ name: schema.worker.fullName });
+    if (!rows.length) return { error: "That person could not be found." };
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "update", entity: "child_work_permit", entityId: workerId, data: { held: !!childWorkPermit } });
+    return { ok: childWorkPermit ? `Work permit saved for ${rows[0]!.name}.` : `Work permit removed for ${rows[0]!.name}.` };
+  });
+  revalidatePath(`/staff/${workerId}`);
+  revalidatePath("/rota");
+  return result;
+}
+
+const OUTCOMES = ["offered", "taken", "declined"];
+
+/** Records that a night worker was offered a free health assessment. The result itself is never recorded. */
+export async function addNightHealth(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  const offeredOn = String(form.get("offeredOn") ?? "");
+  const outcome = String(form.get("outcome") ?? "offered");
+  if (!DATE.test(offeredOn)) return { error: "Enter the date it was offered." };
+  if (!OUTCOMES.includes(outcome)) return { error: "Choose what happened." };
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
+    const [w] = await tx.select({ name: schema.worker.fullName }).from(schema.worker).where(eq(schema.worker.id, workerId));
+    if (!w) return { error: "That person could not be found." };
+    const [row] = await tx.insert(schema.nightHealthAssessment).values({ organisationId, workerId, offeredOn, outcome, recordedByUserId: user.id }).returning({ id: schema.nightHealthAssessment.id });
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "create", entity: "night_health_assessment", entityId: row!.id, data: { workerId, outcome } });
+    return { ok: `Health assessment offer recorded for ${w.name}.` };
+  });
+  revalidatePath(`/staff/${workerId}`);
+  revalidatePath("/rota");
+  return result;
+}

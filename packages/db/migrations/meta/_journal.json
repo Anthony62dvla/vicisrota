@@ -498,6 +498,13 @@
       "when": 1791310570897,
       "tag": "0070_sunday_opt_out",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1791310747959,
+      "tag": "0071_child_permits_night_health",
+      "breakpoints": true
     }
   ]
 }

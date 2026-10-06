@@ -231,6 +231,8 @@ export const worker = pgTable(
     /** Supplied by an employment agency (Agency Workers Regulations 2010). Null: hired directly. */
     /** Shop or betting worker's notice opting out of Sunday work, and whether the explanatory statement was given in time. */
     sundayOptOut: jsonb("sunday_opt_out").$type<{ noticeGivenOn: string; statementGiven: boolean }>(),
+    /** Children of school age: the council's work permit (Children and Young Persons Act 1933). */
+    childWorkPermit: jsonb("child_work_permit").$type<{ council: string; reference?: string; expiresOn?: string }>(),
     agency: jsonb("agency").$type<{ agencyName: string; startedOn: string; role?: string }>(),
     /** Hashed PIN for clocking in on an in-store tablet. */
     pinHash: text("pin_hash"),
@@ -686,6 +688,27 @@ export const writtenStatement = pgTable(
     readAt: timestamp("read_at", { withTimezone: true }),
   },
   (t) => [index("written_statement_worker_idx").on(t.workerId, t.issuedAt)],
+);
+
+/**
+ * A free health assessment offered to a night worker (Working Time Regulations 1998, reg 7). Only the date and
+ * whether it was taken up are kept, never the result, which stays between the person and the health professional.
+ */
+export const nightHealthAssessment = pgTable(
+  "night_health_assessment",
+  {
+    id: id(),
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    offeredOn: date("offered_on").notNull(),
+    /** offered: waiting for an answer; taken: they had it; declined: they chose not to. */
+    outcome: text("outcome").notNull().default("offered"),
+    recordedByUserId: text("recorded_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("night_health_worker_idx").on(t.workerId, t.offeredOn)],
 );
 
 /** Expected sales for one day, entered by a manager, to compare wages against (hospitality). */

@@ -72,6 +72,11 @@ export const loadWeekChecks = async (
     tx.select().from(schema.workerRole),
   ]);
   // Keeping in touch days: agreed days of work during family leave.
+  const health = await tx
+    .select({ workerId: schema.nightHealthAssessment.workerId, offeredOn: schema.nightHealthAssessment.offeredOn })
+    .from(schema.nightHealthAssessment);
+  const lastOffered = new Map<string, string>();
+  for (const h of health) if ((lastOffered.get(h.workerId) ?? "") < h.offeredOn) lastOffered.set(h.workerId, h.offeredOn);
   const places = await tx.select({ id: schema.location.id, name: schema.location.name, licensing: schema.location.licensing }).from(schema.location);
   const apart = await tx.select({ a: schema.keepApart.firstWorkerId, b: schema.keepApart.secondWorkerId }).from(schema.keepApart);
   const kit = leave.length ? await tx.select().from(schema.keepingInTouchDay).where(inArray(schema.keepingInTouchDay.leaveRequestId, leave.map((l) => l.id))) : [];
@@ -136,6 +141,8 @@ export const loadWeekChecks = async (
       // The note explaining why stays out of the rota check.
       adjustments: { maxShiftHours: w.adjustments.maxShiftHours, earliestStart: w.adjustments.earliestStart, latestFinish: w.adjustments.latestFinish },
       roles: workerRoles.filter((r) => r.workerId === w.id).map((r) => r.roleId),
+      childWorkPermit: w.childWorkPermit ? { expiresOn: w.childWorkPermit.expiresOn } : null,
+      nightHealthOfferedOn: lastOffered.get(w.id) ?? null,
       sundayOptOutFrom: w.sundayOptOut ? sundayOptOutFrom(w.sundayOptOut.noticeGivenOn, w.sundayOptOut.statementGiven) : null,
     })),
     payRates: rates.map((r) => ({ workerId: r.workerId, hourlyPence: r.hourlyPence, effectiveFrom: r.effectiveFrom })),

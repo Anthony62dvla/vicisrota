@@ -1,4 +1,4 @@
-import { SUNDAY_LEGAL_REF, sundayOptOutFrom } from "@vicisrota/compliance";
+import { CHILD_LEGAL_REF, isSchoolAge, NIGHT_HEALTH_LEGAL_REF, schoolLeavingDate, SUNDAY_LEGAL_REF, sundayOptOutFrom } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, asc, desc, eq, isNull, ne, or } from "drizzle-orm";
 import Link from "next/link";
@@ -12,7 +12,7 @@ import { AvailabilityEditor } from "../../availability-editor";
 import { addStaffUnavailable, removeKeepApart, removeStaffUnavailable, removeTraining } from "./actions";
 import { formatUkMobile } from "@vicisrota/messaging";
 import { WorkerRolesForm } from "../../roles/forms";
-import { AddCheckForm, AddTrainingForm, AgencyForm, AdjustmentsForm, HolidaySettingsForm, InviteForm, KeepApartForm, LeavingForm, MobileForm, PayrollIdForm, PersonalLicenceForm, SponsorshipForm, SundayOptOutForm, SupervisionForm } from "./forms";
+import { AddCheckForm, AddTrainingForm, AgencyForm, ChildPermitForm, NightHealthForm, AdjustmentsForm, HolidaySettingsForm, InviteForm, KeepApartForm, LeavingForm, MobileForm, PayrollIdForm, PersonalLicenceForm, SponsorshipForm, SundayOptOutForm, SupervisionForm } from "./forms";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DBS_LABEL = { basic: "Basic", standard: "Standard", enhanced: "Enhanced", enhanced_barred: "Enhanced with barred list" };
@@ -58,11 +58,12 @@ export default async function StaffRecordPage({ params, searchParams }: PageProp
         .from(schema.worker)
         .where(and(ne(schema.worker.id, id), isNull(schema.worker.leftOn)))
         .orderBy(asc(schema.worker.fullName)),
+      nightHealth: await tx.select().from(schema.nightHealthAssessment).where(eq(schema.nightHealthAssessment.workerId, id)).orderBy(desc(schema.nightHealthAssessment.offeredOn)),
       known: (await tx.select({ name: schema.qualification.name }).from(schema.qualification).orderBy(asc(schema.qualification.name))).map((q) => q.name),
     };
   });
   if (!data) notFound();
-  const { worker, checks, training, known, holiday, login, unavailable, roles, held, supervisions, apart, colleagues } = data;
+  const { worker, checks, training, known, holiday, login, unavailable, roles, held, supervisions, apart, colleagues, nightHealth } = data;
   const balance = holiday.balances.get(worker.id)!;
   const rtw = checks.filter((c) => c.kind === "right_to_work");
   const dbs = checks.filter((c) => c.kind === "dbs");
@@ -225,6 +226,35 @@ export default async function StaffRecordPage({ params, searchParams }: PageProp
           />
         </section>
       )}
+
+      {(isSchoolAge(worker.dateOfBirth, today) || worker.childWorkPermit) && (
+        <section id="child-permit" className="mt-8 scroll-mt-4" aria-labelledby="child-permit-heading">
+          <h2 id="child-permit-heading" className="text-lg font-semibold">Work permit (school age)</h2>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+            {worker.fullName} is of school age until {ukDate(schoolLeavingDate(worker.dateOfBirth))}. Until then they need a work permit from the council
+            where they go to school, and can only do light work within set hours. The rota checks these limits. Based on: {CHILD_LEGAL_REF}.
+          </p>
+          <ChildPermitForm workerId={worker.id} current={worker.childWorkPermit ?? null} />
+        </section>
+      )}
+
+      <section id="night-health" className="mt-8 scroll-mt-4" aria-labelledby="night-health-heading">
+        <h2 id="night-health-heading" className="text-lg font-semibold">Night work health assessments</h2>
+        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+          Anyone who works at least 3 hours between 11pm and 6am must be offered a free health assessment before they start nights, and every year after.
+          Only record the offer and whether they took it up, never the result. Based on: {NIGHT_HEALTH_LEGAL_REF}.
+        </p>
+        {nightHealth.length > 0 && (
+          <ul className="mt-2 list-disc pl-6">
+            {nightHealth.map((h) => (
+              <li key={h.id}>
+                Offered {ukDate(h.offeredOn)}: {h.outcome === "taken" ? "they had the assessment" : h.outcome === "declined" ? "they chose not to have it" : "waiting for an answer"}
+              </li>
+            ))}
+          </ul>
+        )}
+        <NightHealthForm workerId={worker.id} today={today} />
+      </section>
 
       <section id="agency" className="mt-8 scroll-mt-4" aria-labelledby="agency-heading">
         <h2 id="agency-heading" className="text-lg font-semibold">Agency worker</h2>

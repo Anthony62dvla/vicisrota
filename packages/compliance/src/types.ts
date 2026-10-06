@@ -23,6 +23,10 @@ export interface Worker {
   roles?: string[] | undefined;
   /** Shop or betting worker who has given notice to opt out of Sunday work: the date the notice ends. */
   sundayOptOutFrom?: LocalDate | null | undefined;
+  /** Children of school age: the council work permit, if one is recorded. */
+  childWorkPermit?: { expiresOn?: LocalDate | undefined } | null | undefined;
+  /** Night workers: the last date a free health assessment was offered. */
+  nightHealthOfferedOn?: LocalDate | null | undefined;
 }
 
 /** A weekly time someone cannot work, in UK time. weekday: 1 = Monday to 7 = Sunday. to may be "24:00". */
