@@ -105,6 +105,11 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
   return (
     <main className="mx-auto w-full max-w-4xl px-4 py-8 lg:px-8">
       <h1 className="text-2xl font-semibold">VicisRota superadmin</h1>
+      {!admin.twoFactorEnabled && (
+        <p role="alert" className="mt-3 rounded-lg border-2 border-amber-500 p-3">
+          Your superadmin login can open every business. Turn on <Link href="/security" className="underline">two-step sign-in</Link> to protect it.
+        </p>
+      )}
       <p className="mt-2 text-zinc-700 dark:text-zinc-300">
         Every business signed up to VicisRota, support, onboarding and error references. Only counts and progress are shown: never staff names, shifts, sickness,
         adjustments or safeguarding concerns. Everything you do here is recorded.

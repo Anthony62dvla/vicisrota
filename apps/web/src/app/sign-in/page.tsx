@@ -15,14 +15,17 @@ export default function SignIn() {
   async function onSubmit(form: FormData) {
     setPending(true);
     setError(null);
-    const { error } = await authClient.signIn.email({
+    const { data, error } = await authClient.signIn.email({
       email: String(form.get("email")),
       password: String(form.get("password")),
     });
     setPending(false);
     if (error) return setError("That email and password do not match. Please check them and try again.");
     // After accepting an invitation link, return to it; otherwise the dashboard sends people to the right place.
-    router.push(safeNextPath(new URLSearchParams(window.location.search).get("next")) ?? "/dashboard");
+    const next = safeNextPath(new URLSearchParams(window.location.search).get("next")) ?? "/dashboard";
+    // People with two-step sign-in turned on enter a code from their app next.
+    if (data && "twoFactorRedirect" in data && data.twoFactorRedirect) return router.push(`/sign-in/two-step?next=${encodeURIComponent(next)}`);
+    router.push(next);
   }
 
   return (

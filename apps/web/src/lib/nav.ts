@@ -64,6 +64,7 @@ export const managerNav = (sector: Sector, superadmin: boolean, kind: string | n
     items: [
       item("/display", "Display and language", "display"),
       item("/billing", "Plan and billing", "billing"),
+      item("/security", "Sign-in security", "security"),
       item("/help", "Report a problem", "help"),
       ...(superadmin ? [item("/admin", "VicisRota superadmin", "admin")] : []),
     ],
@@ -91,6 +92,7 @@ export const staffNav: NavSection[] = [
       item("/me/profile", "How I work best", "profile"),
       item("/me/concern", "Raise a concern", "concern"),
       item("/display", "Display and language", "display"),
+      item("/security", "Sign-in security", "security"),
       item("/help", "Report a problem", "help"),
     ],
   },
@@ -101,7 +103,7 @@ export const staffPhoneBar: NavItem[] = ["/me", "/messages", "/me/easy-read", "/
 
 /** Pages that show without the app menu: signing in, joining, the shared clock-in tablet and the public home page. */
 export const showsMenu = (pathname: string) =>
-  !["/", "/sign-in", "/sign-up", "/kiosk", "/offline", "/terms", "/privacy"].includes(pathname) && !pathname.startsWith("/join/") && !pathname.startsWith("/welcome/") && !pathname.startsWith("/jobs/") && pathname !== "/workplaces/poster";
+  !["/", "/sign-in", "/sign-up", "/kiosk", "/offline", "/terms", "/privacy"].includes(pathname) && !pathname.startsWith("/join/") && !pathname.startsWith("/sign-in/") && !pathname.startsWith("/welcome/") && !pathname.startsWith("/jobs/") && pathname !== "/workplaces/poster";
 
 export const isActive = (pathname: string, item: NavItem) =>
   item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
