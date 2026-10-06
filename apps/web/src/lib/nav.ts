@@ -47,6 +47,7 @@ export const managerNav = (sector: Sector, superadmin: boolean, kind: string | n
       item("/timesheets", "Timesheets", "timesheets"),
       item("/working-time", "Working time", "workingTime"),
       item("/short-notice", "Short-notice pay", "shortNotice"),
+      item("/guaranteed-hours", "Guaranteed hours", "guaranteedHours"),
       ...(has.tips ? [item("/tips", "Tips", "tips")] : []),
     ],
   },

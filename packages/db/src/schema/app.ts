@@ -221,6 +221,8 @@ export const worker = pgTable(
     daysPerWeek: numeric("days_per_week", { precision: 3, scale: 1, mode: "number" }).notNull().default(5),
     /** Irregular hours or part-year: leave accrues at 12.07% of hours worked instead. */
     irregularHours: boolean("irregular_hours").notNull().default(false),
+    /** Hours a week the contract guarantees. 0 is a zero-hours contract. Null: not recorded. */
+    contractedHours: numeric("contracted_hours", { precision: 4, scale: 1, mode: "number" }),
     /** The person's employee number in the business's payroll software, so imported pay lands on the right person. */
     payrollId: text("payroll_id"),
     /**
@@ -711,6 +713,26 @@ export const nightHealthAssessment = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("night_health_worker_idx").on(t.workerId, t.offeredOn)],
+);
+
+/** An offer of guaranteed weekly hours to someone who regularly works more than their contract says. */
+export const guaranteedHoursOffer = pgTable(
+  "guaranteed_hours_offer",
+  {
+    id: id(),
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    offeredOn: date("offered_on").notNull(),
+    weeklyHours: numeric("weekly_hours", { precision: 4, scale: 1, mode: "number" }).notNull(),
+    /** offered, accepted or declined. */
+    status: text("status").notNull().default("offered"),
+    answeredOn: date("answered_on"),
+    recordedByUserId: text("recorded_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("guaranteed_hours_offer_worker_idx").on(t.workerId, t.offeredOn)],
 );
 
 /** Expected sales for one day, entered by a manager, to compare wages against (hospitality). */
