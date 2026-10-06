@@ -100,12 +100,9 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
 
   return (
     <main className="mx-auto w-full max-w-4xl px-4 py-8 lg:px-8">
-      <p>
-        <Link href="/dashboard" className="underline">Dashboard</Link>
-      </p>
-      <h1 className="mt-2 text-2xl font-semibold">VicisRota superadmin</h1>
+      <h1 className="text-2xl font-semibold">VicisRota superadmin</h1>
       <p className="mt-2 text-zinc-700 dark:text-zinc-300">
-        Customer businesses, onboarding and error references. Only counts and progress are shown: never staff names, shifts, sickness,
+        Every business signed up to VicisRota, support, onboarding and error references. Only counts and progress are shown: never staff names, shifts, sickness,
         adjustments or safeguarding concerns. Everything you do here is recorded.
       </p>
 
@@ -122,42 +119,7 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
         </Link>
       </section>
 
-      <section className="mt-8" aria-labelledby="ref-heading">
-        <h2 id="ref-heading" className="text-lg font-semibold">Find an error reference</h2>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">The 8-character reference a customer sees on an error screen. Also search Sentry and the logs for it.</p>
-        <form className="mt-2 flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1">
-            <span className="font-medium">Reference</span>
-            <input name="ref" defaultValue={ref} maxLength={40} className="rounded-lg border border-zinc-400 px-3 py-2 font-mono uppercase" />
-          </label>
-          <button type="submit" className="rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover">Find</button>
-        </form>
-        {ref && (
-          <div className="mt-3" role="status">
-            {matches.length === 0 ? (
-              <p>Nothing was saved under {ref}. The request may have failed before changing anything; check Sentry and the logs.</p>
-            ) : (
-              <ul className="list-disc pl-6">
-                {matches.map((m, i) => (
-                  <li key={i}>
-                    {m.business}: {m.action.replaceAll("_", " ")} ({m.entity.replaceAll("_", " ")}) at {when(m.at)}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-      </section>
-
-      <section className="mt-10" aria-labelledby="onboard-heading">
-        <h2 id="onboard-heading" className="text-lg font-semibold">Set up a new customer</h2>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Creates the business and a link for its owner. Send the link to them yourself: anyone who opens it can take over the business.
-        </p>
-        <OnboardForm />
-      </section>
-
-      <section className="mt-10" aria-labelledby="businesses-heading">
+      <section className="mt-8" aria-labelledby="businesses-heading">
         <h2 id="businesses-heading" className="text-lg font-semibold">Businesses ({rows.length})</h2>
         <p className="mt-1 text-sm text-muted">
           {tally("trial")} on a free trial · {tally("paid")} paying · {tally("free")} on the free plan · {tally("late") + tally("paused")} with a payment
@@ -229,6 +191,44 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
         )}
       </section>
 
+      <section className="mt-8" aria-labelledby="ref-heading">
+        <h2 id="ref-heading" className="text-lg font-semibold">Find an error reference</h2>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">The 8-character reference a customer sees on an error screen. Also search Sentry and the logs for it.</p>
+        <form className="mt-2 flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="font-medium">Reference</span>
+            <input name="ref" defaultValue={ref} maxLength={40} className="rounded-lg border border-zinc-400 px-3 py-2 font-mono uppercase" />
+          </label>
+          <button type="submit" className="rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover">Find</button>
+        </form>
+        {ref && (
+          <div className="mt-3" role="status">
+            {matches.length === 0 ? (
+              <p>Nothing was saved under {ref}. The request may have failed before changing anything; check Sentry and the logs.</p>
+            ) : (
+              <ul className="list-disc pl-6">
+                {matches.map((m, i) => (
+                  <li key={i}>
+                    {m.business}: {m.action.replaceAll("_", " ")} ({m.entity.replaceAll("_", " ")}) at {when(m.at)}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </section>
+
+      <section className="mt-10" aria-labelledby="onboard-heading">
+        <h2 id="onboard-heading" className="text-lg font-semibold">Set up a new customer</h2>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          Creates the business and a link for its owner. Send the link to them yourself: anyone who opens it can take over the business.
+        </p>
+        <OnboardForm />
+      </section>
+
+      <p className="mt-10">
+        <Link href="/dashboard" className="underline">Back to your own business</Link>
+      </p>
     </main>
   );
 }
