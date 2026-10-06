@@ -1,13 +1,16 @@
 "use server";
 
-import { addDays, londonDateTime, londonParts, PAY_ITEMS } from "@vicisrota/compliance";
+import { addDays, dailyHours, londonDateTime, londonParts, matchEmployees, PAY_ITEMS } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
-import { and, eq, inArray, lt } from "drizzle-orm";
+import { and, eq, gte, inArray, lt } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
 import { clockSummaries } from "@/lib/clock";
+import { periodBounds } from "@/lib/payroll";
 import { requestId } from "@/lib/request";
+import { xeroClient, type XeroEarningsRate, type XeroEmployee } from "@/lib/xero";
+import { parsePeriod } from "./period";
 
 const TIME = /^\d{2}:\d{2}$/;
 const MINUTE = 60_000;
@@ -208,4 +211,105 @@ export async function setSleepInPay(_: FormState, form: FormData): Promise<FormS
   revalidatePath("/timesheets");
   revalidatePath("/rota");
   return { ok: sleepInPence === null ? "Sleep-in payment cleared." : `Saved. Each sleep-in is paid £${(sleepInPence / 100).toFixed(2)}, plus the hourly rate for time woken to work.` };
+}
+
+/**
+ * Sends confirmed hours for a pay period to Xero Payroll as draft timesheets, one per person, with a line for each day.
+ * People are matched by their payroll ID (the Xero employee ID) or by name. Nothing is approved in Xero.
+ */
+export async function sendToXero(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const period = parsePeriod(String(form.get("from") ?? ""), String(form.get("to") ?? ""));
+  if ("error" in period) return { error: period.error };
+  const xero = await xeroClient(organisationId);
+  if (!xero) return { error: "Connect Xero first." };
+  const { start, end } = periodBounds(period.from, period.to);
+  const { workers, entries } = await withOrganisation(db, organisationId, async (tx) => ({
+    workers: await tx.select({ id: schema.worker.id, name: schema.worker.fullName, payrollId: schema.worker.payrollId }).from(schema.worker),
+    entries: await tx
+      .select({ entry: schema.timeEntry, kind: schema.shift.kind })
+      .from(schema.timeEntry)
+      .leftJoin(schema.shift, eq(schema.timeEntry.shiftId, schema.shift.id))
+      .where(and(gte(schema.timeEntry.startsAt, start), lt(schema.timeEntry.startsAt, end))),
+  }));
+  try {
+    const employees: XeroEmployee[] = [];
+    for (let page = 1; page <= 20; page++) {
+      const batch = (await xero.get<{ employees?: XeroEmployee[] }>(`/Employees?page=${page}`)).employees ?? [];
+      employees.push(...batch);
+      if (batch.length < 100) break;
+    }
+    const rates = (await xero.get<{ earningsRates?: XeroEarningsRate[] }>("/EarningsRates")).earningsRates ?? [];
+    const ordinary = rates.find((r) => r.earningsType === "OrdinaryEarnings" && r.currentRecord !== false);
+    if (!ordinary) return { error: "Xero has no earnings rate for ordinary hours. Add one in Xero Payroll settings, then try again." };
+    const withHours = workers.filter((w) => entries.some((e) => e.entry.workerId === w.id));
+    const matched = matchEmployees(
+      withHours,
+      employees.map((e) => ({ ...e, id: e.employeeID, name: `${e.firstName} ${e.lastName}` })),
+    );
+    const sent: string[] = [];
+    const skipped: string[] = [];
+    const failed: string[] = [];
+    for (const w of withHours) {
+      const employee = matched.get(w.id);
+      if (!employee?.payrollCalendarID) {
+        skipped.push(w.name);
+        continue;
+      }
+      const days = dailyHours(
+        entries
+          .filter((e) => e.entry.workerId === w.id)
+          .map((e) => ({
+            start: e.entry.startsAt.toISOString(),
+            end: e.entry.endsAt.toISOString(),
+            breakMinutes: e.entry.breakMinutes,
+            sleepIn: e.kind === "sleep_in",
+            awakeMinutes: e.entry.awakeMinutes,
+          })),
+      );
+      if (!days.length) continue;
+      try {
+        await xero.post("/Timesheets", {
+          payrollCalendarID: employee.payrollCalendarID,
+          employeeID: employee.employeeID,
+          startDate: period.from,
+          endDate: period.to,
+          timesheetLines: days.map((d) => ({ date: d.date, earningsRateID: ordinary.earningsRateID, numberOfUnits: d.hours })),
+        });
+        sent.push(w.name);
+      } catch (e) {
+        failed.push(`${w.name}: ${e instanceof Error ? e.message : "Xero refused it"}`);
+      }
+    }
+    await withOrganisation(db, organisationId, async (tx) => {
+      await tx.update(schema.xeroConnection).set({ lastSentAt: new Date() }).where(eq(schema.xeroConnection.id, xero.connectionId));
+      await tx.insert(schema.auditEvent).values({
+        organisationId,
+        actorUserId: user.id,
+        requestId: await requestId(),
+        action: "export",
+        entity: "xero_timesheets",
+        entityId: `${period.from}..${period.to}`,
+        data: { sent: sent.length, skipped: skipped.length, failed: failed.length },
+      });
+    });
+    const parts = [
+      sent.length ? `Sent draft timesheets to ${xero.tenantName} for ${sent.join(", ")}. Check and approve them in Xero.` : "No timesheets were sent.",
+      skipped.length ? `Not matched to anyone in Xero: ${skipped.join(", ")}. Put their Xero employee ID in Payroll ID on their staff record, or make the names match.` : "",
+      failed.length ? `Xero did not accept: ${failed.join(" ")} Check the dates match a pay period in Xero.` : "",
+    ].filter(Boolean);
+    return failed.length || !sent.length ? { error: parts.join(" ") } : { ok: parts.join(" ") };
+  } catch (e) {
+    return { error: `Could not reach Xero: ${e instanceof Error ? e.message : "unknown problem"}. Try again, or connect Xero again.` };
+  }
+}
+
+/** Disconnects Xero. The connection can be made again at any time. */
+export async function disconnectXero() {
+  const { user, organisationId } = await requireManager();
+  await withOrganisation(db, organisationId, async (tx) => {
+    await tx.delete(schema.xeroConnection);
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "delete", entity: "xero_connection", entityId: organisationId });
+  });
+  revalidatePath("/timesheets");
 }

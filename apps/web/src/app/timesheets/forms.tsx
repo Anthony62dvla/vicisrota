@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { confirmAsRostered, confirmClockedHours, saveActualHours, setPayItemNames, setSleepInPay, undoConfirmation, type FormState } from "./actions";
+import { confirmAsRostered, confirmClockedHours, saveActualHours, sendToXero, setPayItemNames, setSleepInPay, undoConfirmation, type FormState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 const small = "rounded-lg border border-zinc-400 px-3 py-1 text-sm disabled:opacity-60";
@@ -176,6 +176,29 @@ export function SleepInPayForm({ pence }: { pence: number | null }) {
           </button>
         </span>
       </label>
+    </form>
+  );
+}
+
+export function SendToXeroForm({ from, to, tenantName }: { from: string; to: string; tenantName: string }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(sendToXero, {});
+  return (
+    <form action={action} className="mt-3 flex flex-col items-start gap-3">
+      <input type="hidden" name="from" value={from} />
+      <input type="hidden" name="to" value={to} />
+      {state.error && (
+        <p role="alert" className="rounded-lg border border-red-400 p-3">
+          {state.error}
+        </p>
+      )}
+      {state.ok && (
+        <p role="status" className="rounded-lg border border-green-600 p-3">
+          {state.ok}
+        </p>
+      )}
+      <button type="submit" disabled={pending} className="rounded-lg border-2 border-brand px-4 py-2 font-medium text-heading disabled:opacity-60">
+        {pending ? "Sending…" : `Send these hours to Xero (${tenantName})`}
+      </button>
     </form>
   );
 }

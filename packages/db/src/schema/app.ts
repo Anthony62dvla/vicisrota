@@ -1096,6 +1096,22 @@ export const kioskDevice = pgTable("kiosk_device", {
   createdAt: createdAt(),
 });
 
+/** A business's link to its Xero payroll. Tokens are encrypted with the app's secret before they are stored. */
+export const xeroConnection = pgTable(
+  "xero_connection",
+  {
+    id: id(),
+    organisationId: orgId(),
+    tenantId: text("tenant_id").notNull(),
+    tenantName: text("tenant_name").notNull(),
+    tokens: text("tokens").notNull(),
+    connectedByUserId: text("connected_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("xero_connection_org_idx").on(t.organisationId)],
+);
+
 /**
  * A key a business gives to other software (its own systems, or tools such as Zapier) to read its rota and hours
  * through the public API. Only a hash is kept; the key is shown once. Not tenant-scoped, because the key is how the

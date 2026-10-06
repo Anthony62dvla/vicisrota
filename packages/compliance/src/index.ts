@@ -45,3 +45,4 @@ export * from "./retention";
 export * from "./martynsLaw";
 export * from "./guaranteedHours";
 export * from "./forecast";
+export * from "./xeroLines";
