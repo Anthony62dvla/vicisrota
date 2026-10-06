@@ -5,7 +5,7 @@ export const LEGAL = {
   email: "hello@vicisrota.app",
   updated: "6 October 2026",
   /** Left out of the pages until filled in. */
-  companyNumber: null as string | null,
+  companyNumber: "14635939" as string | null,
   registeredOffice: null as string | null,
   icoNumber: null as string | null,
 } as const;
