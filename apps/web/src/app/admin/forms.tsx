@@ -2,7 +2,7 @@
 
 import { PACKS } from "@/lib/sector-packs";
 import { useActionState } from "react";
-import { approveCharity, newOwnerLink, onboardBusiness, type OnboardState } from "./actions";
+import { approveCharity, handOverBusiness, newOwnerLink, onboardBusiness, type OnboardState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 const button = "self-start rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover disabled:opacity-60";
@@ -65,6 +65,36 @@ export function NewOwnerLinkButton({ organisationId }: { organisationId: string 
         {pending ? "Making link…" : "Make a new owner link"}
       </button>
     </form>
+  );
+}
+
+export function HandOverForm({ organisationId, businessName, isMember }: { organisationId: string; businessName: string; isMember: boolean }) {
+  const [state, action, pending] = useActionState<OnboardState, FormData>(handOverBusiness, {});
+  const v = state.values;
+  return (
+    <details className="mt-2 text-sm">
+      <summary className="cursor-pointer font-medium">Hand over to a new manager</summary>
+      <form key={JSON.stringify(v ?? {})} action={action} className="mt-2 flex max-w-md flex-col gap-3">
+        <p>They get a link to take over {businessName} as its owner. Nothing in the business changes.</p>
+        <Result state={state} />
+        <input type="hidden" name="organisationId" value={organisationId} />
+        <label className="flex flex-col gap-1">
+          <span className="font-medium">New manager&apos;s name</span>
+          <input name="ownerName" defaultValue={v?.ownerName ?? ""} className={input} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="font-medium">New manager&apos;s email</span>
+          <input name="email" type="email" defaultValue={v?.email ?? ""} className={input} />
+        </label>
+        {isMember && (
+          <label className="flex items-start gap-2">
+            <input type="checkbox" name="removeMe" defaultChecked className="mt-1" />
+            <span>Remove my own access to {businessName} when they take it over</span>
+          </label>
+        )}
+        <button type="submit" disabled={pending} className={button}>{pending ? "Making link…" : "Make handover link"}</button>
+      </form>
+    </details>
   );
 }
 

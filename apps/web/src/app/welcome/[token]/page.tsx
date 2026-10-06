@@ -24,7 +24,7 @@ export default async function WelcomePage({ params }: PageProps<"/welcome/[token
     <main className="mx-auto w-full max-w-md px-4 py-12">
       <h1 className="text-2xl font-semibold">Welcome to VicisRota, {ownerName}</h1>
       <p className="mt-4">
-        We have set up <strong>{open.businessName}</strong> for you. Once you take it over, a short checklist will walk you through adding your
+        <strong>{open.businessName}</strong> is ready for you to take over. Once you do, a short checklist will walk you through adding your
         staff and planning your first rota.
       </p>
       {session ? (
