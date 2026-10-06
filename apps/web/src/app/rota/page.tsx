@@ -1,4 +1,4 @@
-import { addDays, evaluate, labourPercent, LABOUR_COST_LEGAL_REF, londonParts, onCostsFor, weekCost, weekStart as mondayOf, type Finding } from "@vicisrota/compliance";
+import { addDays, affordableHours, evaluate, forecastSales, labourPercent, LABOUR_COST_LEGAL_REF, londonParts, onCostsFor, weekCost, weekStart as mondayOf, type Finding } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, ne, or } from "drizzle-orm";
 import Link from "next/link";
@@ -62,7 +62,8 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
         ),
       ),
     rates: await tx.select().from(schema.payRate),
-    sales: sector === "care" ? [] : await tx.select().from(schema.salesForecast).where(and(gte(schema.salesForecast.on, days[0]!), lte(schema.salesForecast.on, days[6]!))),
+    // This week's figures, plus 6 weeks before for forecasts.
+    sales: sector === "care" ? [] : await tx.select().from(schema.salesForecast).where(and(gte(schema.salesForecast.on, addDays(days[0]!, -42)), lte(schema.salesForecast.on, days[6]!))),
     requirements: await tx
       .select({ shiftId: schema.shiftRequirement.shiftId, qualificationId: schema.shiftRequirement.qualificationId })
       .from(schema.shiftRequirement)
@@ -136,13 +137,24 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
     week,
   );
   // Wages against expected sales, day by day (not care).
-  const salesOn = new Map(sales.map((d) => [d.on, d.pence]));
+  const salesOn = new Map(sales.filter((d) => d.on >= days[0]!).map((d) => [d.on, d.pence]));
+  const history = sales.map((d) => ({ date: d.on, pence: d.pence }));
+  const averageRate = cost.hours > 0 ? cost.pence / cost.hours : 0;
   const byDay = days.map((d) => {
-    const wages = weekCost(planned.filter((p) => londonParts(new Date(p.start).getTime()).date === d), payRates, { paysTravelTime, sleepInPence }).pence;
+    const dayCost = weekCost(planned.filter((p) => londonParts(new Date(p.start).getTime()).date === d), payRates, { paysTravelTime, sleepInPence });
     const salesPence = salesOn.get(d) ?? null;
-    return { date: d, wages, salesPence, percent: labourPercent(wages, salesPence) };
+    return {
+      date: d,
+      wages: dayCost.pence,
+      hours: dayCost.hours,
+      salesPence,
+      forecast: forecastSales(history, d),
+      percent: labourPercent(dayCost.pence, salesPence),
+      affordable: salesPence !== null && labourTargetPercent !== null ? affordableHours(salesPence, labourTargetPercent, averageRate) : null,
+    };
   });
-  const salesTotal = sales.reduce((t, d) => t + d.pence, 0);
+  const salesTotal = [...salesOn.values()].reduce((t, p) => t + p, 0);
+  const canForecast = byDay.some((d) => d.forecast !== null);
   const weekPercent = labourPercent(byDay.filter((d) => d.salesPence !== null).reduce((t, d) => t + d.wages, 0), salesTotal);
   const over = (p: number | null) => p !== null && labourTargetPercent !== null && p > labourTargetPercent;
   const money = (pence: number) => (pence / 100).toLocaleString("en-GB", { style: "currency", currency: "GBP" });
@@ -277,6 +289,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
                     <th scope="col" className="py-2 pr-4">Wages</th>
                     <th scope="col" className="py-2 pr-4">Expected sales</th>
                     <th scope="col" className="py-2 pr-4">Wages as a share</th>
+                    {labourTargetPercent !== null && <th scope="col" className="py-2 pr-4">Hours planned / affordable</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -289,6 +302,9 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
                         {d.percent === null ? "" : `${d.percent}%`}
                         {over(d.percent) && " (above target)"}
                       </td>
+                      {labourTargetPercent !== null && (
+                        <td className="py-2 pr-4">{d.affordable === null ? "" : `${+d.hours.toFixed(2)} / ${d.affordable}`}</td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -301,16 +317,26 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
                       {weekPercent === null ? "" : `${weekPercent}%`}
                       {over(weekPercent) && " (above target)"}
                     </td>
+                    {labourTargetPercent !== null && <td />}
                   </tr>
                 </tfoot>
               </table>
-              <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">Shares compare wages with sales on days that have a sales figure. Open shifts are not costed.</p>
+              <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                Shares compare wages with sales on days that have a sales figure. Open shifts are not costed.
+                {labourTargetPercent !== null && " Affordable hours are what your target allows at this week's average hourly pay."}
+              </p>
             </div>
           )}
           <SalesTargetsForm
             weekStart={week}
             targetPercent={labourTargetPercent}
-            days={days.map((d) => ({ date: d, label: dayFmt.format(new Date(`${d}T12:00:00Z`)), pounds: salesOn.has(d) ? (salesOn.get(d)! / 100).toFixed(2) : "" }))}
+            canForecast={canForecast}
+            days={byDay.map((d) => ({
+              date: d.date,
+              label: dayFmt.format(new Date(`${d.date}T12:00:00Z`)),
+              pounds: d.salesPence !== null ? (d.salesPence / 100).toFixed(2) : "",
+              forecast: d.forecast !== null ? (d.forecast / 100).toFixed(0) : "",
+            }))}
           />
         </section>
       )}

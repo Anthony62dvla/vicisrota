@@ -44,3 +44,4 @@ export * from "./rules/children";
 export * from "./retention";
 export * from "./martynsLaw";
 export * from "./guaranteedHours";
+export * from "./forecast";

@@ -1,7 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { addDays, autoAssign, evaluate, londonDateTime, londonParts, SHIFT_KINDS, STAFFING_LEGAL_REF, type Finding, type ShiftKind } from "@vicisrota/compliance";
+import { addDays, autoAssign, evaluate, forecastSales, londonDateTime, londonParts, SHIFT_KINDS, STAFFING_LEGAL_REF, type Finding, type ShiftKind } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, eq, gt, gte, inArray, isNull, lt, ne, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -732,4 +732,29 @@ export async function saveSalesTargets(_: FormState, form: FormData): Promise<Fo
   });
   revalidatePath("/rota");
   return { ok: "Sales targets saved." };
+}
+
+/** Fills the week's days that have no sales figure with a forecast from the same day in earlier weeks. */
+export async function fillFromForecast(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const week = String(form.get("weekStart") ?? "");
+  if (!DATE.test(week)) return { error: "Choose a week first." };
+  const filled = await withOrganisation(db, organisationId, async (tx) => {
+    const history = await tx
+      .select()
+      .from(schema.salesForecast)
+      .where(and(gte(schema.salesForecast.on, addDays(week, -42)), lt(schema.salesForecast.on, addDays(week, 7))));
+    const have = new Set(history.map((h) => h.on));
+    const empty = Array.from({ length: 7 }, (_, i) => addDays(week, i)).filter((d) => !have.has(d));
+    if (!empty.length) return -1;
+    const rows = empty
+      .map((d) => ({ on: d, pence: forecastSales(history.map((h) => ({ date: h.on, pence: h.pence })), d) }))
+      .filter((r): r is { on: string; pence: number } => r.pence !== null);
+    if (rows.length) await tx.insert(schema.salesForecast).values(rows.map((r) => ({ organisationId, ...r }))).onConflictDoNothing();
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "update", entity: "sales_forecast", entityId: week, data: { forecast: rows.length } });
+    return rows.length;
+  });
+  revalidatePath("/rota");
+  if (filled === -1) return { ok: "Every day this week already has a sales figure." };
+  return filled ? { ok: `Filled in ${filled} day${filled === 1 ? "" : "s"} from past weeks.` } : { error: "There are not enough past figures to forecast from yet." };
 }
