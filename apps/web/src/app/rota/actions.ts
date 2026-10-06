@@ -3,7 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { addDays, autoAssign, evaluate, londonDateTime, londonParts, SHIFT_KINDS, STAFFING_LEGAL_REF, type Finding, type ShiftKind } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
-import { and, eq, gt, gte, inArray, isNull, lt, ne } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, isNull, lt, ne, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
@@ -11,7 +11,9 @@ import { log } from "@/lib/log";
 import { notify, type Notice } from "@/lib/notices";
 import { notifyRotaChanges } from "@/lib/rota-notify";
 import { requestId } from "@/lib/request";
-import { checkAssignment } from "@/lib/claims";
+import { checkAssignment, checkSwap } from "@/lib/claims";
+import { notifyWorkers, type Notify } from "@/lib/notify";
+import { loadOpenSwaps, shiftWhen, swapStillValid } from "@/lib/swaps";
 import { loadComplianceContext, loadWeekChecks, weekBounds } from "@/lib/rota";
 import { loadStaffingGaps } from "@/lib/staffing";
 import { owedMessage, recordShortNotice } from "@/lib/short-notice";
@@ -631,4 +633,67 @@ export async function fillOpenShifts(_: FormState, form: FormData): Promise<Form
       .filter(Boolean)
       .join(" "),
   };
+}
+
+/** Approves or declines a swap two people have agreed. Approving checks again, then swaps both shifts at once. */
+export async function decideSwap(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId, businessName } = await requireManager();
+  const swapId = String(form.get("swapId") ?? "");
+  const approve = form.get("decision") === "approve";
+  let tell: Notify[] = [];
+
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState & { notices?: Notice[] }> => {
+    const row = (await loadOpenSwaps(tx)).find((r) => r.swap.id === swapId && r.swap.status === "agreed");
+    if (!row) return { error: "That swap has already been dealt with." };
+    const { swap, fromShift, toShift } = row;
+    const names = `${row.fromName} and ${row.toName}`;
+    const audit = async (action: string, data: Record<string, unknown> = {}) =>
+      tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action, entity: "shift_swap", entityId: swapId, data });
+    const decided = { decidedByUserId: user.id, decidedAt: new Date() };
+
+    if (!approve) {
+      await tx.update(schema.shiftSwap).set({ status: "manager_declined", ...decided }).where(eq(schema.shiftSwap.id, swapId));
+      await audit("decline");
+      tell = [swap.fromWorkerId, swap.toWorkerId].map((workerId) => ({
+        workerId,
+        purpose: "swap",
+        title: "Swap not approved",
+        body: `Your manager hasn't approved the swap between ${shiftWhen(fromShift)} and ${shiftWhen(toShift)}. You both keep your own shifts. Ask your manager if you'd like to know more.`,
+        url: "/me",
+        dedupeKey: `swap-refused:${swapId}:${workerId}`,
+      }));
+      return { ok: `Swap between ${names} declined. They have both been told.` };
+    }
+    if (!swapStillValid(row)) return { error: "One of the shifts has changed since this swap was agreed, so it can't go ahead. Decline it, and they can ask again." };
+    const check = await checkSwap(tx, organisationId, { shiftId: fromShift.id, workerId: swap.fromWorkerId }, { shiftId: toShift.id, workerId: swap.toWorkerId });
+    if (!check) return { error: "One of the shifts no longer exists." };
+    if (check.blocks.length) return { error: `This swap can't go ahead now: ${check.blocks.map((f) => f.message).join(" ")}` };
+    await tx.update(schema.shift).set({ workerId: swap.toWorkerId, coverRequestedAt: null }).where(eq(schema.shift.id, fromShift.id));
+    await tx.update(schema.shift).set({ workerId: swap.fromWorkerId, coverRequestedAt: null }).where(eq(schema.shift.id, toShift.id));
+    await tx.update(schema.shiftSwap).set({ status: "approved", ...decided }).where(eq(schema.shiftSwap.id, swapId));
+    // Other open requests on either shift no longer make sense.
+    const both = [fromShift.id, toShift.id];
+    await tx
+      .update(schema.shiftSwap)
+      .set({ status: "withdrawn", ...decided })
+      .where(and(inArray(schema.shiftSwap.status, ["asked", "agreed"]), or(inArray(schema.shiftSwap.fromShiftId, both), inArray(schema.shiftSwap.toShiftId, both))));
+    await tx
+      .update(schema.shiftClaim)
+      .set({ status: "declined", ...decided })
+      .where(and(inArray(schema.shiftClaim.shiftId, both), eq(schema.shiftClaim.status, "requested")));
+    const at = (s: typeof fromShift) => ({ shiftId: s.id, startsAt: s.startsAt, endsAt: s.endsAt });
+    const notices = await notify(tx, organisationId, [
+      { ...at(fromShift), workerId: swap.toWorkerId, kind: "given_to_you" },
+      { ...at(fromShift), workerId: swap.fromWorkerId, kind: "taken_by_colleague" },
+      { ...at(toShift), workerId: swap.fromWorkerId, kind: "given_to_you" },
+      { ...at(toShift), workerId: swap.toWorkerId, kind: "taken_by_colleague" },
+    ]);
+    await audit("approve", { fromShiftId: fromShift.id, toShiftId: toShift.id });
+    return { ok: `Swap approved. ${row.fromName} now has ${shiftWhen(toShift)}, and ${row.toName} has ${shiftWhen(fromShift)}.`, notices };
+  });
+  const { notices = [], ...state } = result;
+  await notifyRotaChanges(organisationId, businessName, notices);
+  if (tell.length) await notifyWorkers(organisationId, tell);
+  revalidatePath("/rota");
+  return state;
 }

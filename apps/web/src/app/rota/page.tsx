@@ -9,7 +9,8 @@ import { candidatesFor, usualTimes } from "@/lib/board";
 import { loadWeekChecks, todayInUk, weekBounds } from "@/lib/rota";
 import { loadStaffingGaps } from "@/lib/staffing";
 import { RotaBoard, type BoardShift } from "./board";
-import { ClaimList, CopyWeekForm, FillOpenShiftsForm, PublishForm } from "./forms";
+import { ClaimList, CopyWeekForm, FillOpenShiftsForm, PublishForm, SwapList } from "./forms";
+import { loadOpenSwaps, shiftWhen } from "@/lib/swaps";
 
 const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" });
 const dayFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" });
@@ -27,7 +28,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
 
   const previous = weekBounds(addDays(week, -7));
 
-  const { workers, training, clients, shifts, claims, leave, decision, rates, breaks, paysTravelTime, shortNoticeHours, lastWeek, roles, requirements, unavailable, workerRoles, recent, checks, gaps, sleepInPence } = await withOrganisation(db, organisationId, async (tx) => ({
+  const { swaps, workers, training, clients, shifts, claims, leave, decision, rates, breaks, paysTravelTime, shortNoticeHours, lastWeek, roles, requirements, unavailable, workerRoles, recent, checks, gaps, sleepInPence } = await withOrganisation(db, organisationId, async (tx) => ({
     workers: await tx.select().from(schema.worker).where(or(isNull(schema.worker.leftOn), gte(schema.worker.leftOn, week))).orderBy(asc(schema.worker.fullName)),
     clients:
       sector === "care"
@@ -43,6 +44,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
       .from(schema.shift)
       .where(and(gte(schema.shift.startsAt, from), lt(schema.shift.startsAt, to), ne(schema.shift.status, "cancelled")))
       .orderBy(asc(schema.shift.startsAt)),
+    swaps: (await loadOpenSwaps(tx)).filter((r) => r.swap.status === "agreed"),
     claims: await tx
       .select({ claim: schema.shiftClaim, name: schema.worker.fullName })
       .from(schema.shiftClaim)
@@ -292,6 +294,20 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
         />
       </section>
 
+      <section className="mt-8" aria-labelledby="swaps-heading">
+        <h2 id="swaps-heading" className="text-lg font-semibold">Swaps agreed between staff</h2>
+        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+          Both people have said yes, and the swap passed the legal checks for both of them. Approving checks again, then swaps the two shifts.
+        </p>
+        <SwapList
+          swaps={swaps.map(({ swap, fromShift, toShift, fromName, toName }) => ({
+            id: swap.id,
+            summary: `${fromName} takes ${shiftWhen(toShift)}, and ${toName} takes ${shiftWhen(fromShift)}`,
+            note: swap.note,
+            warnings: (swap.warnings as Finding[]).map((f) => f.message),
+          }))}
+        />
+      </section>
     </main>
   );
 }

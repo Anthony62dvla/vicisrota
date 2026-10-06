@@ -20,9 +20,12 @@ export const loadComplianceContext = async (
   tx: Transaction,
   organisationId: string,
   weekStart: string,
-  /** Check the week as if this shift were given to this person, e.g. before approving a swap. */
-  assume?: { shiftId: string; workerId: string },
+  /** Check the week as if these shifts were given to these people, e.g. before approving a swap. */
+  assume?: Assume,
 ): Promise<Context> => (await loadWeekChecks(tx, organisationId, weekStart, assume)).context;
+
+/** One or more shifts to check as if they belonged to someone else. */
+export type Assume = { shiftId: string; workerId: string } | { shiftId: string; workerId: string }[];
 
 /** A shift as the compliance engine sees it, before anyone is given it. */
 export type CheckShift = Omit<Context["shifts"][number], "workerId">;
@@ -35,7 +38,7 @@ export const loadWeekChecks = async (
   tx: Transaction,
   organisationId: string,
   weekStart: string,
-  assume?: { shiftId: string; workerId: string },
+  assume?: Assume,
 ): Promise<{ context: Context; open: CheckShift[] }> => {
   const { from } = weekBounds(addDays(weekStart, -7 * HISTORY_WEEKS));
   const { to } = weekBounds(weekStart);
@@ -69,10 +72,11 @@ export const loadWeekChecks = async (
     tx.select().from(schema.workerRole),
   ]);
   const roleById = new Map(roles.map((r) => [r.id, r]));
+  const assumed = new Map((Array.isArray(assume) ? assume : assume ? [assume] : []).map((a) => [a.shiftId, a.workerId]));
   const assigned = shifts
-    .map((s) => (s.id === assume?.shiftId ? { ...s, workerId: assume.workerId } : s))
+    .map((s) => (assumed.has(s.id) ? { ...s, workerId: assumed.get(s.id)! } : s))
     .filter((s) => s.workerId);
-  const unassigned = shifts.filter((s) => !s.workerId && s.id !== assume?.shiftId);
+  const unassigned = shifts.filter((s) => !s.workerId && !assumed.has(s.id));
   const ids = [...assigned, ...unassigned].map((s) => s.id);
   const [breaks, requirements] = ids.length
     ? await Promise.all([

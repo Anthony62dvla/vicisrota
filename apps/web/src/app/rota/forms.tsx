@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { checkAndPublish, copyPreviousWeek, decideClaim, fillOpenShifts, type FormState } from "./actions";
+import { checkAndPublish, copyPreviousWeek, decideClaim, decideSwap, fillOpenShifts, type FormState } from "./actions";
 
 const button = "rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover disabled:opacity-60";
 
@@ -62,6 +62,40 @@ export function ClaimList({ claims }: { claims: Claim[] }) {
               </div>
               <form action={action} className="flex gap-2">
                 <input type="hidden" name="claimId" value={c.id} />
+                <button type="submit" name="decision" value="approve" disabled={pending} className="rounded-lg border border-zinc-400 px-3 py-1 text-sm">Approve</button>
+                <button type="submit" name="decision" value="decline" disabled={pending} className="rounded-lg border border-zinc-400 px-3 py-1 text-sm">Decline</button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+type Swap = { id: string; summary: string; note: string | null; warnings: string[] };
+
+/** Swaps two people have agreed between themselves, waiting for a manager. */
+export function SwapList({ swaps }: { swaps: Swap[] }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(decideSwap, {});
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      <Message state={state} />
+      {swaps.length === 0 ? (
+        <p>No swaps waiting.</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {swaps.map((s) => (
+            <li key={s.id} className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-amber-500 p-3">
+              <div>
+                <p className="font-medium">{s.summary}</p>
+                {s.note && <p className="text-sm">Their note: {s.note}</p>}
+                {s.warnings.map((w, i) => (
+                  <p key={i} className="text-sm">Check: {w}</p>
+                ))}
+              </div>
+              <form action={action} className="flex gap-2">
+                <input type="hidden" name="swapId" value={s.id} />
                 <button type="submit" name="decision" value="approve" disabled={pending} className="rounded-lg border border-zinc-400 px-3 py-1 text-sm">Approve</button>
                 <button type="submit" name="decision" value="decline" disabled={pending} className="rounded-lg border border-zinc-400 px-3 py-1 text-sm">Decline</button>
               </form>

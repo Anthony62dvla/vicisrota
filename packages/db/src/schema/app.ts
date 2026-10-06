@@ -611,6 +611,48 @@ export const tipShare = pgTable(
   (t) => [index("tip_share_worker_idx").on(t.workerId)],
 );
 
+/**
+ * A swap between two named people: one asks, the colleague agrees or says no, then a manager approves.
+ * asked: waiting for the colleague. agreed: waiting for a manager. The rest are finished.
+ */
+export const swapStatus = pgEnum("swap_status", ["asked", "agreed", "approved", "colleague_declined", "manager_declined", "withdrawn"]);
+
+export const shiftSwap = pgTable(
+  "shift_swap",
+  {
+    id: id(),
+    organisationId: orgId(),
+    /** The shift the person asking gives up. */
+    fromShiftId: uuid("from_shift_id")
+      .notNull()
+      .references(() => shift.id, { onDelete: "cascade" }),
+    fromWorkerId: uuid("from_worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    /** The colleague's shift they take in return. */
+    toShiftId: uuid("to_shift_id")
+      .notNull()
+      .references(() => shift.id, { onDelete: "cascade" }),
+    toWorkerId: uuid("to_worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    status: swapStatus("status").notNull().default("asked"),
+    /** An optional short note from the person asking, shown to the colleague. */
+    note: text("note"),
+    /** Warnings from the checks when the swap was asked for, for the manager to see. */
+    warnings: jsonb("warnings").notNull().default([]),
+    respondedAt: timestamp("responded_at", { withTimezone: true }),
+    decidedByUserId: text("decided_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("shift_swap_to_worker_idx").on(t.toWorkerId),
+    // One open swap per shift given up.
+    uniqueIndex("shift_swap_open_idx").on(t.fromShiftId).where(sql`${t.status} in ('asked', 'agreed')`),
+  ],
+);
+
 /** A member of staff asking to take an open shift, or to cover a colleague's shift. A manager decides. */
 export const shiftClaim = pgTable(
   "shift_claim",
