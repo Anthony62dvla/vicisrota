@@ -11,7 +11,7 @@ import { AvailabilityEditor } from "../../availability-editor";
 import { addStaffUnavailable, removeKeepApart, removeStaffUnavailable, removeTraining } from "./actions";
 import { formatUkMobile } from "@vicisrota/messaging";
 import { WorkerRolesForm } from "../../roles/forms";
-import { AddCheckForm, AddTrainingForm, AdjustmentsForm, HolidaySettingsForm, InviteForm, KeepApartForm, LeavingForm, MobileForm, PayrollIdForm, PersonalLicenceForm, SponsorshipForm, SupervisionForm } from "./forms";
+import { AddCheckForm, AddTrainingForm, AgencyForm, AdjustmentsForm, HolidaySettingsForm, InviteForm, KeepApartForm, LeavingForm, MobileForm, PayrollIdForm, PersonalLicenceForm, SponsorshipForm, SupervisionForm } from "./forms";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DBS_LABEL = { basic: "Basic", standard: "Standard", enhanced: "Enhanced", enhanced_barred: "Enhanced with barred list" };
@@ -209,6 +209,15 @@ export default async function StaffRecordPage({ params, searchParams }: PageProp
           <PersonalLicenceForm workerId={worker.id} current={worker.personalLicence ?? null} />
         </section>
       )}
+
+      <section id="agency" className="mt-8 scroll-mt-4" aria-labelledby="agency-heading">
+        <h2 id="agency-heading" className="text-lg font-semibold">Agency worker</h2>
+        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+          After 12 weeks in the same role, agency workers have the right to the same basic pay and conditions as your own staff. See{" "}
+          <Link href="/agency" className="underline">Agency workers</Link>.
+        </p>
+        <AgencyForm workerId={worker.id} current={worker.agency ?? null} />
+      </section>
 
       <section id="sponsorship" className="mt-8 scroll-mt-4" aria-labelledby="sponsorship-heading">
         <h2 id="sponsorship-heading" className="text-lg font-semibold">Visa sponsorship</h2>

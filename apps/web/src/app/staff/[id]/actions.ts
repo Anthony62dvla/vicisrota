@@ -502,3 +502,27 @@ export async function savePersonalLicence(_: FormState, form: FormData): Promise
   revalidatePath("/rota");
   return result;
 }
+
+/** Marks someone as supplied by an agency, so their 12 qualifying weeks are counted. */
+export async function saveAgency(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  let agency: { agencyName: string; startedOn: string; role?: string } | null = null;
+  if (form.get("isAgency") === "on") {
+    const agencyName = String(form.get("agencyName") ?? "").trim().slice(0, 120);
+    const startedOn = String(form.get("agencyStartedOn") ?? "");
+    const role = String(form.get("agencyRole") ?? "").trim().slice(0, 120);
+    if (!agencyName) return { error: "Enter the name of the agency." };
+    if (!DATE.test(startedOn)) return { error: "Enter the date their assignment with you started." };
+    agency = { agencyName, startedOn, ...(role ? { role } : {}) };
+  }
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
+    const rows = await tx.update(schema.worker).set({ agency }).where(eq(schema.worker.id, workerId)).returning({ name: schema.worker.fullName });
+    if (!rows.length) return { error: "That person could not be found." };
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "update", entity: "worker_agency", entityId: workerId, data: { agency } });
+    return { ok: agency ? `Agency details saved for ${rows[0]!.name}.` : `${rows[0]!.name} is no longer marked as an agency worker.` };
+  });
+  revalidatePath(`/staff/${workerId}`);
+  revalidatePath("/agency");
+  return result;
+}

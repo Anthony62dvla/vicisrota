@@ -484,6 +484,13 @@
       "when": 1791310201091,
       "tag": "0068_licence_holder",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1791310385338,
+      "tag": "0069_agency_workers",
+      "breakpoints": true
     }
   ]
 }

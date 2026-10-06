@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { addKeepApart, addCheck, addTraining, inviteStaff, markBack, markLeft, saveAdjustments, setMobile, updateHolidaySettings, updatePayrollId, addSupervision, saveSponsorship, type FormState, type InviteState, savePersonalLicence } from "./actions";
+import { addKeepApart, addCheck, addTraining, inviteStaff, markBack, markLeft, saveAdjustments, setMobile, updateHolidaySettings, updatePayrollId, addSupervision, saveSponsorship, type FormState, type InviteState, savePersonalLicence, saveAgency } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 const button = "rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover disabled:opacity-60";
@@ -399,6 +399,41 @@ export function PersonalLicenceForm({ workerId, current }: { workerId: string; c
       </label>
       <button type="submit" disabled={pending} className={button}>
         {pending ? "Saving…" : "Save personal licence"}
+      </button>
+    </form>
+  );
+}
+
+export function AgencyForm({ workerId, current }: { workerId: string; current: { agencyName: string; startedOn: string; role?: string } | null }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(saveAgency, {});
+  const [agency, setAgency] = useState(!!current);
+  return (
+    <form action={action} className="mt-3 flex max-w-md flex-col gap-4">
+      <Message state={state} />
+      <input type="hidden" name="workerId" value={workerId} />
+      <label className="flex items-center gap-2">
+        <input type="checkbox" name="isAgency" checked={agency} onChange={(e) => setAgency(e.target.checked)} className="h-5 w-5" />
+        <span className="font-medium">Supplied by an agency</span>
+      </label>
+      {agency && (
+        <>
+          <label className="flex flex-col gap-1">
+            <span className="font-medium">Agency</span>
+            <input name="agencyName" defaultValue={current?.agencyName ?? ""} maxLength={120} className={input} />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="font-medium">Assignment with you started on</span>
+            <input name="agencyStartedOn" type="date" defaultValue={current?.startedOn ?? ""} className={input} />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="font-medium">Role (optional)</span>
+            <span className="text-sm text-zinc-600 dark:text-zinc-400">If they move to a substantially different role, start a new assignment date.</span>
+            <input name="agencyRole" defaultValue={current?.role ?? ""} maxLength={120} className={input} />
+          </label>
+        </>
+      )}
+      <button type="submit" disabled={pending} className={button}>
+        {pending ? "Saving…" : "Save agency details"}
       </button>
     </form>
   );
