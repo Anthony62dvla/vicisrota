@@ -116,8 +116,8 @@ export default function PrivacyPage() {
                   <strong>Stripe</strong> takes payments from businesses. It receives the business name, the email address of the person paying and card details.
                 </li>
                 <li>
-                  <strong>Xero</strong>, only for businesses that connect it, receives the confirmed hours of the people being paid, with their name, so their
-                  pay can be worked out in Xero Payroll.
+                  <strong>Xero</strong>, only for businesses that connect it, receives each person&apos;s confirmed hours, linked to their employee record in Xero,
+                  so their pay can be worked out in Xero Payroll.
                 </li>
                 <li>
                   <strong>Vonage</strong> sends text messages. It receives the mobile number and the text, such as a shift reminder or an alert.
