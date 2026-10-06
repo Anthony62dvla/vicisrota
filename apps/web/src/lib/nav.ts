@@ -49,7 +49,7 @@ export const managerNav = (sector: Sector, superadmin: boolean, kind: string | n
       ...(has.tips ? [item("/tips", "Tips", "tips")] : []),
     ],
   },
-  { title: "Your team", items: [item("/messages", "Messages", "messages"), item("/checklists", "Checklists", "checklist"), item("/wellbeing", "Wellbeing", "wellbeing"), item("/announcements", "Announcements", "announcements"), item("/workplaces", "Workplaces", "workplaces")] },
+  { title: "Your team", items: [item("/messages", "Messages", "messages"), item("/checklists", "Checklists", "checklist"), item("/wellbeing", "Wellbeing", "wellbeing"), item("/announcements", "Announcements", "announcements"), item("/statements", "Written statements", "statements"), item("/workplaces", "Workplaces", "workplaces")] },
   {
     title: "Safety",
     items: [

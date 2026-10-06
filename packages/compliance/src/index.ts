@@ -35,3 +35,4 @@ export * from "./familyLeave";
 export * from "./holidayPay";
 export * from "./rules/keepApart";
 export * from "./fairness";
+export * from "./statement";

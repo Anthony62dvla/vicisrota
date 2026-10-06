@@ -207,7 +207,13 @@ export default async function MyPage() {
     const sick = (await loadSickness(tx, addDays(today, 366), [worker.id])).get(worker.id);
     const sickPay = new Map((sick?.records ?? []).filter((r) => !r.ssp.oldRules && r.ssp.pence > 0).map((r) => [r.id, r.ssp.pence]));
     const swaps = await loadOpenSwaps(tx, worker.id);
-    return { swaps, checkIns, training, courses, recentMessages, colleagues, roles, sickPay, announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, shortNotice, rollCall, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
+    const [statement] = await tx
+      .select({ issuedAt: schema.writtenStatement.issuedAt, readAt: schema.writtenStatement.readAt })
+      .from(schema.writtenStatement)
+      .where(eq(schema.writtenStatement.workerId, worker.id))
+      .orderBy(desc(schema.writtenStatement.issuedAt))
+      .limit(1);
+    return { statement, swaps, checkIns, training, courses, recentMessages, colleagues, roles, sickPay, announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, shortNotice, rollCall, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
   });
 
   const days = new Map<string, typeof data.shifts>();
@@ -703,6 +709,20 @@ export default async function MyPage() {
               </ul>
             </>
           )}
+        </section>
+      )}
+
+      {data.statement && (
+        <section className={`mt-10 ${data.statement.readAt ? "" : "rounded-lg border-2 border-brand p-4"}`} aria-labelledby="statement-heading">
+          <h2 id="statement-heading" className="text-lg font-semibold">Your written statement</h2>
+          <p className="mt-1">
+            {data.statement.readAt
+              ? "The main terms of your job: your pay, hours, holiday and notice."
+              : "Your manager has given you a written statement of the main terms of your job. Please read it."}
+          </p>
+          <Link href="/me/statement" className="mt-2 inline-block rounded-lg border border-zinc-400 px-4 py-2">
+            {data.statement.readAt ? "See your statement" : "Read your statement"}
+          </Link>
         </section>
       )}
 

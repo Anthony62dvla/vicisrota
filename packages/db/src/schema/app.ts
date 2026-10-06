@@ -133,6 +133,8 @@ export const organisation = pgTable("organisation", {
   sleepInPence: integer("sleep_in_pence"),
   /** Written tipping policy that staff can read (Employment (Allocation of Tips) Act 2023). */
   tippingPolicy: text("tipping_policy"),
+  /** The business's own terms for written statements (pay day, sick pay, notice and so on). Blank ones use VicisRota's defaults. */
+  statementTerms: jsonb("statement_terms").$type<Partial<Record<string, string>>>().notNull().default({}),
   /** Whether phone clock-ins check the person is at a workplace: not at all, noted for the manager, or required. */
   clockLocationRule: clockLocationRule("clock_location_rule").notNull().default("off"),
   /** Text the alert contacts when nobody has clocked in this many minutes after a shift starts. Null is off. */
@@ -649,6 +651,26 @@ export const keepingInTouchDay = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("keeping_in_touch_day_once_idx").on(t.leaveRequestId, t.workedOn)],
+);
+
+/**
+ * A written statement of particulars given to someone (Employment Rights Act 1996, s 1). The words are kept
+ * exactly as given, so there is a record even if terms change later. The person confirms they have read it.
+ */
+export const writtenStatement = pgTable(
+  "written_statement",
+  {
+    id: id(),
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    sections: jsonb("sections").$type<{ heading: string; text: string }[]>().notNull(),
+    issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
+    issuedByUserId: text("issued_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    readAt: timestamp("read_at", { withTimezone: true }),
+  },
+  (t) => [index("written_statement_worker_idx").on(t.workerId, t.issuedAt)],
 );
 
 /**
