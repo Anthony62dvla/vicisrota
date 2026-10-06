@@ -20,56 +20,221 @@ const sample: Context = {
   ],
 };
 
-const FEATURES: { icon: IconName; title: string; text: string }[] = [
+type Feature = { icon: IconName; title: string; text: string };
+
+// Every feature in the app, grouped the way a manager thinks about their week.
+const GROUPS: { id: string; title: string; intro: string; features: Feature[] }[] = [
   {
-    icon: "rota",
-    title: "Rotas that check themselves",
-    text: "Drag shifts around the rota board, or let the rota builder fill open shifts fairly. Rest breaks, weekly hours, under-18 limits, minimum wage and tiring patterns are checked before you publish.",
+    id: "plan",
+    title: "Plan the rota",
+    intro: "Build a fair week quickly, with the law checked as you go.",
+    features: [
+      {
+        icon: "rota",
+        title: "A rota that checks itself",
+        text: "Drag shifts around the board, or let the rota builder fill open shifts. Rest breaks, weekly hours, under-18 limits, minimum wage and tiring patterns are checked before you publish, and each warning explains the rule.",
+      },
+      {
+        icon: "roles",
+        title: "Repeating patterns and roles",
+        text: "Save a week as a pattern and use it again. Give people roles and skills, so only the right person is offered the right shift.",
+      },
+      {
+        icon: "staffing",
+        title: "Safe staffing levels",
+        text: "Set how many people, and which skills, each shift needs. Gaps and thin cover are shown before the rota goes out.",
+      },
+      {
+        icon: "fairness",
+        title: "Fair shares for everyone",
+        text: "See who has had the weekends, nights and late finishes, so the less popular shifts are shared out fairly.",
+      },
+      {
+        icon: "timesheets",
+        title: "Wage costs and busy days",
+        text: "Watch the wage bill as you plan, and compare it with your sales forecast to staff the busy days well.",
+      },
+      {
+        icon: "guaranteedHours",
+        title: "Guaranteed hours and fair notice",
+        text: "Track the hours people usually work, and the notice they are owed, ready for the new rules in the Employment Rights Act 2025.",
+      },
+    ],
   },
   {
-    icon: "profile",
+    id: "team",
+    title: "Your team, on their phones",
+    intro: "Staff see their week, swap shifts and ask for time off, with no app store needed.",
+    features: [
+      {
+        icon: "today",
+        title: "Their week at a glance",
+        text: "Each person sees their shifts and who they work with. Add VicisRota to the phone’s home screen, and get free notifications when something changes.",
+      },
+      {
+        icon: "rota",
+        title: "Swaps and open shifts",
+        text: "Staff swap with a colleague or pick up an open shift. Every swap is checked against the law before it is approved.",
+      },
+      {
+        icon: "leave",
+        title: "Holiday and availability",
+        text: "Staff ask for leave and say when they can work. Holiday for irregular hours is worked out for you.",
+      },
+      {
+        icon: "messages",
+        title: "Messages and announcements",
+        text: "Team messages and announcements with quiet hours, so nobody is disturbed on a day off. Rota changes can also go by text message.",
+      },
+      {
+        icon: "checklist",
+        title: "Checklists and handovers",
+        text: "Opening and closing checklists, and handover notes so the next shift knows what happened.",
+      },
+      {
+        icon: "wellbeing",
+        title: "Wellbeing check-ins",
+        text: "Optional check-ins after long or night shifts. Answers are private, and asking for support never counts against anyone.",
+      },
+    ],
+  },
+  {
+    id: "minds",
     title: "Built for every mind",
-    text: "Clear words, calm screens and advance notice of changes. Easy Read shifts that can be read aloud, and a private “How I work best” profile staff choose whether to share.",
+    intro: "Calm, clear screens that suit neurodivergent and neurotypical people alike.",
+    features: [
+      {
+        icon: "easyRead",
+        title: "Easy Read shifts",
+        text: "Shifts in short sentences with simple pictures, which can be read aloud. Every screen uses plain words and says what to do next.",
+      },
+      {
+        icon: "display",
+        title: "Calm mode and display choices",
+        text: "Calm mode keeps the essentials on screen and tucks the rest away. Anyone can choose larger text, easier reading, softer colours or no movement.",
+      },
+      {
+        icon: "profile",
+        title: "“How I work best”",
+        text: "A private profile where staff can share what helps them, such as notice of changes or a quiet break. They choose who sees it.",
+      },
+      {
+        icon: "messages",
+        title: "In your team’s language",
+        text: "Staff can use English, Welsh, Polish or Romanian for their menu, Easy Read shifts, notifications and raising a concern.",
+      },
+    ],
   },
   {
-    icon: "safeguarding",
-    title: "Safeguarding at the centre",
-    text: "Staff can raise a concern in a few taps. Lone workers check in, and someone is told straight away if they need help. A fire roll call shows who is safe.",
+    id: "pay",
+    title: "Hours and pay",
+    intro: "From clocking in to payroll, with the sums done for you.",
+    features: [
+      {
+        icon: "today",
+        title: "Clocking in, your way",
+        text: "Scan a code on a shared tablet, use a PIN, or clock in from a phone at work. Late or missed starts are spotted before they become a gap.",
+      },
+      {
+        icon: "timesheets",
+        title: "Timesheets to payroll",
+        text: "Confirm hours in one place, then send one file to your payroll software with holiday, sick pay and extras included.",
+      },
+      {
+        icon: "sickness",
+        title: "Sickness and sick pay",
+        text: "Record sickness kindly, and Statutory Sick Pay is worked out for you. Return-to-work notes stay private.",
+      },
+      {
+        icon: "shortNotice",
+        title: "Short-notice pay",
+        text: "When a shift is cancelled or cut at short notice, the app shows what the person may be owed.",
+      },
+      {
+        icon: "tips",
+        title: "Fair tips",
+        text: "Share tips fairly and keep the records the Employment (Allocation of Tips) Act 2023 asks for.",
+      },
+      {
+        icon: "workingTime",
+        title: "Working time records",
+        text: "Weekly hours, night work and opt-outs recorded as you go, ready if anyone asks to see them.",
+      },
+    ],
   },
   {
-    icon: "today",
-    title: "Clocking in, your way",
-    text: "Scan a code on the shared tablet, use a PIN, or clock in from a phone at work. Late or missed starts are spotted before they become a gap.",
+    id: "safety",
+    title: "Safety and safeguarding",
+    intro: "These features never switch off, whatever happens with payment.",
+    features: [
+      {
+        icon: "safeguarding",
+        title: "Raise a concern",
+        text: "Anyone can raise a safeguarding or whistleblowing concern in a few taps. It goes straight to the right person, with outside contacts if they need them.",
+      },
+      {
+        icon: "loneWorking",
+        title: "Lone working",
+        text: "People working alone check in on their phone, with a help button. Someone is told straight away if a check-in is missed.",
+      },
+      {
+        icon: "rollCall",
+        title: "Fire roll call",
+        text: "One screen shows who is on site, so you can mark everyone safe during an alarm.",
+      },
+      {
+        icon: "checksDue",
+        title: "Checks that never lapse",
+        text: "Right to work, DBS, SIA and personal licences, training and supervisions in one list, with a reminder before anything runs out.",
+      },
+      {
+        icon: "sponsorship",
+        title: "Sponsored workers and young people",
+        text: "Sponsor duties and reporting deadlines for visa workers, child work permits and under-18 rules, and health checks for night workers.",
+      },
+      {
+        icon: "workplaces",
+        title: "Martyn’s Law readiness",
+        text: "Record each venue’s capacity, review your procedures and brief staff, for places covered by the Terrorism (Protection of Premises) Act 2025.",
+      },
+    ],
   },
   {
-    icon: "checksDue",
-    title: "Checks that never lapse",
-    text: "Right to work, DBS, SIA licences, training and supervisions in one list, with a weekly reminder before anything runs out.",
-  },
-  {
-    icon: "leave",
-    title: "Leave and sickness done right",
-    text: "Holiday for irregular hours, Statutory Sick Pay and working-time records, all in line with current UK rules.",
-  },
-  {
-    icon: "timesheets",
-    title: "Pay that adds up",
-    text: "Confirmed hours, holiday, tips, sick pay and short-notice pay in one file for your payroll software.",
-  },
-  {
-    icon: "messages",
-    title: "Messages without the noise",
-    text: "Free phone notifications for new shifts and changes, and team messages with quiet hours, so nobody is disturbed on a day off.",
-  },
-  {
-    icon: "checklist",
-    title: "Checklists, handovers and wellbeing",
-    text: "Opening and closing checklists, handover notes between shifts, and optional check-ins after long or night shifts.",
-  },
-  {
-    icon: "hiring",
-    title: "Hiring made simple",
-    text: "Share a short job advert, take applications without a CV, and add the right person to your team in one step.",
+    id: "run",
+    title: "Run the business",
+    intro: "The paperwork around your team, kept in one place.",
+    features: [
+      {
+        icon: "hiring",
+        title: "Hiring made simple",
+        text: "Share a short job advert, take applications without a CV, and add the right person to your team in one step.",
+      },
+      {
+        icon: "statements",
+        title: "Written statements",
+        text: "Give each new starter the written statement of terms the law requires from day one, and see when they have read it.",
+      },
+      {
+        icon: "agency",
+        title: "Agency workers",
+        text: "Add agency staff to the rota and track the 12-week point when equal treatment begins.",
+      },
+      {
+        icon: "inspection",
+        title: "Inspection pack",
+        text: "Pull together rotas, checks, training and records in one pack when an inspector or auditor visits.",
+      },
+      {
+        icon: "workplaces",
+        title: "More than one site",
+        text: "Run several workplaces, or several businesses with one login, and print a poster with each site’s clock-in code.",
+      },
+      {
+        icon: "security",
+        title: "Your data, protected",
+        text: "UK-hosted, with two-step sign-in, data downloads for staff, records deleted on time, and an API for your other tools.",
+      },
+    ],
   },
 ];
 
@@ -77,11 +242,11 @@ const SECTORS: { icon: IconName; title: string; text: string }[] = [
   {
     icon: "clients",
     title: "Care providers",
-    text: "Visits with travel time, DBS and training checks, lone working and an inspection pack, including children’s homes.",
+    text: "Visits with travel time, sleep-ins, DBS and training checks, lone working and an inspection pack, including children’s homes.",
   },
-  { icon: "tips", title: "Hospitality", text: "Busy weeks, open shifts staff can pick up, and fair tip sharing under the 2023 Act." },
+  { icon: "tips", title: "Hospitality", text: "Busy weeks, open shifts staff can pick up, personal licence holders on every shift, and fair tip sharing under the 2023 Act." },
   { icon: "easyRead", title: "Nurseries and childcare", text: "Enhanced DBS on every shift, paediatric first aid tracking and opening checks." },
-  { icon: "workplaces", title: "Shops", text: "Opening and closing checks, Challenge 25 training and a fair rota." },
+  { icon: "workplaces", title: "Shops", text: "Opening and closing checks, Challenge 25 training, Sunday working opt-outs and a fair rota." },
   { icon: "loneWorking", title: "Cleaning and security", text: "Lone working check-ins, site checklists and SIA licence expiry dates." },
   { icon: "staff", title: "Any small business", text: "A simple rota, holiday and payroll export without the paperwork, and one login if you run more than one business." },
 ];
@@ -195,21 +360,39 @@ export default function Home() {
             <h2 id="features" className="text-2xl font-semibold sm:text-3xl">
               Everything a UK team needs
             </h2>
-            <ul className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {FEATURES.map((f) => (
-                <li key={f.title}>
-                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-soft text-brand">
-                    <Icon name={f.icon} className="h-6 w-6" />
-                  </span>
-                  <h3 className="mt-4 font-semibold">{f.title}</h3>
-                  <p className="mt-1 text-muted">{f.text}</p>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-10 rounded-xl bg-brand-soft p-4 text-heading">
-              <span className="font-semibold">In your team’s language.</span> Staff can choose English, <span lang="cy">Cymraeg</span>,{" "}
-              <span lang="pl">Polski</span> or <span lang="ro">Română</span> for their menu, Easy Read shifts, notifications and raising a
-              concern.
+            <p className="mt-2 max-w-2xl text-muted">Every feature is included on every plan, even the free one. Jump to what matters most to you.</p>
+            <nav aria-label="Features" className="mt-6">
+              <ul className="flex flex-wrap gap-2">
+                {GROUPS.map((g) => (
+                  <li key={g.id}>
+                    <a href={`#${g.id}`} className="inline-block rounded-full border border-line bg-background px-4 py-2 font-medium text-heading hover:bg-brand-soft">
+                      {g.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+            {GROUPS.map((g) => (
+              <section key={g.id} aria-labelledby={g.id} className="mt-14 scroll-mt-6">
+                <h3 id={g.id} className="text-xl font-semibold text-heading sm:text-2xl">
+                  {g.title}
+                </h3>
+                <p className="mt-1 text-muted">{g.intro}</p>
+                <ul className={`mt-6 grid gap-6 sm:grid-cols-2 ${g.features.length % 3 === 0 ? "lg:grid-cols-3" : ""}`}>
+                  {g.features.map((f) => (
+                    <li key={f.title} className="rounded-xl border border-line bg-background p-5">
+                      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-soft text-brand">
+                        <Icon name={f.icon} className="h-6 w-6" />
+                      </span>
+                      <h4 className="mt-4 font-semibold">{f.title}</h4>
+                      <p className="mt-1 text-muted">{f.text}</p>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+            <p className="mt-12 text-sm text-muted">
+              VicisRota checks rotas against UK employment rules to help you get things right. It does not replace legal advice.
             </p>
           </div>
         </section>
