@@ -41,3 +41,4 @@ export * from "./rules/licenceHolder";
 export * from "./agency";
 export * from "./rules/sundayWork";
 export * from "./rules/children";
+export * from "./retention";

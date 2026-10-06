@@ -737,6 +737,19 @@ export default async function MyPage() {
         </Link>
       </section>
 
+      <section className="mt-10" aria-labelledby="data-heading">
+        <h2 id="data-heading" className="text-lg font-semibold">Your data</h2>
+        <p className="mt-1">
+          Download a copy of everything VicisRota holds about you, such as your shifts, hours, pay rates, holiday and training. You can keep it or take it to
+          another employer.
+        </p>
+        <a href="/me/data" className="mt-2 inline-block rounded-lg border border-zinc-400 px-4 py-2">Download my data</a>
+        <p className="mt-2 text-sm text-muted">
+          If you leave, most of your details are deleted 2 years later, and everything else after 6 years. Read the{" "}
+          <Link href="/privacy#keep" className="underline">privacy policy</Link> for the details.
+        </p>
+      </section>
+
       <section className="mt-10" aria-labelledby="texts-heading">
         <h2 id="texts-heading" className="text-lg font-semibold">Notifications and reminders</h2>
         <p className="mt-1">Changes always show on this page. You can also have them sent to your phone.</p>

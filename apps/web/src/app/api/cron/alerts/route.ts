@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { lateAlertDue } from "@vicisrota/compliance";
+import { lateAlertDue, londonParts } from "@vicisrota/compliance";
 import { lateAlert, overdueAlert } from "@vicisrota/messaging";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { loadAttendance } from "@/lib/attendance";
@@ -8,6 +8,7 @@ import { log } from "@/lib/log";
 import { loadLoneShifts } from "@/lib/lone-working";
 import { sendShiftReminders } from "@/lib/reminders-send";
 import { deleteOldApplications } from "@/lib/hiring";
+import { applyRetention } from "@/lib/retention";
 import { offerCheckIns } from "@/lib/wellbeing";
 import { remindChecksDue } from "@/lib/checks-due";
 import { syncBands } from "@/lib/stripe";
@@ -68,6 +69,8 @@ export async function GET(request: Request) {
     reminders += await offerCheckIns(business.id, business.name, now);
     reminders += await remindChecksDue(business.id, now);
     await deleteOldApplications(business.id, now);
+    // Records past their keeping period are deleted once a day, in the early hours.
+    if (londonParts(now).hour === 3) await applyRetention(business.id, now, londonParts(now).date);
 
     if (business.lateAlertMinutes === null) continue;
     // Late texts stop half an hour after a shift ends, so only shifts still running or just finished matter.

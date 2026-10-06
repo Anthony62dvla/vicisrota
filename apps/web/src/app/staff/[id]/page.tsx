@@ -1,4 +1,4 @@
-import { CHILD_LEGAL_REF, isSchoolAge, NIGHT_HEALTH_LEGAL_REF, schoolLeavingDate, SUNDAY_LEGAL_REF, sundayOptOutFrom } from "@vicisrota/compliance";
+import { CHILD_LEGAL_REF, isSchoolAge, retentionDates, NIGHT_HEALTH_LEGAL_REF, schoolLeavingDate, SUNDAY_LEGAL_REF, sundayOptOutFrom } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, asc, desc, eq, isNull, ne, or } from "drizzle-orm";
 import Link from "next/link";
@@ -378,6 +378,21 @@ export default async function StaffRecordPage({ params, searchParams }: PageProp
             : `When ${worker.fullName} leaves, their records are kept for payroll and working-time checks. Shifts after their last day become open shifts.`}
         </p>
         <LeavingForm workerId={worker.id} name={worker.fullName} leftOn={worker.leftOn} today={today} />
+        {worker.leftOn && (
+          <p className="mt-3 text-sm text-muted">
+            VicisRota deletes most of their details on {ukDate(retentionDates(worker.leftOn).minimiseOn)} and the rest on{" "}
+            {ukDate(retentionDates(worker.leftOn).deleteOn)}. Download anything you must keep longer before then.
+          </p>
+        )}
+      </section>
+
+      <section id="data" className="mt-8 scroll-mt-4" aria-labelledby="data-heading">
+        <h2 id="data-heading" className="text-lg font-semibold">Their data</h2>
+        <p className="mt-1">
+          If {worker.fullName} asks for a copy of their data (a subject access request), download it here and send it to them within one month. Staff with a
+          login can also download their own.
+        </p>
+        <a href={`/staff/${worker.id}/data`} className="mt-2 inline-block rounded-lg border border-zinc-400 px-4 py-2">Download {worker.fullName}&apos;s data</a>
       </section>
     </main>
   );

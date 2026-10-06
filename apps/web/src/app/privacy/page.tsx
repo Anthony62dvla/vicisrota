@@ -139,7 +139,17 @@ export default function PrivacyPage() {
           heading: "How long we keep it",
           body: (
             <ul>
-              <li>Records are kept while the business uses VicisRota, so employers can keep the records the law requires, such as pay and working time.</li>
+              <li>Records are kept while someone works for the business, so employers can keep the records the law requires, such as pay and working time.</li>
+              <li>
+                Two years after someone leaves, VicisRota deletes their right to work and DBS check records, wellbeing check-ins, agreed adjustments, their
+                &quot;how I work best&quot; profile, mobile number and notifications.
+              </li>
+              <li>
+                Six years after someone leaves, everything else about them is deleted, including shifts worked, pay, holiday and sickness records. Six years is
+                how long a claim about work can be brought.
+              </li>
+              <li>App notifications and the record of text messages sent are deleted after one year.</li>
+              <li>Safeguarding records are not deleted automatically, because they may need to be kept for much longer to protect children and adults at risk.</li>
               <li>Job applications are deleted automatically after 180 days, unless the person is hired.</li>
               <li>Backups are kept for 30 days and then overwritten.</li>
               <li>
@@ -172,6 +182,7 @@ export default function PrivacyPage() {
                 <li>limit or object to how it is used; and</li>
                 <li>have it given to you in a format you can take elsewhere.</li>
               </ul>
+              <p>Staff can download a copy of their own data at any time from their own page in VicisRota.</p>
               <p>
                 If you work for a business that uses VicisRota, ask your employer first, as they decide what is kept. You can also contact us at {mail} and we
                 will pass your request to them and help them answer it. We will reply within one month.
