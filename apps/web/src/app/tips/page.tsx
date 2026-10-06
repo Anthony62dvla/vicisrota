@@ -38,7 +38,7 @@ export default async function TipsPage({ searchParams }: PageProps<"/tips">) {
     unsharedTotal: (
       await tx.select().from(schema.tip).where(and(isNull(schema.tip.allocationId), gte(schema.tip.receivedOn, from), lte(schema.tip.receivedOn, to)))
     ).reduce((s, t) => s + t.amountPence, 0),
-    payroll: await loadPayroll(tx, organisationId, from, to),
+    payroll: await loadPayroll(tx, organisationId, from, to, { holidayPay: false }),
     allocations: await tx.select().from(schema.tipAllocation).orderBy(desc(schema.tipAllocation.createdAt)).limit(12),
     shares: await tx
       .select({ allocationId: schema.tipShare.allocationId, name: schema.worker.fullName, hours: schema.tipShare.hours, pence: schema.tipShare.pence })

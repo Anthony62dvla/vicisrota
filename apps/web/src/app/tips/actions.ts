@@ -83,7 +83,7 @@ export async function shareTips(_: FormState, form: FormData): Promise<FormState
       .for("update");
     const total = tips.reduce((s, t) => s + t.amountPence, 0);
     if (total === 0) return { error: "There are no unshared tips in this period." };
-    const { lines } = await loadPayroll(tx, organisationId, period.from, period.to);
+    const { lines } = await loadPayroll(tx, organisationId, period.from, period.to, { holidayPay: false });
     const shares = allocateTips(total, lines.map((l) => ({ workerId: l.workerId, hours: l.hours + l.travelHours })), method);
     if (!shares.length) return { error: "Nobody has confirmed hours in this period yet. Confirm timesheets first, then share the tips." };
     const payBy = tips.map((t) => tipsPayBy(t.receivedOn)).sort()[0]!;

@@ -31,8 +31,8 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
  * Turns a pay period's summary into one line per person per kind of pay, the shape most payroll software
- * can import. Holiday is sent as time taken, with no amount, because holiday pay depends on the person's
- * pay history and the payroll software works it out. People with no payroll ID are still included, with
+ * can import. Holiday is sent as time taken with its pay on the 52-week average when VicisRota has the pay
+ * history to work it out, and as time only otherwise, for the payroll software to work out. People with no payroll ID are still included, with
  * an empty ID, so nobody is left out without the manager seeing it.
  */
 export const payItemLines = (input: {
@@ -43,6 +43,8 @@ export const payItemLines = (input: {
   tipsPence: Map<string, number>;
   sspPence: Map<string, number>;
   shortNoticePence: Map<string, number>;
+  /** Holiday pay on the 52-week average; null pence when there is no pay history to work it out. */
+  holidayPay?: Map<string, { pence: number | null }>;
   names?: Partial<Record<PayItem, string>>;
 }): PayItemLine[] => {
   const names = { ...DEFAULT_PAY_ITEM_NAMES, ...input.names };
@@ -69,7 +71,9 @@ export const payItemLines = (input: {
     }
     if (l.holidayHours > 0 || l.holidayDays > 0) {
       const hours = input.irregularHours.has(l.workerId) || l.holidayDays === 0;
-      add("holiday", { units: round2(hours ? l.holidayHours : l.holidayDays), unit: hours ? "hours" : "days", ratePence: null, amountPence: null });
+      const units = round2(hours ? l.holidayHours : l.holidayDays);
+      const pence = input.holidayPay?.get(l.workerId)?.pence ?? null;
+      add("holiday", { units, unit: hours ? "hours" : "days", ratePence: pence != null && units ? Math.round(pence / units) : null, amountPence: pence });
     }
     for (const [item, map] of [
       ["ssp", input.sspPence],

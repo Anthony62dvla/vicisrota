@@ -65,6 +65,11 @@ describe("pay items for payroll software", () => {
     ]);
   });
 
+  it("sends holiday pay worked out on the 52-week average, with a day rate", () => {
+    const items = payItemLines({ ...base, holidayPay: new Map([["w1", { pence: 20_000 }]]), lines: [line({ hours: 30, grossPence: 39000, ratesPence: [1300], holidayDays: 2 })] });
+    expect(items.find((i) => i.item === "holiday")).toMatchObject({ units: 2, unit: "days", ratePence: 10_000, amountPence: 20_000 });
+  });
+
   it("keeps people with no payroll ID, with the ID left empty", () => {
     const items = payItemLines({ ...base, payrollIds: new Map(), lines: [line({ hours: 1, grossPence: 1300, ratesPence: [1300] })] });
     expect(items[0]?.payrollId).toBe("");

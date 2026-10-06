@@ -104,7 +104,7 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
       },
     };
   });
-  const { lines, unconfirmed, sspPence, shortNoticePence, sleepInPence } = data.payroll;
+  const { lines, unconfirmed, sspPence, shortNoticePence, sleepInPence, holidayPay } = data.payroll;
   const care = sector === "care";
   const missingIds = lines.filter((l) => !data.payroll.payrollIds.get(l.workerId));
   const total = lines.reduce((s, l) => s + l.grossPence + (shortNoticePence.get(l.workerId) ?? 0), 0);
@@ -147,6 +147,12 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
         {unconfirmed > 0 && (
           <p role="alert" className="mt-2 rounded-lg border border-amber-500 p-3">
             {unconfirmed} worked shift{unconfirmed === 1 ? " has" : "s have"} no confirmed hours, so {unconfirmed === 1 ? "it is" : "they are"} not included below.
+          </p>
+        )}
+        {holidayPay.size > 0 && (
+          <p className="mt-2 text-sm text-muted">
+            Holiday pay is the average weekly pay over the last 52 paid weeks, as the law requires, and is paid on top of the gross pay below. Pay
+            from before someone used VicisRota is not included, so check it for people who joined with history elsewhere.
           </p>
         )}
         {lines.length === 0 ? (
@@ -198,6 +204,10 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
                         {[
                           l.holidayDays && `${l.holidayDays} holiday days`,
                           l.holidayHours && `${l.holidayHours} holiday hours`,
+                          holidayPay.has(l.workerId) &&
+                            (holidayPay.get(l.workerId)!.pence == null
+                              ? "holiday pay: no pay history yet"
+                              : `holiday pay ${pounds(holidayPay.get(l.workerId)!.pence!)} (average of ${holidayPay.get(l.workerId)!.weeksUsed} paid week${holidayPay.get(l.workerId)!.weeksUsed === 1 ? "" : "s"})`),
                           l.sickDays && `${l.sickDays} sick day${l.sickDays === 1 ? "" : "s"}${sspPence.has(l.workerId) ? ` (SSP ${pounds(sspPence.get(l.workerId)!)})` : ""}`,
                           l.otherLeaveDays && `${l.otherLeaveDays} other leave days`,
                         ]
@@ -230,8 +240,9 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
             <h3 id="send-heading" className="font-semibold">Send to your payroll software</h3>
             <p className="mt-1">
               The pay items file has one line per person for each kind of pay, with their payroll ID. Most payroll software, such as BrightPay, Sage,
-              Xero or QuickBooks, can import a file like this once you match its columns the first time. Holiday is sent as time taken, so your payroll
-              software works out holiday pay.
+              Xero or QuickBooks, can import a file like this once you match its columns the first time. Holiday is sent with its pay worked out on the
+              legal 52-week average: the average of the last 52 weeks the person was paid, from hours confirmed in VicisRota. If someone has
+              no pay history here yet, holiday is sent as time only, for your payroll software to work out.
             </p>
             {missingIds.length > 0 && (
               <p role="alert" className="mt-3 rounded-lg border border-amber-500 p-3">
