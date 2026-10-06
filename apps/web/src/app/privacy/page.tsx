@@ -98,6 +98,10 @@ export default function PrivacyPage() {
                 VicisRota&apos;s own support team sees counts and progress for each business, never staff personal details, sickness, adjustments or
                 safeguarding concerns. Every action they take is logged.
               </li>
+              <li>
+                Only VicisRota&apos;s developer can reach the server and the database directly, to keep them running and fix problems. Every sign-in to the
+                server and everything they do in the database is logged.
+              </li>
               <li>The providers below, only for the job they do for us.</li>
             </ul>
           ),
@@ -132,7 +136,8 @@ export default function PrivacyPage() {
                 </li>
                 <li>
                   <strong>Anthropic</strong> helps us sort problem reports sent through Report a problem. It receives only the report, with email addresses and
-                  phone numbers removed first, never staff records. Please do not put personal details in a problem report.
+                  phone numbers removed first, never staff records. We use Anthropic&apos;s commercial service, which does not use what it receives to
+                  train its AI. Please do not put personal details in a problem report.
                 </li>
               </ul>
               <p>

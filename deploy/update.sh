@@ -5,5 +5,6 @@ cd "$(dirname "$0")"
 git pull --ff-only
 ./ensure-keys.sh
 docker compose up -d --build
+./log-admin-access.sh
 docker image prune -f >/dev/null
 echo "Updated. Running: $(git log -1 --format='%h %s')"

@@ -540,6 +540,13 @@
       "when": 1791313007340,
       "tag": "0076_xero",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1791317255305,
+      "tag": "0077_terms_accepted",
+      "breakpoints": true
     }
   ]
 }

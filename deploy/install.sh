@@ -49,6 +49,7 @@ mkdir -p backups
 . ./.env
 say "Building and starting VicisRota (the first build takes a few minutes)..."
 docker compose up -d --build
+./log-admin-access.sh
 
 say "Waiting for the site to answer..."
 for _ in $(seq 1 60); do

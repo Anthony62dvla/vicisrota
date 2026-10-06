@@ -12,6 +12,8 @@ export const user = pgTable("user", {
   language: text("language"),
   /** Two-step sign-in with an authenticator app is turned on. */
   twoFactorEnabled: boolean("two_factor_enabled").default(false),
+  /** When the person ticked the box to accept the terms of service, on signing up. Null for accounts made before the box existed. */
+  termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

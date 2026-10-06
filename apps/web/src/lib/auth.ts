@@ -1,5 +1,6 @@
 import { schema } from "@vicisrota/db";
 import { betterAuth } from "better-auth";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { twoFactor } from "better-auth/plugins";
@@ -18,7 +19,19 @@ export const auth = betterAuth({
   // Microsoft and Google, each only when its keys are in app.env. Accounts are never joined up automatically by
   // email: someone with a password links their Microsoft or Google account themselves, while signed in.
   socialProviders: socialProviders(),
+  // Signing up needs the terms box ticked. The email form sends acceptTerms; Microsoft and Google can only make a new
+  // account from the sign-up page (see sso.ts), where the buttons wait for the same tick.
+  hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      if (ctx.path === "/sign-up/email" && ctx.body?.acceptTerms !== true)
+        throw new APIError("BAD_REQUEST", { message: "Please tick the box to accept the terms of service." });
+    }),
+  },
+  databaseHooks: {
+    user: { create: { before: async (user) => ({ data: { ...user, termsAcceptedAt: new Date() } }) } },
+  },
   user: {
+    additionalFields: { termsAcceptedAt: { type: "date", required: false, input: false } },
     validateUserInfo: async ({ user, source }) => {
       if (!source.oauth || !user.email) return;
       // Two-step sign-in is only checked for passwords, so people who turned it on (and the superadmin) keep using it.

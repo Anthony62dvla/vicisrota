@@ -14,8 +14,8 @@ export default function TermsPage() {
       title="Terms of service"
       intro={
         <p>
-          These terms are the agreement between your business and {LEGAL.company}, which runs VicisRota. We have kept them as short and plain as we can. By
-          creating an account or choosing a plan, you agree to them on behalf of your business.
+          These terms are the agreement between your business and {LEGAL.company}, which runs VicisRota. We have kept them as short and plain as we can. You
+          accept them by ticking the box when you create an account. If you set up a business or choose a plan, you accept them on behalf of that business.
         </p>
       }
       sections={[
