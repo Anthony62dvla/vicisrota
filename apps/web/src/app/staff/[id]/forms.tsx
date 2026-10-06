@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { addCheck, addTraining, inviteStaff, markBack, markLeft, saveAdjustments, setMobile, updateHolidaySettings, updatePayrollId, addSupervision, type FormState, type InviteState } from "./actions";
+import { addCheck, addTraining, inviteStaff, markBack, markLeft, saveAdjustments, setMobile, updateHolidaySettings, updatePayrollId, addSupervision, saveSponsorship, type FormState, type InviteState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 const button = "rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover disabled:opacity-60";
@@ -293,6 +293,57 @@ export function LeavingForm({ workerId, name, leftOn, today }: { workerId: strin
           </button>
         </>
       )}
+    </form>
+  );
+}
+
+type SponsorshipValue = { route: string; cosNumber?: string | null; weeklyHours?: number | null; annualSalaryPence?: number | null; startedOn?: string | null };
+
+export function SponsorshipForm({ workerId, current }: { workerId: string; current: SponsorshipValue | null }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(saveSponsorship, {});
+  const [sponsored, setSponsored] = useState(!!current);
+  return (
+    <form action={action} className="mt-3 flex max-w-md flex-col gap-4">
+      <Message state={state} />
+      <input type="hidden" name="workerId" value={workerId} />
+      <label className="flex items-center gap-2">
+        <input type="checkbox" name="sponsored" checked={sponsored} onChange={(e) => setSponsored(e.target.checked)} className="h-5 w-5" />
+        <span className="font-medium">We sponsor this person&apos;s visa</span>
+      </label>
+      {sponsored && (
+        <>
+          <label className="flex flex-col gap-1">
+            <span className="font-medium">Visa route</span>
+            <select name="route" defaultValue={current?.route ?? "health_and_care"} className={input}>
+              <option value="health_and_care">Health and Care Worker</option>
+              <option value="skilled_worker">Skilled Worker</option>
+              <option value="other">Other sponsored route</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="font-medium">Certificate of sponsorship number (optional)</span>
+            <input name="cosNumber" defaultValue={current?.cosNumber ?? ""} maxLength={20} autoComplete="off" className={input} />
+          </label>
+          <div className="flex flex-wrap gap-4">
+            <label className="flex flex-col gap-1">
+              <span className="font-medium">Weekly hours</span>
+              <input name="weeklyHours" inputMode="decimal" defaultValue={current?.weeklyHours ?? ""} className={`${input} w-28`} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="font-medium">Yearly salary (£)</span>
+              <input name="salary" inputMode="decimal" defaultValue={current?.annualSalaryPence ? (current.annualSalaryPence / 100).toFixed(2) : ""} className={`${input} w-40`} />
+            </label>
+          </div>
+          <span className="-mt-2 text-sm text-zinc-600 dark:text-zinc-400">As written on their certificate. Pay below this is flagged on the Sponsored workers page.</span>
+          <label className="flex flex-col gap-1">
+            <span className="font-medium">Sponsored job started on</span>
+            <input name="startedOn" type="date" defaultValue={current?.startedOn ?? ""} className={input} />
+          </label>
+        </>
+      )}
+      <button type="submit" disabled={pending} className={button}>
+        {pending ? "Saving…" : "Save sponsorship"}
+      </button>
     </form>
   );
 }

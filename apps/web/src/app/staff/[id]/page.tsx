@@ -11,7 +11,7 @@ import { AvailabilityEditor } from "../../availability-editor";
 import { addStaffUnavailable, removeStaffUnavailable, removeTraining } from "./actions";
 import { formatUkMobile } from "@vicisrota/messaging";
 import { WorkerRolesForm } from "../../roles/forms";
-import { AddCheckForm, AddTrainingForm, AdjustmentsForm, HolidaySettingsForm, InviteForm, LeavingForm, MobileForm, PayrollIdForm, SupervisionForm } from "./forms";
+import { AddCheckForm, AddTrainingForm, AdjustmentsForm, HolidaySettingsForm, InviteForm, LeavingForm, MobileForm, PayrollIdForm, SponsorshipForm, SupervisionForm } from "./forms";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DBS_LABEL = { basic: "Basic", standard: "Standard", enhanced: "Enhanced", enhanced_barred: "Enhanced with barred list" };
@@ -156,6 +156,15 @@ export default async function StaffRecordPage({ params, searchParams }: PageProp
             </li>
           ))}
         </ul>
+      </section>
+
+      <section id="sponsorship" className="mt-8 scroll-mt-4" aria-labelledby="sponsorship-heading">
+        <h2 id="sponsorship-heading" className="text-lg font-semibold">Visa sponsorship</h2>
+        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+          If you sponsor {worker.fullName}, VicisRota watches for what you must report to the Home Office. See{" "}
+          <Link href="/sponsorship" className="underline">Sponsored workers</Link>.
+        </p>
+        <SponsorshipForm workerId={worker.id} current={worker.sponsorship ?? null} />
       </section>
 
       <section id="dbs" className="mt-8 scroll-mt-4">

@@ -78,6 +78,15 @@ export type WorkerPreferences = {
  */
 export type MessageQuiet = { from?: string | null; to?: string | null; daysOff?: boolean };
 
+/** Mirrors Sponsorship in the compliance package. Money in pence, dates as YYYY-MM-DD. */
+export type Sponsorship = {
+  route: "skilled_worker" | "health_and_care" | "other";
+  cosNumber?: string | null;
+  weeklyHours?: number | null;
+  annualSalaryPence?: number | null;
+  startedOn?: string | null;
+};
+
 export type WorkProfile = {
   strengths?: string;
   helps?: string;
@@ -187,6 +196,8 @@ export const worker = pgTable(
      * rotas, sent messages or counted for the price.
      */
     leftOn: date("left_on"),
+    /** Set when the business sponsors the person's visa. Null: not sponsored. */
+    sponsorship: jsonb("sponsorship").$type<Sponsorship>(),
     /** Hashed PIN for clocking in on an in-store tablet. */
     pinHash: text("pin_hash"),
     pinFailures: smallint("pin_failures").notNull().default(0),
@@ -1333,4 +1344,25 @@ export const staffingLevel = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("staffing_level_org_idx").on(t.organisationId), check("staffing_level_min_people", sql`${t.minPeople} between 1 and 99`)],
+);
+
+/** A sponsor duty reported on the Home Office Sponsor Management System, so it stops showing as due. */
+export const sponsorReport = pgTable(
+  "sponsor_report",
+  {
+    id: id(),
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    /** absence or left, matching SponsorDutyKind. */
+    kind: text("kind").notNull(),
+    eventDate: date("event_date").notNull(),
+    reportedOn: date("reported_on").notNull(),
+    /** The reference the Sponsor Management System gave, if any. */
+    reference: text("reference"),
+    reportedByUserId: text("reported_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("sponsor_report_duty_idx").on(t.workerId, t.kind, t.eventDate)],
 );
