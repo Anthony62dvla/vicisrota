@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { LEGAL } from "@/lib/legal";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { isActive, showsMenu, type Nav, type NavItem } from "@/lib/nav";
@@ -43,6 +44,10 @@ export function AppFrame({ nav, children }: { nav: Nav | null; children: ReactNo
           <Link href="/privacy" className="underline">
             Privacy
           </Link>
+          <span aria-hidden> · </span>
+          <a href={`mailto:${LEGAL.email}`} className="underline">
+            {LEGAL.email}
+          </a>
         </footer>
       </>
     );
