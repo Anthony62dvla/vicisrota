@@ -16,6 +16,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
   let nav: Nav | null = null;
   if (session && membership) {
     const worker = membership.role === "worker";
+    const superadmin = await isSuperadmin(session.user.id);
     // Staff menus are translated. Managers' pages are English for now, so their menu is too.
     const lang = worker ? await getLang() : "en";
     const t = messagesFor(lang);
@@ -24,7 +25,10 @@ export async function AppShell({ children }: { children: ReactNode }) {
       businessName: membership.name,
       businesses: (await myBusinesses(session.user.id)).map((b) => ({ id: b.organisationId, name: b.name, current: b.organisationId === membership.organisationId })),
       userName: session.user.name,
-      sections: worker ? staffNav.map((s) => ({ ...s, items: say(s.items) })) : managerNav(membership.sector, await isSuperadmin(session.user.id), membership.kind),
+      // The superadmin link shows in every business, including ones where this login is only staff.
+      sections: worker
+        ? staffNav.map((s) => ({ ...s, items: [...say(s.items), ...(superadmin ? [{ href: "/admin", label: "VicisRota superadmin", icon: "admin" as const }] : [])] }))
+        : managerNav(membership.sector, superadmin, membership.kind),
       phoneBar: worker ? say(staffPhoneBar, true) : managerPhoneBar,
       words: t.frame,
       lang: localeOf(lang),
