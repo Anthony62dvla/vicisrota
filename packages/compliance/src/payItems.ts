@@ -1,13 +1,14 @@
 import type { PayrollLine } from "./payroll";
 
 /** The kinds of pay VicisRota sends to payroll software, one line each per person. */
-export const PAY_ITEMS = ["basic", "travel", "holiday", "ssp", "tips", "shortNotice"] as const;
+export const PAY_ITEMS = ["basic", "travel", "sleepIn", "holiday", "ssp", "tips", "shortNotice"] as const;
 export type PayItem = (typeof PAY_ITEMS)[number];
 
 /** What each pay item is called unless the business renames it to match its payroll software. */
 export const DEFAULT_PAY_ITEM_NAMES: Record<PayItem, string> = {
   basic: "Basic pay",
   travel: "Travel time",
+  sleepIn: "Sleep-in",
   holiday: "Holiday",
   ssp: "Statutory Sick Pay",
   tips: "Tips",
@@ -21,7 +22,7 @@ export interface PayItemLine {
   /** The business's name for the item, as its payroll software knows it. */
   itemName: string;
   units: number | null;
-  unit: "hours" | "days" | null;
+  unit: "hours" | "days" | "sleep-ins" | null;
   ratePence: number | null;
   amountPence: number | null;
 }
@@ -53,12 +54,18 @@ export const payItemLines = (input: {
     // With one rate in the period, hours times rate is exact. With a pay rise mid-period, the total is sent without a rate.
     const rate = l.ratesPence.length === 1 ? l.ratesPence[0]! : null;
     const travelPence = input.paysTravelTime && rate !== null ? Math.round(l.travelHours * rate) : 0;
-    if (l.hours > 0 || l.grossPence - travelPence > 0) {
-      add("basic", { units: l.hours, unit: "hours", ratePence: rate, amountPence: l.grossPence - travelPence });
+    const basicPence = l.grossPence - travelPence - l.sleepInPence;
+    if (l.hours > 0 || basicPence > 0) {
+      add("basic", { units: l.hours, unit: "hours", ratePence: rate, amountPence: basicPence });
     }
     if (l.travelHours > 0) {
       // Unpaid travel, or paid travel at more than one rate (already in basic pay), is sent as hours only, for the record.
       add("travel", { units: l.travelHours, unit: "hours", ratePence: travelPence ? rate : null, amountPence: travelPence || null });
+    }
+    if (l.sleepIns > 0) {
+      // Time woken to work is in basic pay. The sleep-in line is the flat payment for each night.
+      const each = l.sleepInPence ? l.sleepInPence / l.sleepIns : null;
+      add("sleepIn", { units: l.sleepIns, unit: "sleep-ins", ratePence: each, amountPence: l.sleepInPence || null });
     }
     if (l.holidayHours > 0 || l.holidayDays > 0) {
       const hours = input.irregularHours.has(l.workerId) || l.holidayDays === 0;

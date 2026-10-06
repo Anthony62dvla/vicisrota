@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { confirmAsRostered, confirmClockedHours, saveActualHours, setPayItemNames, undoConfirmation, type FormState } from "./actions";
+import { confirmAsRostered, confirmClockedHours, saveActualHours, setPayItemNames, setSleepInPay, undoConfirmation, type FormState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 const small = "rounded-lg border border-zinc-400 px-3 py-1 text-sm disabled:opacity-60";
@@ -18,8 +18,10 @@ export type Row = {
   day: string;
   rostered: string;
   rosteredBreak: number;
+  /** Care: a sleep-in, where only time woken to work is paid by the hour. */
+  sleepIn: boolean;
   /** Set once hours are confirmed. */
-  confirmed?: { entryId: string; times: string; breakMinutes: number; hours: string; differs: boolean; start: string; end: string; note: string | null };
+  confirmed?: { entryId: string; times: string; breakMinutes: number; awakeMinutes: number; hours: string; differs: boolean; start: string; end: string; note: string | null };
   defaults: { start: string; end: string; breakMinutes: number };
   /** What the person clocked, when they used clock-in. */
   clocked?: { text: string; flags: string[]; complete: boolean };
@@ -54,7 +56,7 @@ export function TimesheetList({ rows }: { rows: Row[] }) {
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="font-medium">{r.name} · {r.day}</p>
+                <p className="font-medium">{r.name} · {r.day}{r.sleepIn && " · Sleep-in"}</p>
                 <p className="text-sm">
                   Rostered {r.rostered}{r.rosteredBreak ? `, ${r.rosteredBreak} min break` : ""}
                 </p>
@@ -67,7 +69,8 @@ export function TimesheetList({ rows }: { rows: Row[] }) {
                 {r.confirmed ? (
                   <p className="text-sm">
                     <span className="font-semibold">Confirmed:</span> {r.confirmed.times}
-                    {r.confirmed.breakMinutes ? `, ${r.confirmed.breakMinutes} min break` : ""} · {r.confirmed.hours}
+                    {r.confirmed.breakMinutes ? `, ${r.confirmed.breakMinutes} min break` : ""}
+                    {r.sleepIn ? ` · woken to work for ${r.confirmed.awakeMinutes} min` : ` · ${r.confirmed.hours}`}
                     {r.confirmed.differs && " (differs from rota)"}
                     {r.confirmed.note && ` · ${r.confirmed.note}`}
                   </p>
@@ -98,7 +101,9 @@ export function TimesheetList({ rows }: { rows: Row[] }) {
               </div>
             </div>
             <details className="mt-2">
-              <summary className="cursor-pointer text-sm underline">{r.confirmed ? "Change hours" : "Enter different hours"}</summary>
+              <summary className="cursor-pointer text-sm underline">
+                {r.sleepIn ? (r.confirmed ? "Change hours or time woken" : "Enter time woken or different hours") : r.confirmed ? "Change hours" : "Enter different hours"}
+              </summary>
               <form action={save} className="mt-3 flex flex-col gap-3">
                 <input type="hidden" name="shiftId" value={r.shiftId} />
                 <div className="flex flex-wrap gap-3">
@@ -115,6 +120,13 @@ export function TimesheetList({ rows }: { rows: Row[] }) {
                     <input name="breakMinutes" type="number" min={0} max={240} defaultValue={r.confirmed?.breakMinutes ?? r.defaults.breakMinutes} className={input} />
                   </label>
                 </div>
+                {r.sleepIn && (
+                  <label className="flex flex-col gap-1">
+                    <span className="text-sm font-medium">Time woken to work (minutes)</span>
+                    <span className="text-sm text-zinc-600 dark:text-zinc-400">Paid at their hourly rate, on top of the sleep-in payment.</span>
+                    <input name="awakeMinutes" type="number" min={0} max={1440} defaultValue={r.confirmed?.awakeMinutes ?? 0} className={`${input} w-32`} />
+                  </label>
+                )}
                 <label className="flex flex-col gap-1">
                   <span className="text-sm font-medium">Reason for the change (optional)</span>
                   <input name="note" defaultValue={r.confirmed?.note ?? ""} className={input} />
@@ -146,6 +158,24 @@ export function PayItemNamesForm({ items }: { items: { item: string; standard: s
       <button type="submit" disabled={pending} className="self-start rounded-lg border border-zinc-400 px-4 py-2 disabled:opacity-60">
         {pending ? "Saving…" : "Save pay item names"}
       </button>
+    </form>
+  );
+}
+
+export function SleepInPayForm({ pence }: { pence: number | null }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(setSleepInPay, {});
+  return (
+    <form action={action} className="mt-3 flex flex-col gap-3">
+      <Message state={state} />
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Payment for each sleep-in (£)</span>
+        <span className="flex flex-wrap gap-2">
+          <input name="sleepInPounds" inputMode="decimal" defaultValue={pence === null ? "" : (pence / 100).toFixed(2)} placeholder="For example 60.00" className={`${input} w-40`} />
+          <button type="submit" disabled={pending} className="rounded-lg border border-zinc-400 px-4 py-2 disabled:opacity-60">
+            {pending ? "Saving…" : "Save"}
+          </button>
+        </span>
+      </label>
     </form>
   );
 }

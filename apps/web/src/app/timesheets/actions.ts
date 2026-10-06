@@ -69,8 +69,10 @@ export async function saveActualHours(_: FormState, form: FormData): Promise<For
   const start = String(form.get("start") ?? "");
   const end = String(form.get("end") ?? "");
   const breakMinutes = Number(form.get("breakMinutes") ?? 0);
+  const awakeMinutes = Number(form.get("awakeMinutes") ?? 0);
   const note = String(form.get("note") ?? "").trim() || null;
   if (!TIME.test(start) || !TIME.test(end)) return { error: "Enter the actual start and finish times." };
+  if (!(Number.isInteger(awakeMinutes) && awakeMinutes >= 0)) return { error: "Enter the minutes woken to work as a whole number, or 0." };
   if (!(Number.isInteger(breakMinutes) && breakMinutes >= 0 && breakMinutes <= 240)) return { error: "Enter a break between 0 and 240 minutes." };
 
   const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
@@ -83,11 +85,15 @@ export async function saveActualHours(_: FormState, form: FormData): Promise<For
     if (endsAt <= startsAt) endsAt = londonDateTime(addDays(date, 1), end);
     if (breakMinutes * MINUTE >= endsAt - startsAt) return { error: "The break is longer than the time worked." };
     if (startsAt > Date.now()) return { error: "Hours can only be confirmed once the shift has started." };
+    // Only sleep-ins have time woken to work. On other shifts every hour is already paid.
+    const awake = shift.kind === "sleep_in" ? awakeMinutes : 0;
+    if (awake * MINUTE > endsAt - startsAt) return { error: "The time woken to work is longer than the sleep-in." };
 
     const values = {
       startsAt: new Date(startsAt),
       endsAt: new Date(endsAt),
       breakMinutes,
+      awakeMinutes: awake,
       note,
       approvedByUserId: user.id,
       approvedAt: new Date(),
@@ -104,7 +110,7 @@ export async function saveActualHours(_: FormState, form: FormData): Promise<For
       action: "approve",
       entity: "time_entry",
       entityId: row!.id,
-      data: { shiftId, start, end, breakMinutes, rostered: { start: shift.startsAt.toISOString(), end: shift.endsAt.toISOString() } },
+      data: { shiftId, start, end, breakMinutes, awakeMinutes: awake, rostered: { start: shift.startsAt.toISOString(), end: shift.endsAt.toISOString() } },
     });
     return { ok: "Hours saved." };
   });
@@ -146,6 +152,8 @@ export async function confirmClockedHours(_: FormState, form: FormData): Promise
       startsAt: new Date(clockedIn),
       endsAt: new Date(clockedOut),
       breakMinutes,
+      // Clocking does not record time woken on a sleep-in. The manager adds it with "Change hours".
+      awakeMinutes: 0,
       note: "From clock-in",
       approvedByUserId: user.id,
       approvedAt: new Date(),
@@ -185,4 +193,19 @@ export async function setPayItemNames(_: FormState, form: FormData): Promise<For
   });
   revalidatePath("/timesheets");
   return { ok: "Saved. The pay items file now uses these names." };
+}
+
+/** Care: the flat payment for each sleep-in. Time woken to work is paid by the hour on top. Blank clears it. */
+export async function setSleepInPay(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const raw = String(form.get("sleepInPounds") ?? "").trim().replace(/^£/, "");
+  if (raw && !/^\d{1,4}(\.\d{1,2})?$/.test(raw)) return { error: "Enter the sleep-in payment in pounds, for example 60 or 62.50." };
+  const sleepInPence = raw ? Math.round(Number(raw) * 100) : null;
+  await withOrganisation(db, organisationId, async (tx) => {
+    await tx.update(schema.organisation).set({ sleepInPence }).where(eq(schema.organisation.id, organisationId));
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "update", entity: "sleep_in_pay", entityId: organisationId, data: { sleepInPence } });
+  });
+  revalidatePath("/timesheets");
+  revalidatePath("/rota");
+  return { ok: sleepInPence === null ? "Sleep-in payment cleared." : `Saved. Each sleep-in is paid £${(sleepInPence / 100).toFixed(2)}, plus the hourly rate for time woken to work.` };
 }

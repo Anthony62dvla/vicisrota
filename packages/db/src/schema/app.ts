@@ -26,6 +26,8 @@ import { user } from "./auth";
 export const sector = pgEnum("sector", ["care", "hospitality", "small_business"]);
 export const role = pgEnum("role", ["owner", "manager", "worker"]);
 export const shiftStatus = pgEnum("shift_status", ["draft", "published", "cancelled"]);
+/** Care: a sleep-in is paid as a flat sleep-in payment plus any time woken to work; a waking night is paid by the hour. */
+export const shiftKind = pgEnum("shift_kind", ["standard", "sleep_in", "waking_night"]);
 export const checkKind = pgEnum("check_kind", ["right_to_work", "dbs"]);
 export const leaveKind = pgEnum("leave_kind", ["annual", "sick", "family", "unpaid", "compassionate", "other"]);
 export const leaveStatus = pgEnum("leave_status", ["requested", "approved", "declined", "cancelled"]);
@@ -101,6 +103,8 @@ export const organisation = pgTable("organisation", {
   leaveYearStartMonth: smallint("leave_year_start_month").notNull().default(1),
   /** Care: travel between visits is paid at the hourly rate. */
   paysTravelTime: boolean("pays_travel_time").notNull().default(false),
+  /** Care: the flat payment for each sleep-in, in pence. Time woken to work is paid by the hour on top. Null: not set. */
+  sleepInPence: integer("sleep_in_pence"),
   /** Written tipping policy that staff can read (Employment (Allocation of Tips) Act 2023). */
   tippingPolicy: text("tipping_policy"),
   /** Whether phone clock-ins check the person is at a workplace: not at all, noted for the manager, or required. */
@@ -112,7 +116,7 @@ export const organisation = pgTable("organisation", {
   /** Share of the lost pay owed for a short-notice change, 100 = full pay. */
   shortNoticePayPercent: smallint("short_notice_pay_percent").notNull().default(100),
   /** What the business's payroll software calls each kind of pay, where it differs from VicisRota's names. */
-  payItemNames: jsonb("pay_item_names").$type<Partial<Record<"basic" | "travel" | "holiday" | "ssp" | "tips" | "shortNotice", string>>>().notNull().default({}),
+  payItemNames: jsonb("pay_item_names").$type<Partial<Record<"basic" | "travel" | "sleepIn" | "holiday" | "ssp" | "tips" | "shortNotice", string>>>().notNull().default({}),
   /** Unlimited staff until then. Afterwards the first five people stay free (see PRICING). */
   trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }).default(sql`now() + interval '30 days'`),
   /** The registered charity or CIC number the business gave, if any. */
@@ -254,6 +258,7 @@ export const shift = pgTable(
     note: text("note"),
     /** Parts of one split shift (for example 07:00 to 10:00 and 16:00 to 19:00) share this id. Each part is clocked separately. */
     splitGroupId: uuid("split_group_id"),
+    kind: shiftKind("kind").notNull().default("standard"),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
@@ -470,6 +475,8 @@ export const timeEntry = pgTable(
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
     breakMinutes: integer("break_minutes").notNull().default(0),
+    /** Sleep-ins: minutes the person was woken to work, paid by the hour. */
+    awakeMinutes: integer("awake_minutes").notNull().default(0),
     note: text("note"),
     approvedByUserId: text("approved_by_user_id").references(() => user.id, { onDelete: "set null" }),
     approvedAt: timestamp("approved_at", { withTimezone: true }),
@@ -479,6 +486,7 @@ export const timeEntry = pgTable(
     index("time_entry_worker_idx").on(t.workerId, t.startsAt),
     check("time_entry_times", sql`${t.endsAt} > ${t.startsAt}`),
     check("time_entry_break", sql`${t.breakMinutes} >= 0 and ${t.breakMinutes} * interval '1 minute' < ${t.endsAt} - ${t.startsAt}`),
+    check("time_entry_awake", sql`${t.awakeMinutes} >= 0 and ${t.awakeMinutes} * interval '1 minute' <= ${t.endsAt} - ${t.startsAt}`),
   ],
 );
 

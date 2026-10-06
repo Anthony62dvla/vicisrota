@@ -1,7 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { addDays, autoAssign, evaluate, londonDateTime, londonParts, STAFFING_LEGAL_REF, type Finding } from "@vicisrota/compliance";
+import { addDays, autoAssign, evaluate, londonDateTime, londonParts, SHIFT_KINDS, STAFFING_LEGAL_REF, type Finding, type ShiftKind } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, eq, gt, gte, inArray, isNull, lt, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -102,6 +102,9 @@ export async function saveShift(_: FormState, form: FormData): Promise<FormState
   const clientId = String(form.get("clientId") ?? "") || null;
   const roleId = String(form.get("roleId") ?? "") || null;
   const travelMinutes = Number(form.get("travelMinutes") ?? 0);
+  const kindValue = String(form.get("kind") ?? "standard");
+  if (!SHIFT_KINDS.includes(kindValue as ShiftKind)) return { error: "Choose the type of shift." };
+  const kind = kindValue as ShiftKind;
   const note = String(form.get("note") ?? "").trim() || null;
   if (note && note.length > 500) return { error: "Keep the note for the person under 500 characters." };
   if (!DATE.test(date)) return { error: "Choose the day." };
@@ -155,7 +158,7 @@ export async function saveShift(_: FormState, form: FormData): Promise<FormState
         if (known.length !== requires.length) return { error: "Some of the training chosen could not be found." };
       }
       const splitGroupId = second ? randomUUID() : undefined;
-      const values = { workerId, clientId, roleId, travelMinutes, loneWorking, checkInMinutes, note, startsAt: new Date(startsAt), endsAt: new Date(endsAt), splitGroupId };
+      const values = { workerId, clientId, roleId, travelMinutes, loneWorking, checkInMinutes, note, kind, startsAt: new Date(startsAt), endsAt: new Date(endsAt), splitGroupId };
       let before: Shift | null = null;
       let after: Shift;
       if (shiftId) {
@@ -211,7 +214,7 @@ export async function saveShift(_: FormState, form: FormData): Promise<FormState
         entity: "shift",
         entityId: after.id,
         data: {
-          workerId, date, start, end, breakMinutes, requires, clientId, roleId, travelMinutes, loneWorking, checkInMinutes, note: !!note,
+          workerId, date, start, end, breakMinutes, requires, clientId, roleId, travelMinutes, loneWorking, checkInMinutes, kind, note: !!note,
           ...(second && { splitGroupId, secondStart: new Date(second.startsAt).toISOString(), secondEnd: new Date(second.endsAt).toISOString() }),
         },
       });
@@ -533,6 +536,7 @@ export async function copyPreviousWeek(_: FormState, form: FormData): Promise<Fo
           travelMinutes: s.travelMinutes,
           loneWorking: s.loneWorking,
           checkInMinutes: s.checkInMinutes,
+          kind: s.kind,
           splitGroupId: groupFor(s.splitGroupId),
           startsAt,
           endsAt,

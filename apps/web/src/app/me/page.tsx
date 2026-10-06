@@ -409,6 +409,8 @@ export default async function MyPage() {
                         {timeFmt.format(s.startsAt)} to {timeFmt.format(s.endsAt)}
                         {client && <strong>{` · Visit to ${client.name}`}</strong>}
                         {s.roleId && roleName.has(s.roleId) && <strong>{` · ${roleName.get(s.roleId)}`}</strong>}
+                        {s.kind === "sleep_in" && <strong> · Sleep-in</strong>}
+                        {s.kind === "waking_night" && <strong> · Waking night</strong>}
                         <span className="text-zinc-600 dark:text-zinc-400">
                           {" "}· {Number.isInteger(paidHours) ? paidHours : paidHours.toFixed(2).replace(/0$/, "")} {paidHours === 1 ? "hour" : "hours"}
                           {unpaid > 0 && `, ${Math.round(unpaid / MINUTE)} minute break`}
@@ -421,6 +423,9 @@ export default async function MyPage() {
                         </p>
                       )}
                       {client?.postcode && <p className="text-sm">{client.postcode}</p>}
+                      {s.kind === "sleep_in" && (
+                        <p className="text-sm">You sleep at work and are woken only if needed. You get the sleep-in payment, plus your hourly rate for any time woken to work. Tell your manager how long you were up.</p>
+                      )}
                       {s.travelMinutes > 0 && <p className="text-sm">Allow {s.travelMinutes} minutes to travel from your previous visit.</p>}
                       {client?.visitNotes && <p className="mt-1 rounded-md bg-zinc-100 p-2 text-sm dark:bg-zinc-900">{client.visitNotes}</p>}
                       {s.note && <p className="mt-1 rounded-md bg-brand-soft p-2 text-sm whitespace-pre-line">{s.note}</p>}

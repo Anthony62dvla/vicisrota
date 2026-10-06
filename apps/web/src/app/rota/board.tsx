@@ -19,6 +19,8 @@ export type BoardShift = {
   note: string | null;
   loneWorking: boolean;
   checkInMinutes: number;
+  /** Care only: sleep-ins are paid as a sleep-in payment, waking nights by the hour. */
+  kind: "standard" | "sleep_in" | "waking_night";
   requires: string[];
   status: "draft" | "published";
   coverRequested: boolean;
@@ -134,7 +136,7 @@ export function RotaBoard(props: Props) {
           setOver(null);
         }}
         onClick={() => setOpen({ mode: "edit", shiftId: s.id })}
-        aria-label={`${s.start} to ${s.end}${s.split ? `, split shift part ${s.split.part} of ${s.split.of}` : ""}${role ? `, ${role.name}` : ""}${s.workerId ? `, ${nameById.get(s.workerId) ?? ""}` : ", open shift"}. ${s.status === "published" ? "Published" : "Draft"}.${s.problems.length ? ` ${s.problems.length} to look at.` : ""} Edit or move.`}
+        aria-label={`${s.start} to ${s.end}${s.split ? `, split shift part ${s.split.part} of ${s.split.of}` : ""}${s.kind === "sleep_in" ? ", sleep-in" : s.kind === "waking_night" ? ", waking night" : ""}${role ? `, ${role.name}` : ""}${s.workerId ? `, ${nameById.get(s.workerId) ?? ""}` : ", open shift"}. ${s.status === "published" ? "Published" : "Draft"}.${s.problems.length ? ` ${s.problems.length} to look at.` : ""} Edit or move.`}
         className={`mb-1.5 block w-full cursor-grab rounded-lg border-2 p-1.5 text-left text-sm shadow-sm hover:border-brand active:cursor-grabbing ${
           role ? ROLE_CARD[role.colour] : "bg-surface"
         } ${s.status === "draft" ? "border-dashed" : ""} ${blocks ? "border-red-600" : warns ? "border-amber-500" : s.status === "draft" ? "border-zinc-400" : "border-zinc-300 dark:border-zinc-600"} ${
@@ -151,6 +153,7 @@ export function RotaBoard(props: Props) {
         )}
         {role && <span className="block truncate text-xs font-medium">{role.name}</span>}
         {s.clientName && <span className="block truncate text-xs font-medium">{s.clientName}</span>}
+        {s.kind !== "standard" && <span className="block text-xs font-medium">{s.kind === "sleep_in" ? "Sleep-in" : "Waking night"}</span>}
         <span className="block text-xs text-zinc-600 dark:text-zinc-400">
           {s.status === "published" ? (s.workerId ? "Published" : "Open to staff") : "Draft"}
           {s.coverRequested && " · cover asked"}
@@ -499,6 +502,26 @@ function ShiftDialog({
                 </span>
               )}
             </label>
+          )}
+          {clients && (
+            <fieldset className="flex flex-col gap-2">
+              <legend className="font-medium">Type of shift</legend>
+              {(
+                [
+                  ["standard", "Standard shift", "Paid by the hour."],
+                  ["sleep_in", "Sleep-in", "They sleep at work and are woken only if needed. Paid the sleep-in payment, plus the hourly rate for any time woken to work."],
+                  ["waking_night", "Waking night", "Awake and working all night. Paid by the hour."],
+                ] as const
+              ).map(([value, label, hint]) => (
+                <label key={value} className="flex items-start gap-2">
+                  <input type="radio" name="kind" value={value} defaultChecked={(shift?.kind ?? "standard") === value} className="mt-1" />
+                  <span>
+                    {label}
+                    <span className="block text-sm text-zinc-600 dark:text-zinc-400">{hint}</span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
           )}
           {clients && (
             <>

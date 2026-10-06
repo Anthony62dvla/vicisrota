@@ -87,6 +87,7 @@ export const loadWeekChecks = async (
     end: s.endsAt.toISOString(),
     breaks: breaks.filter((b) => b.shiftId === s.id).map((b) => ({ start: b.startsAt.toISOString(), end: b.endsAt.toISOString() })),
     travelMinutesBefore: s.travelMinutes,
+    sleepIn: s.kind === "sleep_in" ? { awakeMinutes: 0 } : undefined,
     role: s.roleId ? roleById.get(s.roleId) : undefined,
     requiredQualifications: requirements
       .filter((r) => r.shiftId === s.id)

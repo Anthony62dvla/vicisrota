@@ -19,6 +19,10 @@ export const workedMillis = (shift: Shift): number => {
   return gross - breaks;
 };
 
+/** Time paid by the hour. On a sleep-in that is only the time awake working; sleeping time is paid as the sleep-in payment. */
+export const paidMillis = (shift: Shift): number =>
+  shift.sleepIn ? Math.min(shift.sleepIn.awakeMinutes * MINUTE, workedMillis(shift)) : workedMillis(shift);
+
 /** Longest single break in a shift. Statutory breaks must be uninterrupted. */
 export const longestBreakMillis = (shift: Shift): number =>
   Math.max(0, ...(shift.breaks ?? []).map((b) => ms(b.end) - ms(b.start)));
