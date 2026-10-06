@@ -34,6 +34,7 @@ export const managerNav = (sector: Sector, superadmin: boolean, kind: string | n
       item("/staff", "Staff", "staff"),
       item("/roles", "Job roles", "roles"),
       item("/staffing", "Safe staffing", "staffing"),
+      item("/fairness", "Fair shares", "fairness"),
       item("/hiring", "Hiring", "hiring"),
       ...(has.clients ? [item("/clients", "Clients", "clients")] : []),
     ],
