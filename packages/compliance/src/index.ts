@@ -30,3 +30,4 @@ export * from "./checksDue";
 export * from "./courseLink";
 export * from "./staffing";
 export * from "./sleepIn";
+export * from "./sponsor";

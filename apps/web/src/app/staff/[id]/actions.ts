@@ -408,3 +408,33 @@ export async function markBack(_: FormState, form: FormData): Promise<FormState>
   revalidatePath("/staff", "layout");
   return { ok: "Saved. They are back on the team." };
 }
+
+/** Records that the business sponsors the person's visa, with the details on their certificate of sponsorship. */
+export async function saveSponsorship(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  let sponsorship: schema.Sponsorship | null = null;
+  if (form.get("sponsored") === "on") {
+    const route = String(form.get("route") ?? "");
+    if (route !== "skilled_worker" && route !== "health_and_care" && route !== "other") return { error: "Choose the visa route." };
+    const cosNumber = String(form.get("cosNumber") ?? "").trim().toUpperCase() || null;
+    if (cosNumber && !/^[A-Z0-9]{6,20}$/.test(cosNumber)) return { error: "Enter the certificate of sponsorship number as letters and numbers only." };
+    const hoursRaw = String(form.get("weeklyHours") ?? "").trim();
+    const weeklyHours = hoursRaw ? Number(hoursRaw) : null;
+    if (weeklyHours !== null && !(weeklyHours > 0 && weeklyHours <= 60)) return { error: "Enter the weekly hours on their certificate, up to 60." };
+    const salaryRaw = String(form.get("salary") ?? "").trim().replace(/[£,]/g, "");
+    if (salaryRaw && !/^\d{1,7}(\.\d{1,2})?$/.test(salaryRaw)) return { error: "Enter the yearly salary in pounds, for example 25000." };
+    const startedOn = String(form.get("startedOn") ?? "") || null;
+    if (startedOn && !DATE.test(startedOn)) return { error: "Enter the date their sponsored job started." };
+    sponsorship = { route, cosNumber, weeklyHours, annualSalaryPence: salaryRaw ? Math.round(Number(salaryRaw) * 100) : null, startedOn };
+  }
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
+    const rows = await tx.update(schema.worker).set({ sponsorship }).where(eq(schema.worker.id, workerId)).returning({ name: schema.worker.fullName });
+    if (!rows.length) return { error: "That person could not be found." };
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "update", entity: "worker_sponsorship", entityId: workerId, data: { sponsorship } });
+    return { ok: sponsorship ? `Sponsorship details saved for ${rows[0]!.name}.` : `${rows[0]!.name} is no longer marked as sponsored.` };
+  });
+  revalidatePath(`/staff/${workerId}`);
+  revalidatePath("/sponsorship");
+  return result;
+}

@@ -428,6 +428,13 @@
       "when": 1791279049831,
       "tag": "0060_sleep_ins",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1791284725438,
+      "tag": "0061_sponsored_workers",
+      "breakpoints": true
     }
   ]
 }
