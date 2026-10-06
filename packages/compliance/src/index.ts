@@ -39,3 +39,4 @@ export * from "./statement";
 export * from "./labourCost";
 export * from "./rules/licenceHolder";
 export * from "./agency";
+export * from "./rules/sundayWork";

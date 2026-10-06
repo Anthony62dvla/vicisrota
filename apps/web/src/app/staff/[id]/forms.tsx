@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { addKeepApart, addCheck, addTraining, inviteStaff, markBack, markLeft, saveAdjustments, setMobile, updateHolidaySettings, updatePayrollId, addSupervision, saveSponsorship, type FormState, type InviteState, savePersonalLicence, saveAgency } from "./actions";
+import { addKeepApart, addCheck, addTraining, inviteStaff, markBack, markLeft, saveAdjustments, setMobile, updateHolidaySettings, updatePayrollId, addSupervision, saveSponsorship, type FormState, type InviteState, savePersonalLicence, saveAgency, saveSundayOptOut } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 const button = "rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover disabled:opacity-60";
@@ -434,6 +434,43 @@ export function AgencyForm({ workerId, current }: { workerId: string; current: {
       )}
       <button type="submit" disabled={pending} className={button}>
         {pending ? "Saving…" : "Save agency details"}
+      </button>
+    </form>
+  );
+}
+
+export function SundayOptOutForm({ workerId, current, from }: { workerId: string; current: { noticeGivenOn: string; statementGiven: boolean } | null; from: string | null }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(saveSundayOptOut, {});
+  const [optedOut, setOptedOut] = useState(!!current);
+  return (
+    <form action={action} className="mt-3 flex max-w-md flex-col gap-4">
+      <Message state={state} />
+      <input type="hidden" name="workerId" value={workerId} />
+      <label className="flex items-center gap-2">
+        <input type="checkbox" name="optedOut" checked={optedOut} onChange={(e) => setOptedOut(e.target.checked)} className="h-5 w-5" />
+        <span className="font-medium">They have given written notice to opt out of Sunday work</span>
+      </label>
+      {optedOut && (
+        <>
+          <label className="flex flex-col gap-1">
+            <span className="font-medium">Notice given on</span>
+            <input name="noticeGivenOn" type="date" defaultValue={current?.noticeGivenOn ?? ""} className={input} />
+          </label>
+          <fieldset className="flex flex-col gap-1">
+            <legend className="font-medium">Did you give them the written statement of their Sunday working rights within 2 months of starting?</legend>
+            <span className="text-sm text-zinc-600 dark:text-zinc-400">If not, their opt-out takes effect after 1 month instead of 3.</span>
+            <label className="flex items-center gap-2">
+              <input type="radio" name="statementGiven" value="yes" defaultChecked={current?.statementGiven ?? true} /> Yes
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="radio" name="statementGiven" value="no" defaultChecked={current ? !current.statementGiven : false} /> No
+            </label>
+          </fieldset>
+          {from && <p>The rota will warn about Sunday shifts from {new Date(`${from}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" })}.</p>}
+        </>
+      )}
+      <button type="submit" disabled={pending} className={button}>
+        {pending ? "Saving…" : "Save Sunday working"}
       </button>
     </form>
   );

@@ -1,3 +1,4 @@
+import { SUNDAY_LEGAL_REF, sundayOptOutFrom } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, asc, desc, eq, isNull, ne, or } from "drizzle-orm";
 import Link from "next/link";
@@ -11,7 +12,7 @@ import { AvailabilityEditor } from "../../availability-editor";
 import { addStaffUnavailable, removeKeepApart, removeStaffUnavailable, removeTraining } from "./actions";
 import { formatUkMobile } from "@vicisrota/messaging";
 import { WorkerRolesForm } from "../../roles/forms";
-import { AddCheckForm, AddTrainingForm, AgencyForm, AdjustmentsForm, HolidaySettingsForm, InviteForm, KeepApartForm, LeavingForm, MobileForm, PayrollIdForm, PersonalLicenceForm, SponsorshipForm, SupervisionForm } from "./forms";
+import { AddCheckForm, AddTrainingForm, AgencyForm, AdjustmentsForm, HolidaySettingsForm, InviteForm, KeepApartForm, LeavingForm, MobileForm, PayrollIdForm, PersonalLicenceForm, SponsorshipForm, SundayOptOutForm, SupervisionForm } from "./forms";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DBS_LABEL = { basic: "Basic", standard: "Standard", enhanced: "Enhanced", enhanced_barred: "Enhanced with barred list" };
@@ -207,6 +208,21 @@ export default async function StaffRecordPage({ params, searchParams }: PageProp
             <Link href="/workplaces" className="underline">Workplaces</Link>.
           </p>
           <PersonalLicenceForm workerId={worker.id} current={worker.personalLicence ?? null} />
+        </section>
+      )}
+
+      {sector !== "care" && (
+        <section id="sunday" className="mt-8 scroll-mt-4" aria-labelledby="sunday-heading">
+          <h2 id="sunday-heading" className="text-lg font-semibold">Sunday working</h2>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+            Shop and betting workers can opt out of working on Sundays by giving written notice. Once the notice runs out, they cannot be made to work
+            Sundays or treated worse for refusing. Untick this if they opt back in. Based on: {SUNDAY_LEGAL_REF}.
+          </p>
+          <SundayOptOutForm
+            workerId={worker.id}
+            current={worker.sundayOptOut ?? null}
+            from={worker.sundayOptOut ? sundayOptOutFrom(worker.sundayOptOut.noticeGivenOn, worker.sundayOptOut.statementGiven) : null}
+          />
         </section>
       )}
 

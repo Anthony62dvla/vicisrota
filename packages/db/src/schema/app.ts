@@ -229,6 +229,8 @@ export const worker = pgTable(
     /** Set when the business sponsors the person's visa. Null: not sponsored. */
     sponsorship: jsonb("sponsorship").$type<Sponsorship>(),
     /** Supplied by an employment agency (Agency Workers Regulations 2010). Null: hired directly. */
+    /** Shop or betting worker's notice opting out of Sunday work, and whether the explanatory statement was given in time. */
+    sundayOptOut: jsonb("sunday_opt_out").$type<{ noticeGivenOn: string; statementGiven: boolean }>(),
     agency: jsonb("agency").$type<{ agencyName: string; startedOn: string; role?: string }>(),
     /** Hashed PIN for clocking in on an in-store tablet. */
     pinHash: text("pin_hash"),

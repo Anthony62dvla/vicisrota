@@ -526,3 +526,24 @@ export async function saveAgency(_: FormState, form: FormData): Promise<FormStat
   revalidatePath("/agency");
   return result;
 }
+
+/** Records a shop or betting worker's notice opting out of Sunday work. Unticking removes it (they have opted back in). */
+export async function saveSundayOptOut(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  let sundayOptOut: { noticeGivenOn: string; statementGiven: boolean } | null = null;
+  if (form.get("optedOut") === "on") {
+    const noticeGivenOn = String(form.get("noticeGivenOn") ?? "");
+    if (!DATE.test(noticeGivenOn)) return { error: "Enter the date they gave you written notice." };
+    sundayOptOut = { noticeGivenOn, statementGiven: form.get("statementGiven") === "yes" };
+  }
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
+    const rows = await tx.update(schema.worker).set({ sundayOptOut }).where(eq(schema.worker.id, workerId)).returning({ name: schema.worker.fullName });
+    if (!rows.length) return { error: "That person could not be found." };
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "update", entity: "worker_sunday_opt_out", entityId: workerId, data: { sundayOptOut } });
+    return { ok: sundayOptOut ? `Sunday opt-out saved for ${rows[0]!.name}.` : `${rows[0]!.name} has opted back in to Sunday work.` };
+  });
+  revalidatePath(`/staff/${workerId}`);
+  revalidatePath("/rota");
+  return result;
+}
