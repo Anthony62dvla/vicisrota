@@ -4,7 +4,9 @@ import { Logo } from "./icons";
 import { LEGAL } from "@/lib/legal";
 
 /** The layout for the terms and the privacy policy: plain, readable, with a contents list. */
-export function LegalPage({ title, intro, sections }: { title: string; intro: ReactNode; sections: { id: string; heading: string; body: ReactNode }[] }) {
+type Section = { id: string; heading: string; body: ReactNode };
+
+export function LegalPage({ title, intro, sections, schedule }: { title: string; intro: ReactNode; sections: Section[]; schedule?: Section }) {
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-10 lg:px-8">
       <Link href="/" className="flex w-fit items-center gap-2.5 rounded-lg">
@@ -27,15 +29,30 @@ export function LegalPage({ title, intro, sections }: { title: string; intro: Re
             </li>
           ))}
         </ol>
+        {schedule && (
+          <a href={`#${schedule.id}`} className="mt-2 inline-block text-brand underline">
+            Schedule 1. {schedule.heading}
+          </a>
+        )}
       </nav>
       {sections.map((s, i) => (
         <section key={s.id} id={s.id} aria-labelledby={`${s.id}-heading`} className="mt-10 scroll-mt-4">
           <h2 id={`${s.id}-heading`} className="text-xl font-semibold text-heading">
             {i + 1}. {s.heading}
           </h2>
-          <div className="legal mt-3 flex flex-col gap-3 leading-relaxed [&_li]:mt-1 [&_ul]:list-disc [&_ul]:pl-6">{s.body}</div>
+          <div className="legal mt-3 flex flex-col gap-3 leading-relaxed [&_h3]:mt-3 [&_h3]:font-semibold [&_li]:mt-1 [&_ul]:list-disc [&_ul]:pl-6">{s.body}</div>
         </section>
       ))}
+      {schedule && (
+        <section id={schedule.id} aria-labelledby={`${schedule.id}-heading`} className="mt-12 scroll-mt-4 border-t border-line pt-8">
+          <h2 id={`${schedule.id}-heading`} className="text-xl font-semibold text-heading">
+            Schedule 1. {schedule.heading}
+          </h2>
+          <div className="legal mt-3 flex flex-col gap-3 leading-relaxed [&_h3]:mt-3 [&_h3]:font-semibold [&_li]:mt-1 [&_ul]:list-disc [&_ul]:pl-6">
+            {schedule.body}
+          </div>
+        </section>
+      )}
       <p className="mt-12 border-t border-line pt-6 text-sm text-muted">
         VicisRota is run by {LEGAL.company}, {LEGAL.address}. Questions:{" "}
         <a href={`mailto:${LEGAL.email}`} className="underline">

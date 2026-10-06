@@ -1,6 +1,6 @@
 import { MESSAGES_KEPT_DAYS, retentionStage } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
-import { eq, inArray, isNotNull, lt, or } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lt, or } from "drizzle-orm";
 import { db } from "./db";
 
 /**
@@ -99,3 +99,16 @@ export const workerData = async (organisationId: string, workerId: string) =>
   });
 
 export const dataFileName = (name: string) => `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "my"}-data.json`;
+
+const DAY = 86_400_000;
+/** Sign-in records (with the IP address and browser they came from) are kept this long after they were last used. */
+export const SECURITY_RECORDS_KEPT_DAYS = 90;
+/** Problem reports sent through Report a problem are kept this long. */
+export const PROBLEM_REPORTS_KEPT_DAYS = 2 * 365;
+
+/** Deletes VicisRota's own records past the periods in the privacy policy. Run daily by the scheduler, alongside applyRetention. */
+export const applyPlatformRetention = async (now: number) => {
+  const securityCutoff = new Date(now - SECURITY_RECORDS_KEPT_DAYS * DAY);
+  await db.delete(schema.session).where(and(lt(schema.session.expiresAt, new Date(now)), lt(schema.session.updatedAt, securityCutoff)));
+  await db.delete(schema.supportReport).where(lt(schema.supportReport.createdAt, new Date(now - PROBLEM_REPORTS_KEPT_DAYS * DAY)));
+};
