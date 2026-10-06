@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { LEAVE_LABEL } from "@/lib/leave";
 import { candidatesFor, usualTimes } from "@/lib/board";
 import { loadWeekChecks, todayInUk, weekBounds } from "@/lib/rota";
+import { loadStaffingGaps } from "@/lib/staffing";
 import { RotaBoard, type BoardShift } from "./board";
 import { ClaimList, CopyWeekForm, FillOpenShiftsForm, PublishForm } from "./forms";
 
@@ -26,7 +27,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
 
   const previous = weekBounds(addDays(week, -7));
 
-  const { workers, training, clients, shifts, claims, leave, decision, rates, breaks, paysTravelTime, shortNoticeHours, lastWeek, roles, requirements, unavailable, workerRoles, recent, checks } = await withOrganisation(db, organisationId, async (tx) => ({
+  const { workers, training, clients, shifts, claims, leave, decision, rates, breaks, paysTravelTime, shortNoticeHours, lastWeek, roles, requirements, unavailable, workerRoles, recent, checks, gaps } = await withOrganisation(db, organisationId, async (tx) => ({
     workers: await tx.select().from(schema.worker).where(or(isNull(schema.worker.leftOn), gte(schema.worker.leftOn, week))).orderBy(asc(schema.worker.fullName)),
     clients:
       sector === "care"
@@ -73,6 +74,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
       .where(and(gte(schema.shift.startsAt, weekBounds(addDays(week, -35)).from), lt(schema.shift.startsAt, to), ne(schema.shift.status, "cancelled"))),
     // Every rule is run on every page view, so problems show as the rota is built, not only at publishing.
     checks: await loadWeekChecks(tx, organisationId, week),
+    gaps: await loadStaffingGaps(tx, week),
     breaks: await tx
       .select({ shiftId: schema.shiftBreak.shiftId, startsAt: schema.shiftBreak.startsAt, endsAt: schema.shiftBreak.endsAt })
       .from(schema.shiftBreak)
@@ -226,7 +228,8 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
       <section className="mt-8" aria-labelledby="check-heading">
         <h2 id="check-heading" className="text-lg font-semibold">Check and publish</h2>
         <p className="mt-1">
-          {drafts === 0 ? "No draft shifts this week." : `${drafts} draft shift${drafts === 1 ? "" : "s"} waiting to be published.`} Before you publish, every shift is checked against the law and your records. That includes working time, under-18 rules, minimum wage, right to work, DBS, training and booked leave.
+          {drafts === 0 ? "No draft shifts this week." : `${drafts} draft shift${drafts === 1 ? "" : "s"} waiting to be published.`} Before you publish, every shift is checked against the law and your records. That includes working time, under-18 rules, minimum wage, right to work, DBS, training, booked leave and your{" "}
+          <Link href="/staffing" className="underline">safe staffing levels</Link>.
         </p>
         <PublishForm weekStart={week} />
         {shifts.length > 0 && (
@@ -237,10 +240,21 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
                 {decision.requestId && ` · reference ${decision.requestId}`}
               </p>
             )}
-            {findings.length === 0 ? (
+            {findings.length === 0 && gaps.length === 0 ? (
               <p className="mt-2">No problems found in this week&rsquo;s shifts right now.</p>
             ) : (
               <ul className="mt-2 space-y-2">
+                {gaps.map((g) => (
+                  <li key={`${g.levelId}-${g.from}`} className={`rounded-lg border-l-4 p-3 ${g.strict ? "border-red-600 bg-red-50 dark:bg-red-950" : "border-amber-500 bg-warn-soft"}`}>
+                    <p>
+                      <span className="font-semibold">{g.strict ? "Must fix: " : "Check: "}</span>
+                      {g.message} Add or move a shift to cover it.
+                    </p>
+                    <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                      Safe staffing · <Link href="/staffing" className="underline">your staffing levels</Link>
+                    </p>
+                  </li>
+                ))}
                 {findings.map((f, i) => (
                   <li key={i} className={`rounded-lg border-l-4 p-3 ${f.severity === "block" ? "border-red-600 bg-red-50 dark:bg-red-950" : "border-amber-500 bg-warn-soft"}`}>
                     <p>

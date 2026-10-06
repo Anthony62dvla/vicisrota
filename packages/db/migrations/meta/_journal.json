@@ -414,6 +414,13 @@
       "when": 1791240180349,
       "tag": "0058_course_links",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1791267324216,
+      "tag": "0059_safe_staffing",
+      "breakpoints": true
     }
   ]
 }

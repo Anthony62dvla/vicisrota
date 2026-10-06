@@ -1300,3 +1300,29 @@ export const applicant = pgTable(
   },
   (t) => [index("applicant_post_idx").on(t.jobPostId, t.createdAt)],
 );
+
+/**
+ * A safe staffing level: the fewest people (or people in one job role, for skill mix) who must be on at a
+ * workplace on given days and times. The rota shows any gap, and a strict level stops publishing.
+ */
+export const staffingLevel = pgTable(
+  "staffing_level",
+  {
+    id: id(),
+    organisationId: orgId(),
+    /** Null: shifts anywhere in the business count. */
+    locationId: uuid("location_id").references(() => location.id, { onDelete: "cascade" }),
+    /** Null: anyone counts. Set: only people working this role count (skill mix). */
+    roleId: uuid("role_id").references((): AnyPgColumn => jobRole.id, { onDelete: "cascade" }),
+    /** 1 = Monday to 7 = Sunday. */
+    weekdays: smallint("weekdays").array().notNull(),
+    /** UK wall-clock "HH:MM". An end at or before the start runs past midnight; "24:00" is midnight. */
+    startsAt: text("starts_at").notNull(),
+    endsAt: text("ends_at").notNull(),
+    minPeople: smallint("min_people").notNull(),
+    /** True: a rota that falls short cannot be published. False: it warns. */
+    strict: boolean("strict").notNull().default(true),
+    createdAt: createdAt(),
+  },
+  (t) => [index("staffing_level_org_idx").on(t.organisationId), check("staffing_level_min_people", sql`${t.minPeople} between 1 and 99`)],
+);

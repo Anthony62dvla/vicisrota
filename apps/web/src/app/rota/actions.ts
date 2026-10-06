@@ -1,7 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { addDays, autoAssign, evaluate, londonDateTime, londonParts, type Finding } from "@vicisrota/compliance";
+import { addDays, autoAssign, evaluate, londonDateTime, londonParts, STAFFING_LEGAL_REF, type Finding } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, eq, gt, gte, inArray, isNull, lt, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -13,6 +13,7 @@ import { notifyRotaChanges } from "@/lib/rota-notify";
 import { requestId } from "@/lib/request";
 import { checkAssignment } from "@/lib/claims";
 import { loadComplianceContext, loadWeekChecks, weekBounds } from "@/lib/rota";
+import { loadStaffingGaps } from "@/lib/staffing";
 import { owedMessage, recordShortNotice } from "@/lib/short-notice";
 import { planningBlocked } from "@/lib/plan";
 
@@ -359,7 +360,21 @@ export async function checkAndPublish(_: FormState, form: FormData): Promise<For
     const thisWeek = new Set(
       context.shifts.filter((s) => Date.parse(s.start) >= from.getTime() && Date.parse(s.start) < to.getTime()).map((s) => s.id),
     );
-    const findings: Finding[] = evaluation.findings.filter((f) => f.shiftIds.some((id) => thisWeek.has(id)));
+    const gaps = await loadStaffingGaps(tx, weekStart);
+    // Staffing gaps are about the rota as a whole, not one person, so they are kept with no worker.
+    const findings: Finding[] = [
+      ...evaluation.findings.filter((f) => f.shiftIds.some((id) => thisWeek.has(id))),
+      ...gaps.map((g) => ({
+        ruleId: "care.safe-staffing",
+        ruleVersion: 1,
+        severity: g.strict ? ("block" as const) : ("warn" as const),
+        workerId: "",
+        shiftIds: [],
+        message: g.message,
+        evidence: { levelId: g.levelId, have: g.have, need: g.need, from: new Date(g.from).toISOString(), to: new Date(g.to).toISOString() },
+        legalRef: STAFFING_LEGAL_REF,
+      })),
+    ];
     const publishable = !findings.some((f) => f.severity === "block");
 
     await tx.insert(schema.complianceDecision).values({
