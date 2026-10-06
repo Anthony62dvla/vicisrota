@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { addWorkplace, type FormState } from "./actions";
+import { addWorkplace, saveMartynsLaw, type FormState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 
@@ -54,6 +54,32 @@ export function AddWorkplaceForm() {
       </label>
       <button type="submit" disabled={pending} className="self-start rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover disabled:opacity-60">
         {pending ? "Adding…" : "Add workplace"}
+      </button>
+    </form>
+  );
+}
+
+export function MartynsLawForm({ locationId, capacity, reviewedOn }: { locationId: string; capacity: number | null; reviewedOn: string | null }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(saveMartynsLaw, {});
+  return (
+    <form action={action} className="mt-2 flex flex-col gap-3">
+      {state.error && <p role="alert" className="rounded-lg border border-red-400 p-3">{state.error}</p>}
+      {state.ok && <p role="status" className="rounded-lg border border-green-600 p-3">{state.ok}</p>}
+      <input type="hidden" name="locationId" value={locationId} />
+      <div className="flex flex-wrap gap-4">
+        <label className="flex flex-col gap-1">
+          <span className="font-medium">Most people expected at once</span>
+          <span className="text-sm text-zinc-600 dark:text-zinc-400">Customers and staff together, at your busiest.</span>
+          <input name="capacity" inputMode="numeric" defaultValue={capacity ?? ""} className={`${input} w-36`} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="font-medium">Procedures last reviewed</span>
+          <span className="text-sm text-zinc-600 dark:text-zinc-400">Optional.</span>
+          <input name="reviewedOn" type="date" defaultValue={reviewedOn ?? ""} className={input} />
+        </label>
+      </div>
+      <button type="submit" disabled={pending} className="self-start rounded-lg border border-zinc-400 px-4 py-2">
+        {pending ? "Saving…" : "Save"}
       </button>
     </form>
   );

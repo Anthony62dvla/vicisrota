@@ -199,6 +199,8 @@ export const location = pgTable("location", {
   radiusMetres: integer("radius_metres").notNull().default(150),
   /** Sells alcohol: a personal licence holder should be on shift, during these hours if set. Null: does not sell alcohol. */
   licensing: jsonb("licensing").$type<Licensing>(),
+  /** Martyn's Law: how many people are expected at once, and when the attack procedures were last reviewed. */
+  martynsLaw: jsonb("martyns_law").$type<{ capacity: number; proceduresReviewedOn?: string }>(),
   createdAt: createdAt(),
 });
 

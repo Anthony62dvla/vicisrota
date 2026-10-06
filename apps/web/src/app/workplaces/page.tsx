@@ -4,7 +4,9 @@ import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
 import { revokeKiosk, saveLicensing, setLocationRule, setUpKiosk } from "./actions";
-import { AddWorkplaceForm } from "./forms";
+import { AddWorkplaceForm, MartynsLawForm } from "./forms";
+import { MARTYNS_LAW_DUTIES, MARTYNS_LAW_EARLIEST, MARTYNS_LAW_LEGAL_REF, martynsLawTier, proceduresReviewDue } from "@vicisrota/compliance";
+import { todayInUk } from "@/lib/rota";
 
 const RULES = [
   { value: "off", label: "Off", detail: "Staff can clock in from their phone anywhere." },
@@ -63,6 +65,53 @@ export default async function WorkplacesPage() {
         )}
         <AddWorkplaceForm />
       </section>
+
+      {places.length > 0 && (
+        <section className="mt-10" aria-labelledby="martyns-heading">
+          <h2 id="martyns-heading" className="text-lg font-semibold">Martyn&apos;s Law</h2>
+          <p className="mt-1">
+            Premises where 200 or more people can be at once must be ready for a terrorist attack: procedures to get people out, bring them in, lock down and
+            keep everyone told, and staff who know their part. From 800 people there is more to do. The law is expected to apply from{" "}
+            {new Date(`${MARTYNS_LAW_EARLIEST}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", month: "long", year: "numeric" })} at the earliest.
+          </p>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">Based on: {MARTYNS_LAW_LEGAL_REF}.</p>
+          <ul className="mt-3 flex flex-col gap-3">
+            {places.map((p) => {
+              const tier = martynsLawTier(p.martynsLaw?.capacity);
+              const due = tier !== "none" && proceduresReviewDue(p.martynsLaw?.proceduresReviewedOn, todayInUk());
+              return (
+                <li key={p.id} className={`rounded-lg p-4 ${due ? "border-2 border-amber-500" : "border border-zinc-300 dark:border-zinc-700"}`}>
+                  <p className="font-medium">{p.name}</p>
+                  {p.martynsLaw && (
+                    <p className="mt-1">
+                      {tier === "none"
+                        ? "Under 200 people: Martyn's Law does not apply here."
+                        : tier === "standard"
+                          ? "Standard duty (200 to 799 people). You need to:"
+                          : "Enhanced duty (800 people or more). You need to:"}
+                    </p>
+                  )}
+                  {tier !== "none" && (
+                    <>
+                      <ul className="mt-1 list-disc pl-6">
+                        {MARTYNS_LAW_DUTIES[tier].map((d) => (
+                          <li key={d}>{d}</li>
+                        ))}
+                      </ul>
+                      <p className="mt-2 text-sm">
+                        Record each person&apos;s briefing under <Link href="/training" className="underline">Training</Link> as &quot;Martyn&apos;s Law: our attack
+                        procedures&quot;. ProtectUK has free training to go with it.
+                      </p>
+                      {due && <p className="mt-2 font-medium">Review the procedures: it has been more than a year, or they have not been reviewed yet.</p>}
+                    </>
+                  )}
+                  <MartynsLawForm locationId={p.id} capacity={p.martynsLaw?.capacity ?? null} reviewedOn={p.martynsLaw?.proceduresReviewedOn ?? null} />
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       {sector !== "care" && (
         <section className="mt-10" aria-labelledby="alcohol-heading">
