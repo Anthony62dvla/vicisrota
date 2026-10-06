@@ -107,7 +107,22 @@ export interface Finding {
   legalRef: string;
 }
 
-export type LeaveKind = "annual" | "sick" | "family" | "unpaid" | "compassionate" | "other";
+export type LeaveKind =
+  | "annual"
+  | "sick"
+  | "family"
+  | "unpaid"
+  | "compassionate"
+  | "other"
+  | "maternity"
+  | "paternity"
+  | "adoption"
+  | "shared_parental"
+  | "neonatal"
+  | "parental"
+  | "parental_bereavement"
+  | "carers"
+  | "dependants";
 export type LeaveStatus = "requested" | "approved";
 
 /** Time off, whole days from startsOn to endsOn inclusive (UK dates). */
@@ -117,6 +132,8 @@ export interface Leave {
   status: LeaveStatus;
   startsOn: LocalDate;
   endsOn: LocalDate;
+  /** Days agreed to work during the leave, such as keeping in touch days. Shifts on these days are fine. */
+  workDays?: LocalDate[];
 }
 
 export interface Context {

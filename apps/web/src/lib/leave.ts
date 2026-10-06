@@ -1,17 +1,23 @@
-import { addDays, annualEntitlementDays, irregularHoursAccrual, leaveYear, londonDateTime, type LeaveKind } from "@vicisrota/compliance";
+import { addDays, annualEntitlementDays, FAMILY_LEAVE, FAMILY_LEAVE_KINDS, irregularHoursAccrual, isFamilyLeave, leaveYear, londonDateTime, type LeaveKind } from "@vicisrota/compliance";
 import { schema, type Transaction } from "@vicisrota/db";
 import { and, eq, gt, gte, inArray, lt, lte, ne } from "drizzle-orm";
 
 export const LEAVE_LABEL: Record<LeaveKind, string> = {
   annual: "Holiday",
   sick: "Sick",
-  family: "Family leave",
-  unpaid: "Unpaid leave",
+  ...(Object.fromEntries(FAMILY_LEAVE_KINDS.map((k) => [k, FAMILY_LEAVE[k].label])) as Record<(typeof FAMILY_LEAVE_KINDS)[number], string>),
   compassionate: "Compassionate leave",
+  unpaid: "Unpaid leave",
   other: "Other leave",
+  // Leave booked before family leave was split into its types.
+  family: "Family leave",
 };
 
-export const LEAVE_KINDS = Object.keys(LEAVE_LABEL) as LeaveKind[];
+/** The types people can choose, in a sensible order. The older "family" type is no longer offered. */
+export const LEAVE_KINDS: LeaveKind[] = (Object.keys(LEAVE_LABEL) as LeaveKind[]).filter((k) => k !== "family");
+
+/** Choices for a leave form, with a plain explanation for each type of family leave. */
+export const leaveChoices = () => LEAVE_KINDS.map((k) => ({ value: k, label: LEAVE_LABEL[k], explain: isFamilyLeave(k) ? FAMILY_LEAVE[k].explain : undefined }));
 
 export type Balance = {
   workerId: string;

@@ -29,7 +29,24 @@ export const shiftStatus = pgEnum("shift_status", ["draft", "published", "cancel
 /** Care: a sleep-in is paid as a flat sleep-in payment plus any time woken to work; a waking night is paid by the hour. */
 export const shiftKind = pgEnum("shift_kind", ["standard", "sleep_in", "waking_night"]);
 export const checkKind = pgEnum("check_kind", ["right_to_work", "dbs"]);
-export const leaveKind = pgEnum("leave_kind", ["annual", "sick", "family", "unpaid", "compassionate", "other"]);
+export const leaveKind = pgEnum("leave_kind", [
+  "annual",
+  "sick",
+  /** The older single "Family leave" type, kept for leave booked before it was split into the types below. */
+  "family",
+  "unpaid",
+  "compassionate",
+  "other",
+  "maternity",
+  "paternity",
+  "adoption",
+  "shared_parental",
+  "neonatal",
+  "parental",
+  "parental_bereavement",
+  "carers",
+  "dependants",
+]);
 export const leaveStatus = pgEnum("leave_status", ["requested", "approved", "declined", "cancelled"]);
 export const tipSource = pgEnum("tip_source", ["card", "cash", "service_charge"]);
 export const tipMethod = pgEnum("tip_method", ["hours", "equal"]);
@@ -609,6 +626,29 @@ export const tipShare = pgTable(
     pence: integer("pence").notNull(),
   },
   (t) => [index("tip_share_worker_idx").on(t.workerId)],
+);
+
+/**
+ * A day worked during maternity, adoption or shared parental leave without ending it: a keeping in touch
+ * day (up to 10) or a SPLIT day (up to 20). Shifts on these days are allowed despite the leave.
+ */
+export const keepingInTouchDay = pgTable(
+  "keeping_in_touch_day",
+  {
+    id: id(),
+    organisationId: orgId(),
+    leaveRequestId: uuid("leave_request_id")
+      .notNull()
+      .references(() => leaveRequest.id, { onDelete: "cascade" }),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    workedOn: date("worked_on").notNull(),
+    note: text("note"),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("keeping_in_touch_day_once_idx").on(t.leaveRequestId, t.workedOn)],
 );
 
 /**

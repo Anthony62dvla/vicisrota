@@ -71,6 +71,8 @@ export const loadWeekChecks = async (
     tx.select({ id: schema.jobRole.id, name: schema.jobRole.name }).from(schema.jobRole),
     tx.select().from(schema.workerRole),
   ]);
+  // Keeping in touch days: agreed days of work during family leave.
+  const kit = leave.length ? await tx.select().from(schema.keepingInTouchDay).where(inArray(schema.keepingInTouchDay.leaveRequestId, leave.map((l) => l.id))) : [];
   const roleById = new Map(roles.map((r) => [r.id, r]));
   const assumed = new Map((Array.isArray(assume) ? assume : assume ? [assume] : []).map((a) => [a.shiftId, a.workerId]));
   const assigned = shifts
@@ -107,6 +109,7 @@ export const loadWeekChecks = async (
       status: l.status as "requested" | "approved",
       startsOn: l.startsOn,
       endsOn: l.endsOn,
+      workDays: kit.filter((k) => k.leaveRequestId === l.id).map((k) => k.workedOn),
     })),
     settings: { requireEnhancedDbs: organisation?.requiresEnhancedDbs ?? false, paysTravelTime: organisation?.paysTravelTime ?? false },
     workers: workers.map((w) => ({

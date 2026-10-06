@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { requireStaff } from "@/lib/business";
 import { db } from "@/lib/db";
-import { formatAmount, LEAVE_KINDS, LEAVE_LABEL, loadBalances } from "@/lib/leave";
+import { formatAmount, LEAVE_LABEL, leaveChoices, loadBalances } from "@/lib/leave";
 import { clockableShifts } from "@/lib/clock";
 import { loadLoneShifts } from "@/lib/lone-working";
 import { SHORT_NOTICE_HOURS } from "@/lib/notices";
@@ -614,7 +614,7 @@ export default async function MyPage() {
 
       <section className="mt-10" aria-labelledby="ask-heading">
         <h2 id="ask-heading" className="text-lg font-semibold">Ask for time off</h2>
-        <TimeOffForm unit={unit} kinds={LEAVE_KINDS.map((k) => ({ value: k, label: LEAVE_LABEL[k] }))} />
+        <TimeOffForm unit={unit} kinds={leaveChoices()} />
       </section>
       {data.announcements.some((a) => a.readAt) && (
         <section className="mt-10" aria-labelledby="past-announcements-heading">

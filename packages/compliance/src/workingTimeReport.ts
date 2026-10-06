@@ -1,3 +1,4 @@
+import { REFERENCE_PERIOD_EXCLUDED } from "./familyLeave";
 /**
  * Working time records (Working Time Regulations 1998, regs 4, 5A and 9). Employers must keep records
  * that show each person's average working week stays within 48 hours (unless they opted out) and that
@@ -72,7 +73,7 @@ export function workingTimeReport(input: {
     }
     const leaveDays = new Set<LocalDate>();
     for (const l of input.leave) {
-      if (l.workerId !== worker.id || l.status !== "approved" || !["annual", "sick", "family"].includes(l.kind)) continue;
+      if (l.workerId !== worker.id || l.status !== "approved" || !REFERENCE_PERIOD_EXCLUDED.includes(l.kind)) continue;
       for (let d = l.startsOn > from ? l.startsOn : from; d <= l.endsOn && d <= to; d = addDays(d, 1)) leaveDays.add(d);
     }
     const weeks = weekStarts.map((startsOn) => {

@@ -7,7 +7,7 @@ import { askToPickUp, clock, loneCheckIn, reportSick, requestTimeOff, saveTextSe
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 
-export function TimeOffForm({ unit, kinds }: { unit: "days" | "hours"; kinds: { value: string; label: string }[] }) {
+export function TimeOffForm({ unit, kinds }: { unit: "days" | "hours"; kinds: { value: string; label: string; explain?: string | undefined }[] }) {
   const [state, action, pending] = useActionState<FormState, FormData>(requestTimeOff, {});
   const [kind, setKind] = useState("annual");
   return (
@@ -22,6 +22,7 @@ export function TimeOffForm({ unit, kinds }: { unit: "days" | "hours"; kinds: { 
           ))}
         </select>
       </label>
+      {kinds.find((k) => k.value === kind)?.explain && <p className="rounded-md bg-brand-soft p-2 text-sm">{kinds.find((k) => k.value === kind)!.explain}</p>}
       <label className="flex flex-col gap-1">
         <span className="font-medium">First day off</span>
         <input name="startsOn" type="date" required className={input} />

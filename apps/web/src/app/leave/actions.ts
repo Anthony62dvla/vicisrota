@@ -1,6 +1,6 @@
 "use server";
 
-import type { LeaveKind } from "@vicisrota/compliance";
+import { FAMILY_LEAVE, isFamilyLeave, type LeaveKind } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -109,4 +109,55 @@ export async function decideLeave(_: FormState, form: FormData): Promise<FormSta
   revalidatePath("/rota");
   revalidatePath("/sickness");
   return result;
+}
+
+/**
+ * Records a keeping in touch day (or SPLIT day) during maternity, adoption or shared parental leave. A shift
+ * can then go on the rota that day. The legal limit is never passed, as working more could end the leave.
+ */
+export async function addKeepingInTouchDay(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const leaveRequestId = String(form.get("leaveRequestId") ?? "");
+  const workedOn = String(form.get("workedOn") ?? "");
+  const note = String(form.get("note") ?? "").trim().slice(0, 200) || null;
+  if (!DATE.test(workedOn)) return { error: "Choose the day." };
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
+    const [leave] = await tx.select().from(schema.leaveRequest).where(and(eq(schema.leaveRequest.id, leaveRequestId), eq(schema.leaveRequest.status, "approved")));
+    const limit = leave && isFamilyLeave(leave.kind) ? FAMILY_LEAVE[leave.kind].keepingInTouchDays : null;
+    if (!leave || limit == null) return { error: "Keeping in touch days are only for approved maternity, adoption or shared parental leave." };
+    if (workedOn < leave.startsOn || workedOn > leave.endsOn) return { error: "The day must be during the leave." };
+    const used = await tx.select({ id: schema.keepingInTouchDay.id }).from(schema.keepingInTouchDay).where(eq(schema.keepingInTouchDay.leaveRequestId, leaveRequestId));
+    if (used.length >= limit) return { error: `All ${limit} days have been used. Working more could end the leave, so this has not been added.` };
+    const rows = await tx
+      .insert(schema.keepingInTouchDay)
+      .values({ organisationId, leaveRequestId, workerId: leave.workerId, workedOn, note, createdByUserId: user.id })
+      .onConflictDoNothing()
+      .returning({ id: schema.keepingInTouchDay.id });
+    if (!rows.length) return { error: "That day is already recorded." };
+    await tx.insert(schema.auditEvent).values({
+      organisationId,
+      actorUserId: user.id,
+      requestId: await requestId(),
+      action: "create",
+      entity: "keeping_in_touch_day",
+      entityId: rows[0]!.id,
+      data: { leaveRequestId, workerId: leave.workerId, workedOn },
+    });
+    return { ok: `Day added: ${used.length + 1} of ${limit} used. You can now put a shift on the rota that day.` };
+  });
+  revalidatePath("/leave");
+  revalidatePath("/rota");
+  return result;
+}
+
+export async function removeKeepingInTouchDay(form: FormData) {
+  const { user, organisationId } = await requireManager();
+  const id = String(form.get("id") ?? "");
+  await withOrganisation(db, organisationId, async (tx) => {
+    const rows = await tx.delete(schema.keepingInTouchDay).where(eq(schema.keepingInTouchDay.id, id)).returning({ workedOn: schema.keepingInTouchDay.workedOn });
+    if (!rows.length) return;
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "delete", entity: "keeping_in_touch_day", entityId: id, data: { workedOn: rows[0]!.workedOn } });
+  });
+  revalidatePath("/leave");
+  revalidatePath("/rota");
 }
