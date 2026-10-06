@@ -11,13 +11,16 @@ import { ApproveCharityButton, NewOwnerLinkButton, OnboardForm } from "./forms";
 const when = (d: Date | null | undefined) =>
   d ? d.toLocaleString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "Never";
 
-const planLine = (org: typeof schema.organisation.$inferSelect, staff: number) => {
-  const state = planState({
+const stateOf = (org: typeof schema.organisation.$inferSelect, staff: number) =>
+  planState({
     now: new Date(),
     staff,
     trialEndsAt: org.trialEndsAt,
     subscription: org.subscriptionStatus ? { status: org.subscriptionStatus, pastDueSince: org.pastDueSince } : null,
   });
+
+const planLine = (org: typeof schema.organisation.$inferSelect, staff: number) => {
+  const state = stateOf(org, staff);
   const charity = org.charityApproved ? ", charity price" : "";
   switch (state.kind) {
     case "free":
@@ -40,12 +43,14 @@ const planLine = (org: typeof schema.organisation.$inferSelect, staff: number) =
  */
 export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
   const admin = await requireSuperadmin();
-  const ref = String((await searchParams).ref ?? "").trim().toUpperCase();
+  const params = await searchParams;
+  const ref = String(params.ref ?? "").trim().toUpperCase();
+  const q = String(params.q ?? "").trim().toLowerCase().slice(0, 80);
 
   const orgs = await db.select().from(schema.organisation).orderBy(desc(schema.organisation.createdAt));
   const [openReports] = await db.select({ n: count() }).from(schema.supportReport).where(inArray(schema.supportReport.status, ["new", "triaged"]));
   const ids = orgs.map((o) => o.id);
-  const [owners, ownerLinks] = ids.length
+  const [owners, ownerLinks, ownerPeople] = ids.length
     ? await Promise.all([
         db
           .select({ organisationId: schema.membership.organisationId, n: count() })
@@ -53,8 +58,14 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
           .where(and(inArray(schema.membership.organisationId, ids), ne(schema.membership.role, "worker")))
           .groupBy(schema.membership.organisationId),
         db.select().from(schema.ownerInvitation).where(inArray(schema.ownerInvitation.organisationId, ids)).orderBy(desc(schema.ownerInvitation.createdAt)),
+        // Owners' own sign-in name and email, so support can contact the business. Never staff details.
+        db
+          .select({ organisationId: schema.membership.organisationId, name: schema.user.name, email: schema.user.email })
+          .from(schema.membership)
+          .innerJoin(schema.user, eq(schema.membership.userId, schema.user.id))
+          .where(and(inArray(schema.membership.organisationId, ids), eq(schema.membership.role, "owner"))),
       ])
-    : [[], []];
+    : [[], [], []];
   const managers = new Map(owners.map((o) => [o.organisationId, o.n]));
 
   // Each business is read under its own row-level security setting, one at a time.
@@ -79,9 +90,11 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
       ]);
       const required = steps.filter((s) => !s.optional);
       const link = ownerLinks.find((l) => l.organisationId === o.id);
-      return { org: o, ...facts, setupDone: required.filter((s) => s.done).length, setupTotal: required.length, managers: managers.get(o.id) ?? 0, link };
+      return { org: o, ...facts, owners: ownerPeople.filter((p) => p.organisationId === o.id), state: stateOf(o, facts.staff).kind, setupDone: required.filter((s) => s.done).length, setupTotal: required.length, managers: managers.get(o.id) ?? 0, link };
     }),
   );
+  const shown = q ? rows.filter((r) => r.org.name.toLowerCase().includes(q) || r.owners.some((o) => o.email.toLowerCase().includes(q) || o.name.toLowerCase().includes(q))) : rows;
+  const tally = (kind: string) => rows.filter((r) => r.state === kind).length;
   const matches = rows.flatMap((r) => r.found.map((f) => ({ ...f, business: r.org.name })));
   if (ref) await recordPlatformAction(admin.id, "lookup_reference", null, { reference: ref, matches: matches.length });
 
@@ -146,11 +159,30 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
 
       <section className="mt-10" aria-labelledby="businesses-heading">
         <h2 id="businesses-heading" className="text-lg font-semibold">Businesses ({rows.length})</h2>
+        <p className="mt-1 text-sm text-muted">
+          {tally("trial")} on a free trial · {tally("paid")} paying · {tally("free")} on the free plan · {tally("late") + tally("paused")} with a payment
+          problem. Newest first.
+        </p>
+        <form className="mt-3 flex flex-wrap items-end gap-3">
+          {ref && <input type="hidden" name="ref" value={ref} />}
+          <label className="flex flex-col gap-1">
+            <span className="font-medium">Find a business</span>
+            <input name="q" defaultValue={q} maxLength={80} placeholder="Business name, owner name or email" className="w-72 max-w-full rounded-lg border border-zinc-400 px-3 py-2" />
+          </label>
+          <button type="submit" className="rounded-lg border border-zinc-500 px-4 py-2">Find</button>
+          {q && (
+            <Link href="/admin" className="py-2 underline">
+              Show all
+            </Link>
+          )}
+        </form>
         {rows.length === 0 ? (
           <p className="mt-2">No businesses yet.</p>
+        ) : shown.length === 0 ? (
+          <p className="mt-3">No business matches &ldquo;{q}&rdquo;.</p>
         ) : (
           <ul className="mt-3 flex flex-col gap-3">
-            {rows.map((r) => (
+            {shown.map((r) => (
               <li key={r.org.id} className="rounded-lg border border-zinc-300 p-3 dark:border-zinc-700">
                 <p className="font-medium">
                   {r.org.name} <span className="font-normal text-zinc-600 dark:text-zinc-400">· {kindLabel(r.org.kind, r.org.sector)}</span>
@@ -158,6 +190,18 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
                 <p className="text-sm">
                   Set up {when(r.org.createdAt)} · Setup {r.setupDone} of {r.setupTotal} steps · {r.staff} staff, {r.logins} with a login ·{" "}
                   {r.managers} owner{r.managers === 1 ? "" : "s"} or manager{r.managers === 1 ? "" : "s"} · Last activity {when(r.lastActive)}
+                </p>
+                <p className="mt-1 text-sm">
+                  {r.owners.length === 0
+                    ? "No owner has signed in yet."
+                    : r.owners.map((o, i) => (
+                        <span key={o.email}>
+                          {i > 0 && "; "}Owner: {o.name},{" "}
+                          <a href={`mailto:${o.email}`} className="underline">
+                            {o.email}
+                          </a>
+                        </span>
+                      ))}
                 </p>
                 {r.link && !r.link.acceptedAt && (
                   <div className="mt-2 text-sm">
