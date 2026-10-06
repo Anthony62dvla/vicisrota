@@ -29,7 +29,24 @@ export const shiftStatus = pgEnum("shift_status", ["draft", "published", "cancel
 /** Care: a sleep-in is paid as a flat sleep-in payment plus any time woken to work; a waking night is paid by the hour. */
 export const shiftKind = pgEnum("shift_kind", ["standard", "sleep_in", "waking_night"]);
 export const checkKind = pgEnum("check_kind", ["right_to_work", "dbs"]);
-export const leaveKind = pgEnum("leave_kind", ["annual", "sick", "family", "unpaid", "compassionate", "other"]);
+export const leaveKind = pgEnum("leave_kind", [
+  "annual",
+  "sick",
+  /** The older single "Family leave" type, kept for leave booked before it was split into the types below. */
+  "family",
+  "unpaid",
+  "compassionate",
+  "other",
+  "maternity",
+  "paternity",
+  "adoption",
+  "shared_parental",
+  "neonatal",
+  "parental",
+  "parental_bereavement",
+  "carers",
+  "dependants",
+]);
 export const leaveStatus = pgEnum("leave_status", ["requested", "approved", "declined", "cancelled"]);
 export const tipSource = pgEnum("tip_source", ["card", "cash", "service_charge"]);
 export const tipMethod = pgEnum("tip_method", ["hours", "equal"]);
@@ -116,6 +133,12 @@ export const organisation = pgTable("organisation", {
   sleepInPence: integer("sleep_in_pence"),
   /** Written tipping policy that staff can read (Employment (Allocation of Tips) Act 2023). */
   tippingPolicy: text("tipping_policy"),
+  /** The business's own terms for written statements (pay day, sick pay, notice and so on). Blank ones use VicisRota's defaults. */
+  /** Sells alcohol at shifts with no workplace set. Null: does not. See location.licensing. */
+  licensing: jsonb("licensing").$type<Licensing>(),
+  /** Hospitality: the most wages should be as a share of sales, as a percentage. Null: no target. */
+  labourTargetPercent: smallint("labour_target_percent"),
+  statementTerms: jsonb("statement_terms").$type<Partial<Record<string, string>>>().notNull().default({}),
   /** Whether phone clock-ins check the person is at a workplace: not at all, noted for the manager, or required. */
   clockLocationRule: clockLocationRule("clock_location_rule").notNull().default("off"),
   /** Text the alert contacts when nobody has clocked in this many minutes after a shift starts. Null is off. */
@@ -162,6 +185,9 @@ export const membership = pgTable(
   (t) => [primaryKey({ columns: [t.organisationId, t.userId] }), index("membership_user_idx").on(t.userId)],
 );
 
+/** Licensed hours for selling alcohol, "HH:MM". Both blank means whenever staff are working. */
+export type Licensing = { from?: string; to?: string };
+
 export const location = pgTable("location", {
   id: id(),
   organisationId: orgId(),
@@ -171,6 +197,10 @@ export const location = pgTable("location", {
   latitude: doublePrecision("latitude"),
   longitude: doublePrecision("longitude"),
   radiusMetres: integer("radius_metres").notNull().default(150),
+  /** Sells alcohol: a personal licence holder should be on shift, during these hours if set. Null: does not sell alcohol. */
+  licensing: jsonb("licensing").$type<Licensing>(),
+  /** Martyn's Law: how many people are expected at once, and when the attack procedures were last reviewed. */
+  martynsLaw: jsonb("martyns_law").$type<{ capacity: number; proceduresReviewedOn?: string }>(),
   createdAt: createdAt(),
 });
 
@@ -185,10 +215,14 @@ export const worker = pgTable(
     employmentStart: date("employment_start"),
     optedOutOf48HourLimit: boolean("opted_out_of_48_hour_limit").notNull().default(false),
     apprenticeRateApplies: boolean("apprentice_rate_applies").notNull().default(false),
+    /** A personal licence to sell alcohol (Licensing Act 2003). Null: none recorded. */
+    personalLicence: jsonb("personal_licence").$type<{ number: string; authority: string; issuedOn?: string }>(),
     /** Usual working days a week, for statutory leave (5.6 weeks, capped at 28 days). */
     daysPerWeek: numeric("days_per_week", { precision: 3, scale: 1, mode: "number" }).notNull().default(5),
     /** Irregular hours or part-year: leave accrues at 12.07% of hours worked instead. */
     irregularHours: boolean("irregular_hours").notNull().default(false),
+    /** Hours a week the contract guarantees. 0 is a zero-hours contract. Null: not recorded. */
+    contractedHours: numeric("contracted_hours", { precision: 4, scale: 1, mode: "number" }),
     /** The person's employee number in the business's payroll software, so imported pay lands on the right person. */
     payrollId: text("payroll_id"),
     /**
@@ -198,6 +232,12 @@ export const worker = pgTable(
     leftOn: date("left_on"),
     /** Set when the business sponsors the person's visa. Null: not sponsored. */
     sponsorship: jsonb("sponsorship").$type<Sponsorship>(),
+    /** Supplied by an employment agency (Agency Workers Regulations 2010). Null: hired directly. */
+    /** Shop or betting worker's notice opting out of Sunday work, and whether the explanatory statement was given in time. */
+    sundayOptOut: jsonb("sunday_opt_out").$type<{ noticeGivenOn: string; statementGiven: boolean }>(),
+    /** Children of school age: the council's work permit (Children and Young Persons Act 1933). */
+    childWorkPermit: jsonb("child_work_permit").$type<{ council: string; reference?: string; expiresOn?: string }>(),
+    agency: jsonb("agency").$type<{ agencyName: string; startedOn: string; role?: string }>(),
     /** Hashed PIN for clocking in on an in-store tablet. */
     pinHash: text("pin_hash"),
     pinFailures: smallint("pin_failures").notNull().default(0),
@@ -611,6 +651,173 @@ export const tipShare = pgTable(
   (t) => [index("tip_share_worker_idx").on(t.workerId)],
 );
 
+/**
+ * A day worked during maternity, adoption or shared parental leave without ending it: a keeping in touch
+ * day (up to 10) or a SPLIT day (up to 20). Shifts on these days are allowed despite the leave.
+ */
+export const keepingInTouchDay = pgTable(
+  "keeping_in_touch_day",
+  {
+    id: id(),
+    organisationId: orgId(),
+    leaveRequestId: uuid("leave_request_id")
+      .notNull()
+      .references(() => leaveRequest.id, { onDelete: "cascade" }),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    workedOn: date("worked_on").notNull(),
+    note: text("note"),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("keeping_in_touch_day_once_idx").on(t.leaveRequestId, t.workedOn)],
+);
+
+/**
+ * A written statement of particulars given to someone (Employment Rights Act 1996, s 1). The words are kept
+ * exactly as given, so there is a record even if terms change later. The person confirms they have read it.
+ */
+export const writtenStatement = pgTable(
+  "written_statement",
+  {
+    id: id(),
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    sections: jsonb("sections").$type<{ heading: string; text: string }[]>().notNull(),
+    issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
+    issuedByUserId: text("issued_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    readAt: timestamp("read_at", { withTimezone: true }),
+  },
+  (t) => [index("written_statement_worker_idx").on(t.workerId, t.issuedAt)],
+);
+
+/**
+ * A free health assessment offered to a night worker (Working Time Regulations 1998, reg 7). Only the date and
+ * whether it was taken up are kept, never the result, which stays between the person and the health professional.
+ */
+export const nightHealthAssessment = pgTable(
+  "night_health_assessment",
+  {
+    id: id(),
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    offeredOn: date("offered_on").notNull(),
+    /** offered: waiting for an answer; taken: they had it; declined: they chose not to. */
+    outcome: text("outcome").notNull().default("offered"),
+    recordedByUserId: text("recorded_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("night_health_worker_idx").on(t.workerId, t.offeredOn)],
+);
+
+/** An offer of guaranteed weekly hours to someone who regularly works more than their contract says. */
+export const guaranteedHoursOffer = pgTable(
+  "guaranteed_hours_offer",
+  {
+    id: id(),
+    organisationId: orgId(),
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    offeredOn: date("offered_on").notNull(),
+    weeklyHours: numeric("weekly_hours", { precision: 4, scale: 1, mode: "number" }).notNull(),
+    /** offered, accepted or declined. */
+    status: text("status").notNull().default("offered"),
+    answeredOn: date("answered_on"),
+    recordedByUserId: text("recorded_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("guaranteed_hours_offer_worker_idx").on(t.workerId, t.offeredOn)],
+);
+
+/** Expected sales for one day, entered by a manager, to compare wages against (hospitality). */
+export const salesForecast = pgTable(
+  "sales_forecast",
+  {
+    id: id(),
+    organisationId: orgId(),
+    on: date("sales_on").notNull(),
+    pence: integer("pence").notNull(),
+  },
+  (t) => [uniqueIndex("sales_forecast_day_idx").on(t.organisationId, t.on)],
+);
+
+/**
+ * Two people a manager has decided must not work at the same time and place, for example after a harassment
+ * complaint or a safeguarding concern. Managers only: staff are never shown it. The pair is stored with the
+ * smaller id first, so each pair is recorded once.
+ */
+export const keepApart = pgTable(
+  "keep_apart",
+  {
+    id: id(),
+    organisationId: orgId(),
+    firstWorkerId: uuid("first_worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    secondWorkerId: uuid("second_worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    /** A short private note for managers. Not a place for the details of a complaint. */
+    note: text("note"),
+    /** When to look at it again. It stays in force until removed. */
+    reviewOn: date("review_on"),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("keep_apart_pair_idx").on(t.firstWorkerId, t.secondWorkerId),
+    check("keep_apart_order", sql`${t.firstWorkerId} < ${t.secondWorkerId}`),
+  ],
+);
+
+/**
+ * A swap between two named people: one asks, the colleague agrees or says no, then a manager approves.
+ * asked: waiting for the colleague. agreed: waiting for a manager. The rest are finished.
+ */
+export const swapStatus = pgEnum("swap_status", ["asked", "agreed", "approved", "colleague_declined", "manager_declined", "withdrawn"]);
+
+export const shiftSwap = pgTable(
+  "shift_swap",
+  {
+    id: id(),
+    organisationId: orgId(),
+    /** The shift the person asking gives up. */
+    fromShiftId: uuid("from_shift_id")
+      .notNull()
+      .references(() => shift.id, { onDelete: "cascade" }),
+    fromWorkerId: uuid("from_worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    /** The colleague's shift they take in return. */
+    toShiftId: uuid("to_shift_id")
+      .notNull()
+      .references(() => shift.id, { onDelete: "cascade" }),
+    toWorkerId: uuid("to_worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    status: swapStatus("status").notNull().default("asked"),
+    /** An optional short note from the person asking, shown to the colleague. */
+    note: text("note"),
+    /** Warnings from the checks when the swap was asked for, for the manager to see. */
+    warnings: jsonb("warnings").notNull().default([]),
+    respondedAt: timestamp("responded_at", { withTimezone: true }),
+    decidedByUserId: text("decided_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("shift_swap_to_worker_idx").on(t.toWorkerId),
+    // One open swap per shift given up.
+    uniqueIndex("shift_swap_open_idx").on(t.fromShiftId).where(sql`${t.status} in ('asked', 'agreed')`),
+  ],
+);
+
 /** A member of staff asking to take an open shift, or to cover a colleague's shift. A manager decides. */
 export const shiftClaim = pgTable(
   "shift_claim",
@@ -885,6 +1092,42 @@ export const kioskDevice = pgTable("kiosk_device", {
   tokenHash: text("token_hash").notNull().unique(),
   createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdAt: createdAt(),
+});
+
+/** A business's link to its Xero payroll. Tokens are encrypted with the app's secret before they are stored. */
+export const xeroConnection = pgTable(
+  "xero_connection",
+  {
+    id: id(),
+    organisationId: orgId(),
+    tenantId: text("tenant_id").notNull(),
+    tenantName: text("tenant_name").notNull(),
+    tokens: text("tokens").notNull(),
+    connectedByUserId: text("connected_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("xero_connection_org_idx").on(t.organisationId)],
+);
+
+/**
+ * A key a business gives to other software (its own systems, or tools such as Zapier) to read its rota and hours
+ * through the public API. Only a hash is kept; the key is shown once. Not tenant-scoped, because the key is how the
+ * business is found, so every query filters by business explicitly.
+ */
+export const apiKey = pgTable("api_key", {
+  id: id(),
+  organisationId: uuid("organisation_id")
+    .notNull()
+    .references(() => organisation.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  /** The first characters of the key, so the manager can tell keys apart. */
+  prefix: text("prefix").notNull(),
+  keyHash: text("key_hash").notNull().unique(),
+  createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
   createdAt: createdAt(),
 });

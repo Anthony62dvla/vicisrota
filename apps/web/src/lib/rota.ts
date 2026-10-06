@@ -1,4 +1,4 @@
-import { addDays, londonDateTime, londonParts, type Context } from "@vicisrota/compliance";
+import { addDays, londonDateTime, londonParts, sundayOptOutFrom, type Context } from "@vicisrota/compliance";
 import { schema, type Transaction } from "@vicisrota/db";
 import { and, eq, gte, inArray, lt, lte, ne } from "drizzle-orm";
 
@@ -20,9 +20,12 @@ export const loadComplianceContext = async (
   tx: Transaction,
   organisationId: string,
   weekStart: string,
-  /** Check the week as if this shift were given to this person, e.g. before approving a swap. */
-  assume?: { shiftId: string; workerId: string },
+  /** Check the week as if these shifts were given to these people, e.g. before approving a swap. */
+  assume?: Assume,
 ): Promise<Context> => (await loadWeekChecks(tx, organisationId, weekStart, assume)).context;
+
+/** One or more shifts to check as if they belonged to someone else. */
+export type Assume = { shiftId: string; workerId: string } | { shiftId: string; workerId: string }[];
 
 /** A shift as the compliance engine sees it, before anyone is given it. */
 export type CheckShift = Omit<Context["shifts"][number], "workerId">;
@@ -35,14 +38,14 @@ export const loadWeekChecks = async (
   tx: Transaction,
   organisationId: string,
   weekStart: string,
-  assume?: { shiftId: string; workerId: string },
+  assume?: Assume,
 ): Promise<{ context: Context; open: CheckShift[] }> => {
   const { from } = weekBounds(addDays(weekStart, -7 * HISTORY_WEEKS));
   const { to } = weekBounds(weekStart);
 
   const [[organisation], workers, rates, shifts, checks, qualifications, held, leave, unavailable, roles, workerRoles] = await Promise.all([
     tx
-      .select({ requiresEnhancedDbs: schema.organisation.requiresEnhancedDbs, paysTravelTime: schema.organisation.paysTravelTime })
+      .select({ requiresEnhancedDbs: schema.organisation.requiresEnhancedDbs, paysTravelTime: schema.organisation.paysTravelTime, licensing: schema.organisation.licensing })
       .from(schema.organisation)
       .where(eq(schema.organisation.id, organisationId)),
     tx.select().from(schema.worker),
@@ -68,11 +71,21 @@ export const loadWeekChecks = async (
     tx.select({ id: schema.jobRole.id, name: schema.jobRole.name }).from(schema.jobRole),
     tx.select().from(schema.workerRole),
   ]);
+  // Keeping in touch days: agreed days of work during family leave.
+  const health = await tx
+    .select({ workerId: schema.nightHealthAssessment.workerId, offeredOn: schema.nightHealthAssessment.offeredOn })
+    .from(schema.nightHealthAssessment);
+  const lastOffered = new Map<string, string>();
+  for (const h of health) if ((lastOffered.get(h.workerId) ?? "") < h.offeredOn) lastOffered.set(h.workerId, h.offeredOn);
+  const places = await tx.select({ id: schema.location.id, name: schema.location.name, licensing: schema.location.licensing }).from(schema.location);
+  const apart = await tx.select({ a: schema.keepApart.firstWorkerId, b: schema.keepApart.secondWorkerId }).from(schema.keepApart);
+  const kit = leave.length ? await tx.select().from(schema.keepingInTouchDay).where(inArray(schema.keepingInTouchDay.leaveRequestId, leave.map((l) => l.id))) : [];
   const roleById = new Map(roles.map((r) => [r.id, r]));
+  const assumed = new Map((Array.isArray(assume) ? assume : assume ? [assume] : []).map((a) => [a.shiftId, a.workerId]));
   const assigned = shifts
-    .map((s) => (s.id === assume?.shiftId ? { ...s, workerId: assume.workerId } : s))
+    .map((s) => (assumed.has(s.id) ? { ...s, workerId: assumed.get(s.id)! } : s))
     .filter((s) => s.workerId);
-  const unassigned = shifts.filter((s) => !s.workerId && s.id !== assume?.shiftId);
+  const unassigned = shifts.filter((s) => !s.workerId && !assumed.has(s.id));
   const ids = [...assigned, ...unassigned].map((s) => s.id);
   const [breaks, requirements] = ids.length
     ? await Promise.all([
@@ -88,6 +101,7 @@ export const loadWeekChecks = async (
     breaks: breaks.filter((b) => b.shiftId === s.id).map((b) => ({ start: b.startsAt.toISOString(), end: b.endsAt.toISOString() })),
     travelMinutesBefore: s.travelMinutes,
     sleepIn: s.kind === "sleep_in" ? { awakeMinutes: 0 } : undefined,
+    locationId: s.locationId,
     role: s.roleId ? roleById.get(s.roleId) : undefined,
     requiredQualifications: requirements
       .filter((r) => r.shiftId === s.id)
@@ -103,6 +117,7 @@ export const loadWeekChecks = async (
       status: l.status as "requested" | "approved",
       startsOn: l.startsOn,
       endsOn: l.endsOn,
+      workDays: kit.filter((k) => k.leaveRequestId === l.id).map((k) => k.workedOn),
     })),
     settings: { requireEnhancedDbs: organisation?.requiresEnhancedDbs ?? false, paysTravelTime: organisation?.paysTravelTime ?? false },
     workers: workers.map((w) => ({
@@ -126,9 +141,20 @@ export const loadWeekChecks = async (
       // The note explaining why stays out of the rota check.
       adjustments: { maxShiftHours: w.adjustments.maxShiftHours, earliestStart: w.adjustments.earliestStart, latestFinish: w.adjustments.latestFinish },
       roles: workerRoles.filter((r) => r.workerId === w.id).map((r) => r.roleId),
+      childWorkPermit: w.childWorkPermit ? { expiresOn: w.childWorkPermit.expiresOn } : null,
+      nightHealthOfferedOn: lastOffered.get(w.id) ?? null,
+      sundayOptOutFrom: w.sundayOptOut ? sundayOptOutFrom(w.sundayOptOut.noticeGivenOn, w.sundayOptOut.statementGiven) : null,
     })),
     payRates: rates.map((r) => ({ workerId: r.workerId, hourlyPence: r.hourlyPence, effectiveFrom: r.effectiveFrom })),
     shifts: assigned.map((s) => ({ ...toCheck(s), workerId: s.workerId! })),
+    keepApart: apart.map((p) => ({ workerIds: [p.a, p.b] as [string, string] })),
+    licensing: {
+      places: [
+        ...(organisation?.licensing ? [{ locationId: null, name: "", licensing: organisation.licensing }] : []),
+        ...places.filter((p) => p.licensing).map((p) => ({ locationId: p.id, name: p.name, licensing: p.licensing! })),
+      ].map(({ licensing, ...p }) => ({ ...p, hours: licensing.from && licensing.to ? { from: licensing.from, to: licensing.to } : undefined })),
+      holderIds: workers.filter((w) => w.personalLicence).map((w) => w.id),
+    },
   };
   return { context, open: unassigned.map(toCheck) };
 };

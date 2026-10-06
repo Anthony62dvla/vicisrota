@@ -60,7 +60,7 @@ export const loadSponsorship = async (tx: Transaction, organisationId: string, t
   for (let i = PAY_WEEKS; i >= 1; i--) {
     const monday = addDays(thisWeek, -7 * i);
     const sunday = addDays(monday, 6);
-    const { lines } = await loadPayroll(tx, organisationId, monday, sunday);
+    const { lines } = await loadPayroll(tx, organisationId, monday, sunday, { holidayPay: false });
     for (const w of workers) {
       const days = [...byDay.values()].filter((d) => d.workerId === w.id && d.date >= monday && d.date <= sunday);
       const weekShifts = shifts.filter((s) => s.workerId === w.id && londonParts(s.startsAt.getTime()).date >= monday && londonParts(s.startsAt.getTime()).date <= sunday);

@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   const { from, to } = period;
   const reference = await requestId();
 
-  const { lines, unconfirmed, tipsPence, sspPence, shortNoticePence } = await withOrganisation(db, organisationId, async (tx) => {
+  const { lines, unconfirmed, tipsPence, sspPence, shortNoticePence, holidayPay } = await withOrganisation(db, organisationId, async (tx) => {
     const payroll = await loadPayroll(tx, organisationId, from, to);
     const totalPence = payroll.lines.reduce((s, l) => s + l.grossPence, 0);
     const flagged = payroll.lines.filter((l) => l.findings.length).length;
@@ -61,6 +61,7 @@ export async function GET(request: Request) {
       "Holiday hours built up",
       "Holiday days taken",
       "Holiday hours taken",
+      "Holiday pay (£, 52-week average)",
       "Sick days",
       "Statutory Sick Pay (£)",
       "Other leave days",
@@ -81,6 +82,7 @@ export async function GET(request: Request) {
       l.holidayHoursAccrued,
       l.holidayDays,
       l.holidayHours,
+      holidayPay.get(l.workerId)?.pence == null ? "" : pounds(holidayPay.get(l.workerId)!.pence!),
       l.sickDays,
       pounds(sspPence.get(l.workerId) ?? 0),
       l.otherLeaveDays,

@@ -7,7 +7,9 @@ import { db } from "@/lib/db";
 import { clockSummaries } from "@/lib/clock";
 import { loadPayroll, periodBounds } from "@/lib/payroll";
 import { todayInUk } from "@/lib/rota";
-import { PayItemNamesForm, SleepInPayForm, TimesheetList, type Row } from "./forms";
+import { PayItemNamesForm, SendToXeroForm, SleepInPayForm, TimesheetList, type Row } from "./forms";
+import { disconnectXero } from "./actions";
+import { xeroConfigured } from "@/lib/xero";
 import { parsePeriod } from "./period";
 
 const MINUTE = 60_000;
@@ -25,6 +27,10 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
   const { from, to } = "error" in asked ? (parsePeriod(null, null, today) as { from: string; to: string }) : asked;
   const { start, end } = periodBounds(from, to);
 
+  const xeroStatus = typeof query.xero === "string" ? query.xero : null;
+  const [xero] = await withOrganisation(db, organisationId, (tx) =>
+    tx.select({ tenantName: schema.xeroConnection.tenantName, lastSentAt: schema.xeroConnection.lastSentAt }).from(schema.xeroConnection),
+  );
   const data = await withOrganisation(db, organisationId, async (tx) => {
     const shifts = await tx
       .select({ shift: schema.shift, name: schema.worker.fullName })
@@ -104,7 +110,7 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
       },
     };
   });
-  const { lines, unconfirmed, sspPence, shortNoticePence, sleepInPence } = data.payroll;
+  const { lines, unconfirmed, sspPence, shortNoticePence, sleepInPence, holidayPay } = data.payroll;
   const care = sector === "care";
   const missingIds = lines.filter((l) => !data.payroll.payrollIds.get(l.workerId));
   const total = lines.reduce((s, l) => s + l.grossPence + (shortNoticePence.get(l.workerId) ?? 0), 0);
@@ -142,11 +148,42 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
         )}
       </section>
 
+      {(xeroConfigured() || xero) && (
+        <section className="mt-8 rounded-lg border border-zinc-300 p-4 dark:border-zinc-700" aria-labelledby="xero-heading">
+          <h2 id="xero-heading" className="text-lg font-semibold">Xero Payroll</h2>
+          {xeroStatus === "connected" && <p role="status" className="mt-2 rounded-lg border border-green-600 p-3">Xero is connected.</p>}
+          {xeroStatus === "failed" && <p role="alert" className="mt-2 rounded-lg border border-red-400 p-3">Xero could not be connected. Please try again.</p>}
+          {xero ? (
+            <>
+              <p className="mt-1">
+                Connected to {xero.tenantName}
+                {xero.lastSentAt ? `. Hours last sent ${xero.lastSentAt.toLocaleString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}` : ""}. Send
+                confirmed hours as draft timesheets from Pay for this period below. People are matched by their payroll ID (use their Xero employee ID) or by name.
+              </p>
+              <form action={disconnectXero} className="mt-2">
+                <button type="submit" className="underline">Disconnect Xero</button>
+              </form>
+            </>
+          ) : (
+            <>
+              <p className="mt-1">Send confirmed hours straight to Xero Payroll as draft timesheets, instead of downloading a file.</p>
+              <a href="/api/xero/connect" className="mt-2 inline-block rounded-lg border-2 border-brand px-4 py-2 font-medium text-heading">Connect Xero</a>
+            </>
+          )}
+        </section>
+      )}
+
       <section className="mt-10" aria-labelledby="pay-heading">
         <h2 id="pay-heading" className="text-lg font-semibold">Pay for this period</h2>
         {unconfirmed > 0 && (
           <p role="alert" className="mt-2 rounded-lg border border-amber-500 p-3">
             {unconfirmed} worked shift{unconfirmed === 1 ? " has" : "s have"} no confirmed hours, so {unconfirmed === 1 ? "it is" : "they are"} not included below.
+          </p>
+        )}
+        {holidayPay.size > 0 && (
+          <p className="mt-2 text-sm text-muted">
+            Holiday pay is the average weekly pay over the last 52 paid weeks, as the law requires, and is paid on top of the gross pay below. Pay
+            from before someone used VicisRota is not included, so check it for people who joined with history elsewhere.
           </p>
         )}
         {lines.length === 0 ? (
@@ -198,6 +235,10 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
                         {[
                           l.holidayDays && `${l.holidayDays} holiday days`,
                           l.holidayHours && `${l.holidayHours} holiday hours`,
+                          holidayPay.has(l.workerId) &&
+                            (holidayPay.get(l.workerId)!.pence == null
+                              ? "holiday pay: no pay history yet"
+                              : `holiday pay ${pounds(holidayPay.get(l.workerId)!.pence!)} (average of ${holidayPay.get(l.workerId)!.weeksUsed} paid week${holidayPay.get(l.workerId)!.weeksUsed === 1 ? "" : "s"})`),
                           l.sickDays && `${l.sickDays} sick day${l.sickDays === 1 ? "" : "s"}${sspPence.has(l.workerId) ? ` (SSP ${pounds(sspPence.get(l.workerId)!)})` : ""}`,
                           l.otherLeaveDays && `${l.otherLeaveDays} other leave days`,
                         ]
@@ -218,6 +259,7 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
             <a href={`/timesheets/export?${query$}`} className="mt-4 inline-block rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover">
               Download payroll file (CSV)
             </a>
+            {xero && <SendToXeroForm from={from} to={to} tenantName={xero.tenantName} />}
             <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
               Opens in Excel or Google Sheets and can be imported into most payroll software. Sick days are calendar days. Statutory
               Sick Pay is worked out on the <Link href="/sickness" className="underline">Sickness page</Link> from the days each person
@@ -230,8 +272,9 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
             <h3 id="send-heading" className="font-semibold">Send to your payroll software</h3>
             <p className="mt-1">
               The pay items file has one line per person for each kind of pay, with their payroll ID. Most payroll software, such as BrightPay, Sage,
-              Xero or QuickBooks, can import a file like this once you match its columns the first time. Holiday is sent as time taken, so your payroll
-              software works out holiday pay.
+              Xero or QuickBooks, can import a file like this once you match its columns the first time. Holiday is sent with its pay worked out on the
+              legal 52-week average: the average of the last 52 weeks the person was paid, from hours confirmed in VicisRota. If someone has
+              no pay history here yet, holiday is sent as time only, for your payroll software to work out.
             </p>
             {missingIds.length > 0 && (
               <p role="alert" className="mt-3 rounded-lg border border-amber-500 p-3">

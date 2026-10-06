@@ -1,5 +1,6 @@
+import { CHILD_LEGAL_REF, isSchoolAge, retentionDates, NIGHT_HEALTH_LEGAL_REF, schoolLeavingDate, SUNDAY_LEGAL_REF, sundayOptOutFrom } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, ne, or } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireManager } from "@/lib/business";
@@ -8,17 +9,17 @@ import { formatAmount, loadBalances } from "@/lib/leave";
 import { todayInUk } from "@/lib/rota";
 import { contactSummary, PROFILE_QUESTIONS } from "@/lib/work-profile";
 import { AvailabilityEditor } from "../../availability-editor";
-import { addStaffUnavailable, removeStaffUnavailable, removeTraining } from "./actions";
+import { addStaffUnavailable, removeKeepApart, removeStaffUnavailable, removeTraining } from "./actions";
 import { formatUkMobile } from "@vicisrota/messaging";
 import { WorkerRolesForm } from "../../roles/forms";
-import { AddCheckForm, AddTrainingForm, AdjustmentsForm, HolidaySettingsForm, InviteForm, LeavingForm, MobileForm, PayrollIdForm, SponsorshipForm, SupervisionForm } from "./forms";
+import { AddCheckForm, AddTrainingForm, AgencyForm, ChildPermitForm, NightHealthForm, AdjustmentsForm, HolidaySettingsForm, InviteForm, KeepApartForm, LeavingForm, MobileForm, PayrollIdForm, PersonalLicenceForm, SponsorshipForm, SundayOptOutForm, SupervisionForm } from "./forms";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DBS_LABEL = { basic: "Basic", standard: "Standard", enhanced: "Enhanced", enhanced_barred: "Enhanced with barred list" };
 const ukDate = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" });
 
 export default async function StaffRecordPage({ params, searchParams }: PageProps<"/staff/[id]">) {
-  const { organisationId } = await requireManager();
+  const { organisationId, sector } = await requireManager();
   const { id } = await params;
   if (!UUID.test(id)) notFound();
   const welcome = (await searchParams).welcome === "1";
@@ -48,11 +49,21 @@ export default async function StaffRecordPage({ params, searchParams }: PageProp
       roles: await tx.select().from(schema.jobRole).orderBy(asc(schema.jobRole.name)),
       held: (await tx.select({ roleId: schema.workerRole.roleId }).from(schema.workerRole).where(eq(schema.workerRole.workerId, id))).map((r) => r.roleId),
       supervisions: await tx.select().from(schema.supervision).where(eq(schema.supervision.workerId, id)).orderBy(desc(schema.supervision.heldOn)),
+      apart: await tx
+        .select()
+        .from(schema.keepApart)
+        .where(or(eq(schema.keepApart.firstWorkerId, id), eq(schema.keepApart.secondWorkerId, id))),
+      colleagues: await tx
+        .select({ id: schema.worker.id, name: schema.worker.fullName })
+        .from(schema.worker)
+        .where(and(ne(schema.worker.id, id), isNull(schema.worker.leftOn)))
+        .orderBy(asc(schema.worker.fullName)),
+      nightHealth: await tx.select().from(schema.nightHealthAssessment).where(eq(schema.nightHealthAssessment.workerId, id)).orderBy(desc(schema.nightHealthAssessment.offeredOn)),
       known: (await tx.select({ name: schema.qualification.name }).from(schema.qualification).orderBy(asc(schema.qualification.name))).map((q) => q.name),
     };
   });
   if (!data) notFound();
-  const { worker, checks, training, known, holiday, login, unavailable, roles, held, supervisions } = data;
+  const { worker, checks, training, known, holiday, login, unavailable, roles, held, supervisions, apart, colleagues, nightHealth } = data;
   const balance = holiday.balances.get(worker.id)!;
   const rtw = checks.filter((c) => c.kind === "right_to_work");
   const dbs = checks.filter((c) => c.kind === "dbs");
@@ -140,6 +151,38 @@ export default async function StaffRecordPage({ params, searchParams }: PageProp
         <AdjustmentsForm workerId={worker.id} current={worker.adjustments} />
       </section>
 
+      <section id="keep-apart" className="mt-8 scroll-mt-4" aria-labelledby="keep-apart-heading">
+        <h2 id="keep-apart-heading" className="text-lg font-semibold">Kept apart on the rota</h2>
+        <p className="mt-1 text-zinc-600 dark:text-zinc-400">
+          For example after a harassment complaint or a safeguarding concern, while it is looked into or for good. The rota check stops these people being
+          on overlapping shifts at the same workplace. Only managers see this. Staff are never told, and if it stops them picking up or swapping a
+          shift they get a general message.
+        </p>
+        {apart.length > 0 && (
+          <ul className="mt-3 flex flex-col gap-2">
+            {apart.map((p) => {
+              const otherId = p.firstWorkerId === worker.id ? p.secondWorkerId : p.firstWorkerId;
+              const other = colleagues.find((c) => c.id === otherId)?.name ?? "Someone who has left";
+              return (
+                <li key={p.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-zinc-300 p-3 dark:border-zinc-700">
+                  <span>
+                    Kept apart from <strong>{other}</strong>
+                    {p.reviewOn ? `, review on ${ukDate(p.reviewOn)}` : ""}
+                    {p.note ? ` · ${p.note}` : ""}
+                  </span>
+                  <form action={removeKeepApart}>
+                    <input type="hidden" name="workerId" value={worker.id} />
+                    <input type="hidden" name="id" value={p.id} />
+                    <button type="submit" className="text-sm underline">Remove</button>
+                  </form>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <KeepApartForm workerId={worker.id} others={colleagues} />
+      </section>
+
       <section id="right-to-work" className="mt-8 scroll-mt-4">
         <h2 className="text-lg font-semibold">Right to work</h2>
         {!hasValidRtw && (
@@ -156,6 +199,70 @@ export default async function StaffRecordPage({ params, searchParams }: PageProp
             </li>
           ))}
         </ul>
+      </section>
+
+      {sector !== "care" && (
+        <section id="personal-licence" className="mt-8 scroll-mt-4" aria-labelledby="personal-licence-heading">
+          <h2 id="personal-licence-heading" className="text-lg font-semibold">Personal licence</h2>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+            A licence to sell alcohol. If a workplace sells alcohol, the rota warns you when nobody with one is on shift. Set this on{" "}
+            <Link href="/workplaces" className="underline">Workplaces</Link>.
+          </p>
+          <PersonalLicenceForm workerId={worker.id} current={worker.personalLicence ?? null} />
+        </section>
+      )}
+
+      {sector !== "care" && (
+        <section id="sunday" className="mt-8 scroll-mt-4" aria-labelledby="sunday-heading">
+          <h2 id="sunday-heading" className="text-lg font-semibold">Sunday working</h2>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+            Shop and betting workers can opt out of working on Sundays by giving written notice. Once the notice runs out, they cannot be made to work
+            Sundays or treated worse for refusing. Untick this if they opt back in. Based on: {SUNDAY_LEGAL_REF}.
+          </p>
+          <SundayOptOutForm
+            workerId={worker.id}
+            current={worker.sundayOptOut ?? null}
+            from={worker.sundayOptOut ? sundayOptOutFrom(worker.sundayOptOut.noticeGivenOn, worker.sundayOptOut.statementGiven) : null}
+          />
+        </section>
+      )}
+
+      {(isSchoolAge(worker.dateOfBirth, today) || worker.childWorkPermit) && (
+        <section id="child-permit" className="mt-8 scroll-mt-4" aria-labelledby="child-permit-heading">
+          <h2 id="child-permit-heading" className="text-lg font-semibold">Work permit (school age)</h2>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+            {worker.fullName} is of school age until {ukDate(schoolLeavingDate(worker.dateOfBirth))}. Until then they need a work permit from the council
+            where they go to school, and can only do light work within set hours. The rota checks these limits. Based on: {CHILD_LEGAL_REF}.
+          </p>
+          <ChildPermitForm workerId={worker.id} current={worker.childWorkPermit ?? null} />
+        </section>
+      )}
+
+      <section id="night-health" className="mt-8 scroll-mt-4" aria-labelledby="night-health-heading">
+        <h2 id="night-health-heading" className="text-lg font-semibold">Night work health assessments</h2>
+        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+          Anyone who works at least 3 hours between 11pm and 6am must be offered a free health assessment before they start nights, and every year after.
+          Only record the offer and whether they took it up, never the result. Based on: {NIGHT_HEALTH_LEGAL_REF}.
+        </p>
+        {nightHealth.length > 0 && (
+          <ul className="mt-2 list-disc pl-6">
+            {nightHealth.map((h) => (
+              <li key={h.id}>
+                Offered {ukDate(h.offeredOn)}: {h.outcome === "taken" ? "they had the assessment" : h.outcome === "declined" ? "they chose not to have it" : "waiting for an answer"}
+              </li>
+            ))}
+          </ul>
+        )}
+        <NightHealthForm workerId={worker.id} today={today} />
+      </section>
+
+      <section id="agency" className="mt-8 scroll-mt-4" aria-labelledby="agency-heading">
+        <h2 id="agency-heading" className="text-lg font-semibold">Agency worker</h2>
+        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+          After 12 weeks in the same role, agency workers have the right to the same basic pay and conditions as your own staff. See{" "}
+          <Link href="/agency" className="underline">Agency workers</Link>.
+        </p>
+        <AgencyForm workerId={worker.id} current={worker.agency ?? null} />
       </section>
 
       <section id="sponsorship" className="mt-8 scroll-mt-4" aria-labelledby="sponsorship-heading">
@@ -271,6 +378,21 @@ export default async function StaffRecordPage({ params, searchParams }: PageProp
             : `When ${worker.fullName} leaves, their records are kept for payroll and working-time checks. Shifts after their last day become open shifts.`}
         </p>
         <LeavingForm workerId={worker.id} name={worker.fullName} leftOn={worker.leftOn} today={today} />
+        {worker.leftOn && (
+          <p className="mt-3 text-sm text-muted">
+            VicisRota deletes most of their details on {ukDate(retentionDates(worker.leftOn).minimiseOn)} and the rest on{" "}
+            {ukDate(retentionDates(worker.leftOn).deleteOn)}. Download anything you must keep longer before then.
+          </p>
+        )}
+      </section>
+
+      <section id="data" className="mt-8 scroll-mt-4" aria-labelledby="data-heading">
+        <h2 id="data-heading" className="text-lg font-semibold">Their data</h2>
+        <p className="mt-1">
+          If {worker.fullName} asks for a copy of their data (a subject access request), download it here and send it to them within one month. Staff with a
+          login can also download their own.
+        </p>
+        <a href={`/staff/${worker.id}/data`} className="mt-2 inline-block rounded-lg border border-zinc-400 px-4 py-2">Download {worker.fullName}&apos;s data</a>
       </section>
     </main>
   );

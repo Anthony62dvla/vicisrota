@@ -45,6 +45,13 @@ describe("working time records", () => {
     expect(without!.averageHours).toBeCloseTo(35.3, 1);
   });
 
+  it("leaves paternity and other family leave out too, but not unpaid carer's leave", () => {
+    const worked = everyWeekday("jo", 8).filter((s) => s.start < "2026-08-03" || s.start >= "2026-08-15");
+    const leave = (kind: "paternity" | "carers") => [{ workerId: "jo", kind, status: "approved" as const, startsOn: "2026-08-03", endsOn: "2026-08-14" }];
+    expect(workingTimeReport({ today, workers: [adult], worked, leave: leave("paternity") })[0]).toMatchObject({ excludedWeeks: 2, averageHours: 40 });
+    expect(workingTimeReport({ today, workers: [adult], worked, leave: leave("carers") })[0]).toMatchObject({ excludedWeeks: 0 });
+  });
+
   it("checks under-18s against 40 hours in every week, whatever the average", () => {
     const young = { id: "sam", name: "Sam", dateOfBirth: "2009-06-01", optedOutOf48HourLimit: true };
     const worked = [...everyWeekday("sam", 6), day("sam", "2026-09-26", 12)]; // one 42-hour week

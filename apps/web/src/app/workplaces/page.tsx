@@ -3,8 +3,10 @@ import { schema, withOrganisation } from "@vicisrota/db";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
-import { revokeKiosk, setLocationRule, setUpKiosk } from "./actions";
-import { AddWorkplaceForm } from "./forms";
+import { revokeKiosk, saveLicensing, setLocationRule, setUpKiosk } from "./actions";
+import { AddWorkplaceForm, MartynsLawForm } from "./forms";
+import { MARTYNS_LAW_DUTIES, MARTYNS_LAW_EARLIEST, MARTYNS_LAW_LEGAL_REF, martynsLawTier, proceduresReviewDue } from "@vicisrota/compliance";
+import { todayInUk } from "@/lib/rota";
 
 const RULES = [
   { value: "off", label: "Off", detail: "Staff can clock in from their phone anywhere." },
@@ -15,10 +17,10 @@ const RULES = [
 const dateFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 export default async function WorkplacesPage() {
-  const { organisationId } = await requireManager();
+  const { organisationId, sector } = await requireManager();
   const { places, org, kiosks } = await withOrganisation(db, organisationId, async (tx) => ({
     places: await tx.select().from(schema.location).orderBy(asc(schema.location.name)),
-    org: (await tx.select({ rule: schema.organisation.clockLocationRule }).from(schema.organisation).where(eq(schema.organisation.id, organisationId)))[0],
+    org: (await tx.select({ rule: schema.organisation.clockLocationRule, licensing: schema.organisation.licensing }).from(schema.organisation).where(eq(schema.organisation.id, organisationId)))[0],
     kiosks: await tx
       .select({ device: schema.kioskDevice, place: schema.location.name })
       .from(schema.kioskDevice)
@@ -63,6 +65,85 @@ export default async function WorkplacesPage() {
         )}
         <AddWorkplaceForm />
       </section>
+
+      {places.length > 0 && (
+        <section className="mt-10" aria-labelledby="martyns-heading">
+          <h2 id="martyns-heading" className="text-lg font-semibold">Martyn&apos;s Law</h2>
+          <p className="mt-1">
+            Premises where 200 or more people can be at once must be ready for a terrorist attack: procedures to get people out, bring them in, lock down and
+            keep everyone told, and staff who know their part. From 800 people there is more to do. The law is expected to apply from{" "}
+            {new Date(`${MARTYNS_LAW_EARLIEST}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", month: "long", year: "numeric" })} at the earliest.
+          </p>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">Based on: {MARTYNS_LAW_LEGAL_REF}.</p>
+          <ul className="mt-3 flex flex-col gap-3">
+            {places.map((p) => {
+              const tier = martynsLawTier(p.martynsLaw?.capacity);
+              const due = tier !== "none" && proceduresReviewDue(p.martynsLaw?.proceduresReviewedOn, todayInUk());
+              return (
+                <li key={p.id} className={`rounded-lg p-4 ${due ? "border-2 border-amber-500" : "border border-zinc-300 dark:border-zinc-700"}`}>
+                  <p className="font-medium">{p.name}</p>
+                  {p.martynsLaw && (
+                    <p className="mt-1">
+                      {tier === "none"
+                        ? "Under 200 people: Martyn's Law does not apply here."
+                        : tier === "standard"
+                          ? "Standard duty (200 to 799 people). You need to:"
+                          : "Enhanced duty (800 people or more). You need to:"}
+                    </p>
+                  )}
+                  {tier !== "none" && (
+                    <>
+                      <ul className="mt-1 list-disc pl-6">
+                        {MARTYNS_LAW_DUTIES[tier].map((d) => (
+                          <li key={d}>{d}</li>
+                        ))}
+                      </ul>
+                      <p className="mt-2 text-sm">
+                        Record each person&apos;s briefing under <Link href="/training" className="underline">Training</Link> as &quot;Martyn&apos;s Law: our attack
+                        procedures&quot;. ProtectUK has free training to go with it.
+                      </p>
+                      {due && <p className="mt-2 font-medium">Review the procedures: it has been more than a year, or they have not been reviewed yet.</p>}
+                    </>
+                  )}
+                  <MartynsLawForm locationId={p.id} capacity={p.martynsLaw?.capacity ?? null} reviewedOn={p.martynsLaw?.proceduresReviewedOn ?? null} />
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
+      {sector !== "care" && (
+        <section className="mt-10" aria-labelledby="alcohol-heading">
+          <h2 id="alcohol-heading" className="text-lg font-semibold">Selling alcohol</h2>
+          <p className="mt-1">
+            Tick each place that sells alcohol. The rota then warns you when nobody with a personal licence is on shift there. Add licensed hours to
+            only check those times. Record personal licences on each person&apos;s staff record.
+          </p>
+          <form action={saveLicensing} className="mt-3 flex flex-col gap-3">
+            {[{ key: "org", name: places.length ? "Shifts with no workplace set" : "Your business", licensing: org?.licensing ?? null }, ...places.map((p) => ({ key: p.id, name: p.name, licensing: p.licensing }))].map((p) => (
+              <fieldset key={p.key} className="rounded-lg border border-zinc-300 p-3 dark:border-zinc-700">
+                <legend className="px-1 font-medium">{p.name}</legend>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" name={`sells-${p.key}`} defaultChecked={!!p.licensing} />
+                  Sells alcohol
+                </label>
+                <div className="mt-2 flex flex-wrap gap-3">
+                  <label className="flex flex-col gap-1 text-sm">
+                    Licensed from (optional)
+                    <input type="time" name={`from-${p.key}`} defaultValue={p.licensing?.from ?? ""} className="rounded-lg border border-zinc-400 px-3 py-2 text-base" />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm">
+                    Licensed until (optional)
+                    <input type="time" name={`to-${p.key}`} defaultValue={p.licensing?.to ?? ""} className="rounded-lg border border-zinc-400 px-3 py-2 text-base" />
+                  </label>
+                </div>
+              </fieldset>
+            ))}
+            <button type="submit" className="self-start rounded-lg border border-zinc-400 px-4 py-2">Save</button>
+          </form>
+        </section>
+      )}
 
       <section className="mt-10" aria-labelledby="rule-heading">
         <h2 id="rule-heading" className="text-lg font-semibold">Location checks for phone clock-ins</h2>

@@ -1,9 +1,9 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { addDays, autoAssign, evaluate, londonDateTime, londonParts, SHIFT_KINDS, STAFFING_LEGAL_REF, type Finding, type ShiftKind } from "@vicisrota/compliance";
+import { addDays, autoAssign, evaluate, forecastSales, londonDateTime, londonParts, SHIFT_KINDS, STAFFING_LEGAL_REF, type Finding, type ShiftKind } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
-import { and, eq, gt, gte, inArray, isNull, lt, ne } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, isNull, lt, ne, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
@@ -11,7 +11,9 @@ import { log } from "@/lib/log";
 import { notify, type Notice } from "@/lib/notices";
 import { notifyRotaChanges } from "@/lib/rota-notify";
 import { requestId } from "@/lib/request";
-import { checkAssignment } from "@/lib/claims";
+import { checkAssignment, checkSwap } from "@/lib/claims";
+import { notifyWorkers, type Notify } from "@/lib/notify";
+import { loadOpenSwaps, shiftWhen, swapStillValid } from "@/lib/swaps";
 import { loadComplianceContext, loadWeekChecks, weekBounds } from "@/lib/rota";
 import { loadStaffingGaps } from "@/lib/staffing";
 import { owedMessage, recordShortNotice } from "@/lib/short-notice";
@@ -631,4 +633,128 @@ export async function fillOpenShifts(_: FormState, form: FormData): Promise<Form
       .filter(Boolean)
       .join(" "),
   };
+}
+
+/** Approves or declines a swap two people have agreed. Approving checks again, then swaps both shifts at once. */
+export async function decideSwap(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId, businessName } = await requireManager();
+  const swapId = String(form.get("swapId") ?? "");
+  const approve = form.get("decision") === "approve";
+  let tell: Notify[] = [];
+
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState & { notices?: Notice[] }> => {
+    const row = (await loadOpenSwaps(tx)).find((r) => r.swap.id === swapId && r.swap.status === "agreed");
+    if (!row) return { error: "That swap has already been dealt with." };
+    const { swap, fromShift, toShift } = row;
+    const names = `${row.fromName} and ${row.toName}`;
+    const audit = async (action: string, data: Record<string, unknown> = {}) =>
+      tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action, entity: "shift_swap", entityId: swapId, data });
+    const decided = { decidedByUserId: user.id, decidedAt: new Date() };
+
+    if (!approve) {
+      await tx.update(schema.shiftSwap).set({ status: "manager_declined", ...decided }).where(eq(schema.shiftSwap.id, swapId));
+      await audit("decline");
+      tell = [swap.fromWorkerId, swap.toWorkerId].map((workerId) => ({
+        workerId,
+        purpose: "swap",
+        title: "Swap not approved",
+        body: `Your manager hasn't approved the swap between ${shiftWhen(fromShift)} and ${shiftWhen(toShift)}. You both keep your own shifts. Ask your manager if you'd like to know more.`,
+        url: "/me",
+        dedupeKey: `swap-refused:${swapId}:${workerId}`,
+      }));
+      return { ok: `Swap between ${names} declined. They have both been told.` };
+    }
+    if (!swapStillValid(row)) return { error: "One of the shifts has changed since this swap was agreed, so it can't go ahead. Decline it, and they can ask again." };
+    const check = await checkSwap(tx, organisationId, { shiftId: fromShift.id, workerId: swap.fromWorkerId }, { shiftId: toShift.id, workerId: swap.toWorkerId });
+    if (!check) return { error: "One of the shifts no longer exists." };
+    if (check.blocks.length) return { error: `This swap can't go ahead now: ${check.blocks.map((f) => f.message).join(" ")}` };
+    await tx.update(schema.shift).set({ workerId: swap.toWorkerId, coverRequestedAt: null }).where(eq(schema.shift.id, fromShift.id));
+    await tx.update(schema.shift).set({ workerId: swap.fromWorkerId, coverRequestedAt: null }).where(eq(schema.shift.id, toShift.id));
+    await tx.update(schema.shiftSwap).set({ status: "approved", ...decided }).where(eq(schema.shiftSwap.id, swapId));
+    // Other open requests on either shift no longer make sense.
+    const both = [fromShift.id, toShift.id];
+    await tx
+      .update(schema.shiftSwap)
+      .set({ status: "withdrawn", ...decided })
+      .where(and(inArray(schema.shiftSwap.status, ["asked", "agreed"]), or(inArray(schema.shiftSwap.fromShiftId, both), inArray(schema.shiftSwap.toShiftId, both))));
+    await tx
+      .update(schema.shiftClaim)
+      .set({ status: "declined", ...decided })
+      .where(and(inArray(schema.shiftClaim.shiftId, both), eq(schema.shiftClaim.status, "requested")));
+    const at = (s: typeof fromShift) => ({ shiftId: s.id, startsAt: s.startsAt, endsAt: s.endsAt });
+    const notices = await notify(tx, organisationId, [
+      { ...at(fromShift), workerId: swap.toWorkerId, kind: "given_to_you" },
+      { ...at(fromShift), workerId: swap.fromWorkerId, kind: "taken_by_colleague" },
+      { ...at(toShift), workerId: swap.fromWorkerId, kind: "given_to_you" },
+      { ...at(toShift), workerId: swap.toWorkerId, kind: "taken_by_colleague" },
+    ]);
+    await audit("approve", { fromShiftId: fromShift.id, toShiftId: toShift.id });
+    return { ok: `Swap approved. ${row.fromName} now has ${shiftWhen(toShift)}, and ${row.toName} has ${shiftWhen(fromShift)}.`, notices };
+  });
+  const { notices = [], ...state } = result;
+  await notifyRotaChanges(organisationId, businessName, notices);
+  if (tell.length) await notifyWorkers(organisationId, tell);
+  revalidatePath("/rota");
+  return state;
+}
+
+/** Expected sales for each day of a week, and the target for wages as a share of sales. A blank day removes its figure. */
+export async function saveSalesTargets(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const week = String(form.get("weekStart") ?? "");
+  if (!DATE.test(week)) return { error: "Choose a week first." };
+  const target = String(form.get("targetPercent") ?? "").trim();
+  const percent = target === "" ? null : Number(target);
+  if (percent !== null && !(Number.isInteger(percent) && percent >= 1 && percent <= 100)) return { error: "The target must be a whole number from 1 to 100, or blank." };
+  const days: { on: string; pence: number | null }[] = [];
+  for (let i = 0; i < 7; i++) {
+    const on = addDays(week, i);
+    const raw = String(form.get(`sales-${on}`) ?? "").replace(/[£,\s]/g, "");
+    if (raw === "") {
+      days.push({ on, pence: null });
+      continue;
+    }
+    const pounds = Number(raw);
+    if (!Number.isFinite(pounds) || pounds < 0 || pounds > 10_000_000) return { error: `Check the sales figure for ${new Date(`${on}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" })}.` };
+    days.push({ on, pence: Math.round(pounds * 100) });
+  }
+  await withOrganisation(db, organisationId, async (tx) => {
+    await tx.update(schema.organisation).set({ labourTargetPercent: percent }).where(eq(schema.organisation.id, organisationId));
+    for (const d of days) {
+      if (d.pence === null) await tx.delete(schema.salesForecast).where(eq(schema.salesForecast.on, d.on));
+      else
+        await tx
+          .insert(schema.salesForecast)
+          .values({ organisationId, on: d.on, pence: d.pence })
+          .onConflictDoUpdate({ target: [schema.salesForecast.organisationId, schema.salesForecast.on], set: { pence: d.pence } });
+    }
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "update", entity: "sales_forecast", entityId: week });
+  });
+  revalidatePath("/rota");
+  return { ok: "Sales targets saved." };
+}
+
+/** Fills the week's days that have no sales figure with a forecast from the same day in earlier weeks. */
+export async function fillFromForecast(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const week = String(form.get("weekStart") ?? "");
+  if (!DATE.test(week)) return { error: "Choose a week first." };
+  const filled = await withOrganisation(db, organisationId, async (tx) => {
+    const history = await tx
+      .select()
+      .from(schema.salesForecast)
+      .where(and(gte(schema.salesForecast.on, addDays(week, -42)), lt(schema.salesForecast.on, addDays(week, 7))));
+    const have = new Set(history.map((h) => h.on));
+    const empty = Array.from({ length: 7 }, (_, i) => addDays(week, i)).filter((d) => !have.has(d));
+    if (!empty.length) return -1;
+    const rows = empty
+      .map((d) => ({ on: d, pence: forecastSales(history.map((h) => ({ date: h.on, pence: h.pence })), d) }))
+      .filter((r): r is { on: string; pence: number } => r.pence !== null);
+    if (rows.length) await tx.insert(schema.salesForecast).values(rows.map((r) => ({ organisationId, ...r }))).onConflictDoNothing();
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "update", entity: "sales_forecast", entityId: week, data: { forecast: rows.length } });
+    return rows.length;
+  });
+  revalidatePath("/rota");
+  if (filled === -1) return { ok: "Every day this week already has a sales figure." };
+  return filled ? { ok: `Filled in ${filled} day${filled === 1 ? "" : "s"} from past weeks.` } : { error: "There are not enough past figures to forecast from yet." };
 }

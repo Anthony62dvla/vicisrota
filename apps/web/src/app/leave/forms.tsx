@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { bookLeave, decideLeave, type FormState } from "./actions";
+import { addKeepingInTouchDay, bookLeave, decideLeave, type FormState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 const button = "rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover disabled:opacity-60";
@@ -17,7 +17,7 @@ export function BookLeaveForm({
   kinds,
 }: {
   workers: { id: string; name: string; unit: "days" | "hours" }[];
-  kinds: { value: string; label: string }[];
+  kinds: { value: string; label: string; explain?: string | undefined }[];
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(bookLeave, {});
   const [workerId, setWorkerId] = useState(workers[0]?.id ?? "");
@@ -42,6 +42,7 @@ export function BookLeaveForm({
           ))}
         </select>
       </label>
+      {kinds.find((k) => k.value === kind)?.explain && <p className="rounded-md bg-brand-soft p-2 text-sm">{kinds.find((k) => k.value === kind)!.explain}</p>}
       <div className="flex gap-4">
         <label className="flex flex-1 flex-col gap-1">
           <span className="font-medium">First day</span>
@@ -76,7 +77,7 @@ export function BookLeaveForm({
   );
 }
 
-type Item = { id: string; title: string; detail: string; options: { decision: string; label: string }[] };
+type Item = { id: string; title: string; detail: string; notes?: string[]; options: { decision: string; label: string }[] };
 
 /** One message for the whole list, so it stays on screen after the decided item leaves the list. */
 export function DecisionList({ items, empty, tone }: { items: Item[]; empty: string; tone: "pending" | "booked" }) {
@@ -96,6 +97,9 @@ export function DecisionList({ items, empty, tone }: { items: Item[]; empty: str
               <div>
                 <p className="font-medium">{item.title}</p>
                 <p className="text-sm">{item.detail}</p>
+                {item.notes?.map((n, i) => (
+                  <p key={i} className="text-sm">Check: {n}</p>
+                ))}
               </div>
               <form action={action} className="flex gap-2">
                 <input type="hidden" name="id" value={item.id} />
@@ -117,5 +121,27 @@ export function DecisionList({ items, empty, tone }: { items: Item[]; empty: str
         </ul>
       )}
     </div>
+  );
+}
+
+/** Adds a keeping in touch day to one person's leave. */
+export function KeepingInTouchForm({ leaveRequestId, startsOn, endsOn }: { leaveRequestId: string; startsOn: string; endsOn: string }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(addKeepingInTouchDay, {});
+  return (
+    <form action={action} className="mt-2 flex flex-col gap-2">
+      <Message state={state} />
+      <input type="hidden" name="leaveRequestId" value={leaveRequestId} />
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-sm font-medium">Day agreed</span>
+          <input name="workedOn" type="date" min={startsOn} max={endsOn} required className={input} />
+        </label>
+        <label className="flex flex-1 flex-col gap-1">
+          <span className="text-sm font-medium">Note (optional)</span>
+          <input name="note" maxLength={200} placeholder="For example: team training day" className={input} />
+        </label>
+        <button type="submit" disabled={pending} className="rounded-lg border border-zinc-400 px-3 py-2 disabled:opacity-60">Add day</button>
+      </div>
+    </form>
   );
 }

@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { requireStaff } from "@/lib/business";
 import { db } from "@/lib/db";
-import { formatAmount, LEAVE_KINDS, LEAVE_LABEL, loadBalances } from "@/lib/leave";
+import { formatAmount, LEAVE_LABEL, leaveChoices, loadBalances } from "@/lib/leave";
 import { clockableShifts } from "@/lib/clock";
 import { loadLoneShifts } from "@/lib/lone-working";
 import { SHORT_NOTICE_HOURS } from "@/lib/notices";
@@ -13,6 +13,9 @@ import { todayInUk } from "@/lib/rota";
 import { loadSickness } from "@/lib/sickness";
 import { activeRollCall } from "@/lib/roll-call";
 import { pendingCheckIns } from "@/lib/wellbeing";
+import { loadOpenSwaps, shiftWhen } from "@/lib/swaps";
+import { SwapAnswer } from "./swap/swap-answer";
+import { withdrawSwap } from "./swap/actions";
 import { iAmSafe } from "../roll-call/actions";
 import { addMyUnavailable, markNoticesSeen, readAnnouncement, removeMyUnavailable, savePreferences, setCoverRequest, withdrawClaim, withdrawRequest } from "./actions";
 import { formatUkMobile } from "@vicisrota/messaging";
@@ -203,7 +206,14 @@ export default async function MyPage() {
       .limit(5);
     const sick = (await loadSickness(tx, addDays(today, 366), [worker.id])).get(worker.id);
     const sickPay = new Map((sick?.records ?? []).filter((r) => !r.ssp.oldRules && r.ssp.pence > 0).map((r) => [r.id, r.ssp.pence]));
-    return { checkIns, training, courses, recentMessages, colleagues, roles, sickPay, announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, shortNotice, rollCall, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
+    const swaps = await loadOpenSwaps(tx, worker.id);
+    const [statement] = await tx
+      .select({ issuedAt: schema.writtenStatement.issuedAt, readAt: schema.writtenStatement.readAt })
+      .from(schema.writtenStatement)
+      .where(eq(schema.writtenStatement.workerId, worker.id))
+      .orderBy(desc(schema.writtenStatement.issuedAt))
+      .limit(1);
+    return { statement, swaps, checkIns, training, courses, recentMessages, colleagues, roles, sickPay, announcements, unavailable, now, lone, notices, clockable, checksLocation, hasKiosk, shifts, breaks, clients, available, myClaims, leave, tips, shortNotice, rollCall, policy: org?.policy ?? null, balance: balances.get(worker.id)!, year };
   });
 
   const days = new Map<string, typeof data.shifts>();
@@ -445,6 +455,12 @@ export default async function MyPage() {
                           <input type="hidden" name="wanted" value={String(!s.coverRequestedAt)} />
                           {s.coverRequestedAt && <span className="text-sm">You have asked for cover. You keep this shift until your manager agrees a swap. </span>}
                           <button type="submit" className="text-sm underline">{s.coverRequestedAt ? "Cancel cover request" : "Ask for someone to cover"}</button>
+                          {!data.swaps.some((w) => w.swap.fromShiftId === s.id) && (
+                            <>
+                              {" · "}
+                              <Link href={`/me/swap/${s.id}`} className="text-sm underline">Swap with a named colleague</Link>
+                            </>
+                          )}
                         </form>
                       )}
                     </div>
@@ -459,6 +475,41 @@ export default async function MyPage() {
           <a href="/me/calendar.ics" className="underline">Add your shifts to your phone or computer calendar</a>
         </p>
       </section>
+
+      {data.swaps.length > 0 && (
+        <section className="mt-8 rounded-lg border-2 border-brand p-4" aria-labelledby="swaps-heading">
+          <h2 id="swaps-heading" className="text-lg font-semibold">Swaps</h2>
+          <ul className="mt-2 flex flex-col gap-3">
+            {data.swaps.map(({ swap, fromShift, toShift, fromName, toName }) =>
+              swap.fromWorkerId === worker.id ? (
+                <li key={swap.id}>
+                  <p>
+                    You asked {toName.split(" ")[0]} to swap: you take {shiftWhen(toShift)}, they take {shiftWhen(fromShift)}.{" "}
+                    {swap.status === "asked" ? `Waiting for ${toName.split(" ")[0]} to answer.` : "They said yes. Waiting for your manager."}
+                  </p>
+                  <form action={withdrawSwap}>
+                    <input type="hidden" name="swapId" value={swap.id} />
+                    <button type="submit" className="text-sm underline">Withdraw this request</button>
+                  </form>
+                </li>
+              ) : (
+                <li key={swap.id}>
+                  <p>
+                    {fromName.split(" ")[0]} would like to swap: you take <strong>{shiftWhen(fromShift)}</strong>, and they take your shift on{" "}
+                    <strong>{shiftWhen(toShift)}</strong>.
+                  </p>
+                  {swap.note && <p className="mt-1 rounded-md bg-brand-soft p-2 text-sm whitespace-pre-line">{swap.note}</p>}
+                  {swap.status === "asked" ? (
+                    <SwapAnswer swapId={swap.id} />
+                  ) : (
+                    <p className="text-sm">You said yes. Waiting for your manager. You keep your own shift until they approve it.</p>
+                  )}
+                </li>
+              ),
+            )}
+          </ul>
+        </section>
+      )}
 
       <More calm={calm}>
       {(pickUp.length > 0 || data.myClaims.length > 0) && (
@@ -569,7 +620,7 @@ export default async function MyPage() {
 
       <section className="mt-10" aria-labelledby="ask-heading">
         <h2 id="ask-heading" className="text-lg font-semibold">Ask for time off</h2>
-        <TimeOffForm unit={unit} kinds={LEAVE_KINDS.map((k) => ({ value: k, label: LEAVE_LABEL[k] }))} />
+        <TimeOffForm unit={unit} kinds={leaveChoices()} />
       </section>
       {data.announcements.some((a) => a.readAt) && (
         <section className="mt-10" aria-labelledby="past-announcements-heading">
@@ -661,6 +712,20 @@ export default async function MyPage() {
         </section>
       )}
 
+      {data.statement && (
+        <section className={`mt-10 ${data.statement.readAt ? "" : "rounded-lg border-2 border-brand p-4"}`} aria-labelledby="statement-heading">
+          <h2 id="statement-heading" className="text-lg font-semibold">Your written statement</h2>
+          <p className="mt-1">
+            {data.statement.readAt
+              ? "The main terms of your job: your pay, hours, holiday and notice."
+              : "Your manager has given you a written statement of the main terms of your job. Please read it."}
+          </p>
+          <Link href="/me/statement" className="mt-2 inline-block rounded-lg border border-zinc-400 px-4 py-2">
+            {data.statement.readAt ? "See your statement" : "Read your statement"}
+          </Link>
+        </section>
+      )}
+
       <section className="mt-10" aria-labelledby="profile-heading">
         <h2 id="profile-heading" className="text-lg font-semibold">How I work best</h2>
         <p className="mt-1">
@@ -670,6 +735,19 @@ export default async function MyPage() {
         <Link href="/me/profile" className="mt-2 inline-block rounded-lg border border-zinc-400 px-4 py-2">
           {Object.keys(worker.workProfile).some((k) => k !== "shared") ? "See or change yours" : "Fill it in"}
         </Link>
+      </section>
+
+      <section className="mt-10" aria-labelledby="data-heading">
+        <h2 id="data-heading" className="text-lg font-semibold">Your data</h2>
+        <p className="mt-1">
+          Download a copy of everything VicisRota holds about you, such as your shifts, hours, pay rates, holiday and training. You can keep it or take it to
+          another employer.
+        </p>
+        <a href="/me/data" className="mt-2 inline-block rounded-lg border border-zinc-400 px-4 py-2">Download my data</a>
+        <p className="mt-2 text-sm text-muted">
+          If you leave, most of your details are deleted 2 years later, and everything else after 6 years. Read the{" "}
+          <Link href="/privacy#keep" className="underline">privacy policy</Link> for the details.
+        </p>
       </section>
 
       <section className="mt-10" aria-labelledby="texts-heading">

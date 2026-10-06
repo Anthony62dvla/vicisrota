@@ -438,3 +438,154 @@ export async function saveSponsorship(_: FormState, form: FormData): Promise<For
   revalidatePath("/sponsorship");
   return result;
 }
+
+/**
+ * Keeps two people off overlapping shifts at the same workplace. Managers only: neither person is told,
+ * and staff who are blocked by it get a general message.
+ */
+export async function addKeepApart(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  const otherId = String(form.get("otherId") ?? "");
+  const note = String(form.get("note") ?? "").trim().slice(0, 200) || null;
+  const reviewOn = optionalDate(form.get("reviewOn"));
+  if (!otherId || otherId === workerId) return { error: "Choose the other person." };
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
+    const [worker, other] = [await findWorker(tx, workerId), await findWorker(tx, otherId)];
+    if (!worker || !other) return { error: "That person could not be found." };
+    const [firstWorkerId, secondWorkerId] = [workerId, otherId].sort() as [string, string];
+    const rows = await tx
+      .insert(schema.keepApart)
+      .values({ organisationId, firstWorkerId, secondWorkerId, note, reviewOn, createdByUserId: user.id })
+      .onConflictDoNothing()
+      .returning({ id: schema.keepApart.id });
+    if (!rows.length) return { error: `${worker.name} and ${other.name} are already kept apart.` };
+    // The note may be sensitive, so only the pair goes in the audit trail.
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "create", entity: "keep_apart", entityId: rows[0]!.id, data: { firstWorkerId, secondWorkerId, reviewOn } });
+    return { ok: `${worker.name} and ${other.name} will be kept apart. The rota check now stops them being on overlapping shifts at the same workplace.` };
+  });
+  revalidatePath(`/staff/${workerId}`);
+  revalidatePath(`/staff/${otherId}`);
+  revalidatePath("/rota");
+  return result;
+}
+
+export async function removeKeepApart(form: FormData) {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  const id = String(form.get("id") ?? "");
+  await withOrganisation(db, organisationId, async (tx) => {
+    const rows = await tx.delete(schema.keepApart).where(eq(schema.keepApart.id, id)).returning();
+    if (!rows.length) return;
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "delete", entity: "keep_apart", entityId: id, data: { firstWorkerId: rows[0]!.firstWorkerId, secondWorkerId: rows[0]!.secondWorkerId } });
+  });
+  revalidatePath(`/staff/${workerId}`);
+  revalidatePath("/rota");
+}
+
+/** Records or removes someone's personal licence to sell alcohol. A blank number removes it. */
+export async function savePersonalLicence(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  const number = String(form.get("number") ?? "").trim().slice(0, 40);
+  const authority = String(form.get("authority") ?? "").trim().slice(0, 120);
+  const issuedOn = String(form.get("issuedOn") ?? "");
+  if (number && !authority) return { error: "Enter the council that issued the licence." };
+  const licence = number ? { number, authority, ...(/^\d{4}-\d{2}-\d{2}$/.test(issuedOn) ? { issuedOn } : {}) } : null;
+  const result = await withOrganisation(db, organisationId, async (tx) => {
+    const rows = await tx.update(schema.worker).set({ personalLicence: licence }).where(eq(schema.worker.id, workerId)).returning({ name: schema.worker.fullName });
+    if (!rows.length) return { error: "That person could not be found." };
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "update", entity: "personal_licence", entityId: workerId, data: { held: !!licence } });
+    return { ok: licence ? `Personal licence saved for ${rows[0]!.name}.` : `Personal licence removed for ${rows[0]!.name}.` };
+  });
+  revalidatePath(`/staff/${workerId}`);
+  revalidatePath("/rota");
+  return result;
+}
+
+/** Marks someone as supplied by an agency, so their 12 qualifying weeks are counted. */
+export async function saveAgency(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  let agency: { agencyName: string; startedOn: string; role?: string } | null = null;
+  if (form.get("isAgency") === "on") {
+    const agencyName = String(form.get("agencyName") ?? "").trim().slice(0, 120);
+    const startedOn = String(form.get("agencyStartedOn") ?? "");
+    const role = String(form.get("agencyRole") ?? "").trim().slice(0, 120);
+    if (!agencyName) return { error: "Enter the name of the agency." };
+    if (!DATE.test(startedOn)) return { error: "Enter the date their assignment with you started." };
+    agency = { agencyName, startedOn, ...(role ? { role } : {}) };
+  }
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
+    const rows = await tx.update(schema.worker).set({ agency }).where(eq(schema.worker.id, workerId)).returning({ name: schema.worker.fullName });
+    if (!rows.length) return { error: "That person could not be found." };
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "update", entity: "worker_agency", entityId: workerId, data: { agency } });
+    return { ok: agency ? `Agency details saved for ${rows[0]!.name}.` : `${rows[0]!.name} is no longer marked as an agency worker.` };
+  });
+  revalidatePath(`/staff/${workerId}`);
+  revalidatePath("/agency");
+  return result;
+}
+
+/** Records a shop or betting worker's notice opting out of Sunday work. Unticking removes it (they have opted back in). */
+export async function saveSundayOptOut(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  let sundayOptOut: { noticeGivenOn: string; statementGiven: boolean } | null = null;
+  if (form.get("optedOut") === "on") {
+    const noticeGivenOn = String(form.get("noticeGivenOn") ?? "");
+    if (!DATE.test(noticeGivenOn)) return { error: "Enter the date they gave you written notice." };
+    sundayOptOut = { noticeGivenOn, statementGiven: form.get("statementGiven") === "yes" };
+  }
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
+    const rows = await tx.update(schema.worker).set({ sundayOptOut }).where(eq(schema.worker.id, workerId)).returning({ name: schema.worker.fullName });
+    if (!rows.length) return { error: "That person could not be found." };
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "update", entity: "worker_sunday_opt_out", entityId: workerId, data: { sundayOptOut } });
+    return { ok: sundayOptOut ? `Sunday opt-out saved for ${rows[0]!.name}.` : `${rows[0]!.name} has opted back in to Sunday work.` };
+  });
+  revalidatePath(`/staff/${workerId}`);
+  revalidatePath("/rota");
+  return result;
+}
+
+/** Records or removes the council work permit for a child of school age. */
+export async function saveChildPermit(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  const council = String(form.get("council") ?? "").trim().slice(0, 120);
+  const reference = String(form.get("reference") ?? "").trim().slice(0, 60);
+  const expiresOn = String(form.get("permitExpiresOn") ?? "");
+  if (expiresOn && !DATE.test(expiresOn)) return { error: "Enter the date the permit ends, or leave it blank." };
+  const childWorkPermit = council ? { council, ...(reference ? { reference } : {}), ...(expiresOn ? { expiresOn } : {}) } : null;
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
+    const rows = await tx.update(schema.worker).set({ childWorkPermit }).where(eq(schema.worker.id, workerId)).returning({ name: schema.worker.fullName });
+    if (!rows.length) return { error: "That person could not be found." };
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "update", entity: "child_work_permit", entityId: workerId, data: { held: !!childWorkPermit } });
+    return { ok: childWorkPermit ? `Work permit saved for ${rows[0]!.name}.` : `Work permit removed for ${rows[0]!.name}.` };
+  });
+  revalidatePath(`/staff/${workerId}`);
+  revalidatePath("/rota");
+  return result;
+}
+
+const OUTCOMES = ["offered", "taken", "declined"];
+
+/** Records that a night worker was offered a free health assessment. The result itself is never recorded. */
+export async function addNightHealth(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  const offeredOn = String(form.get("offeredOn") ?? "");
+  const outcome = String(form.get("outcome") ?? "offered");
+  if (!DATE.test(offeredOn)) return { error: "Enter the date it was offered." };
+  if (!OUTCOMES.includes(outcome)) return { error: "Choose what happened." };
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
+    const [w] = await tx.select({ name: schema.worker.fullName }).from(schema.worker).where(eq(schema.worker.id, workerId));
+    if (!w) return { error: "That person could not be found." };
+    const [row] = await tx.insert(schema.nightHealthAssessment).values({ organisationId, workerId, offeredOn, outcome, recordedByUserId: user.id }).returning({ id: schema.nightHealthAssessment.id });
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "create", entity: "night_health_assessment", entityId: row!.id, data: { workerId, outcome } });
+    return { ok: `Health assessment offer recorded for ${w.name}.` };
+  });
+  revalidatePath(`/staff/${workerId}`);
+  revalidatePath("/rota");
+  return result;
+}

@@ -5,6 +5,15 @@ const KIND_LABEL: Record<LeaveKind, string> = {
   annual: "holiday",
   sick: "sick leave",
   family: "family leave",
+  maternity: "maternity leave",
+  paternity: "paternity leave",
+  adoption: "adoption leave",
+  shared_parental: "shared parental leave",
+  neonatal: "neonatal care leave",
+  parental: "parental leave",
+  parental_bereavement: "parental bereavement leave",
+  carers: "carer's leave",
+  dependants: "time off for dependants",
   unpaid: "unpaid leave",
   compassionate: "compassionate leave",
   other: "leave",
@@ -33,9 +42,11 @@ export const noShiftDuringLeave: Rule = {
       const name = names.get(workerId) ?? "This person";
       return shifts.flatMap((shift) => {
         const dates = shiftDates(shift);
-        const clash = leave.find((l) => dates.some((d) => d >= l.startsOn && d <= l.endsOn));
+        // A day agreed to work during leave (a keeping in touch day) is not a clash.
+        const onLeave = (l: (typeof leave)[number], d: string) => d >= l.startsOn && d <= l.endsOn && !l.workDays?.includes(d);
+        const clash = leave.find((l) => dates.some((d) => onLeave(l, d)));
         if (!clash) return [];
-        const day = dates.find((d) => d >= clash.startsOn && d <= clash.endsOn)!;
+        const day = dates.find((d) => onLeave(clash, d))!;
         const approved = clash.status === "approved";
         return [
           {

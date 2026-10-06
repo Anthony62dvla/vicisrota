@@ -1,0 +1,1 @@
+ALTER TABLE "location" ADD COLUMN "martyns_law" jsonb;

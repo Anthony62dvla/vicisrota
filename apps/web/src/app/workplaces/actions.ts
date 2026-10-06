@@ -97,3 +97,51 @@ export async function revokeKiosk(form: FormData) {
   });
   revalidatePath("/workplaces");
 }
+
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** Which places sell alcohol, and their licensed hours. "org" stands for shifts with no workplace set. */
+export async function saveLicensing(form: FormData) {
+  const { user, organisationId } = await requireManager();
+  const read = (key: string) => {
+    if (form.get(`sells-${key}`) !== "on") return null;
+    const from = String(form.get(`from-${key}`) ?? "");
+    const to = String(form.get(`to-${key}`) ?? "");
+    // Hours only count when both are given and differ; otherwise the whole time staff are working is checked.
+    return HHMM.test(from) && HHMM.test(to) && from !== to ? { from, to } : {};
+  };
+  await withOrganisation(db, organisationId, async (tx) => {
+    const places = await tx.select({ id: schema.location.id }).from(schema.location);
+    await tx.update(schema.organisation).set({ licensing: read("org") }).where(eq(schema.organisation.id, organisationId));
+    for (const p of places) await tx.update(schema.location).set({ licensing: read(p.id) }).where(eq(schema.location.id, p.id));
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "update", entity: "licensing", entityId: organisationId });
+  });
+  revalidatePath("/workplaces");
+  revalidatePath("/rota");
+}
+
+/** The training record staff are briefed against, added once when a workplace falls under Martyn's Law. */
+const MARTYNS_LAW_TRAINING = { name: "Martyn's Law: our attack procedures", courseUrl: "https://www.protectuk.police.uk/" };
+
+/** Martyn's Law details for one workplace: expected capacity and when the procedures were last reviewed. Blank capacity removes them. */
+export async function saveMartynsLaw(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const locationId = String(form.get("locationId") ?? "");
+  const raw = String(form.get("capacity") ?? "").trim().replace(/,/g, "");
+  const reviewed = String(form.get("reviewedOn") ?? "");
+  const capacity = raw === "" ? null : Number(raw);
+  if (capacity !== null && !(Number.isInteger(capacity) && capacity >= 0 && capacity <= 1_000_000)) return { error: "Enter the number of people as a whole number." };
+  if (reviewed && !/^\d{4}-\d{2}-\d{2}$/.test(reviewed)) return { error: "Enter the date the procedures were last reviewed." };
+  const value = capacity === null ? null : { capacity, ...(reviewed ? { proceduresReviewedOn: reviewed } : {}) };
+  return withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
+    const rows = await tx.update(schema.location).set({ martynsLaw: value }).where(eq(schema.location.id, locationId)).returning({ name: schema.location.name });
+    if (!rows.length) return { error: "That workplace could not be found." };
+    if (capacity !== null && capacity >= 200) {
+      const [known] = await tx.select({ id: schema.qualification.id }).from(schema.qualification).where(eq(schema.qualification.name, MARTYNS_LAW_TRAINING.name));
+      if (!known) await tx.insert(schema.qualification).values({ organisationId, ...MARTYNS_LAW_TRAINING });
+    }
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "update", entity: "martyns_law", entityId: locationId, data: { capacity } });
+    revalidatePath("/workplaces");
+    return { ok: `Saved for ${rows[0]!.name}.` };
+  });
+}

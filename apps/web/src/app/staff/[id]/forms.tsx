@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { addCheck, addTraining, inviteStaff, markBack, markLeft, saveAdjustments, setMobile, updateHolidaySettings, updatePayrollId, addSupervision, saveSponsorship, type FormState, type InviteState } from "./actions";
+import { addKeepApart, addCheck, addTraining, inviteStaff, markBack, markLeft, saveAdjustments, setMobile, updateHolidaySettings, updatePayrollId, addSupervision, saveSponsorship, type FormState, type InviteState, savePersonalLicence, saveAgency, saveSundayOptOut, saveChildPermit, addNightHealth } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 const button = "rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover disabled:opacity-60";
@@ -343,6 +343,187 @@ export function SponsorshipForm({ workerId, current }: { workerId: string; curre
       )}
       <button type="submit" disabled={pending} className={button}>
         {pending ? "Saving…" : "Save sponsorship"}
+      </button>
+    </form>
+  );
+}
+
+/** Keeps this person off overlapping shifts with someone else. Private to managers. */
+export function KeepApartForm({ workerId, others }: { workerId: string; others: { id: string; name: string }[] }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(addKeepApart, {});
+  return (
+    <form action={action} className="mt-3 flex max-w-md flex-col gap-3">
+      <Message state={state} />
+      <input type="hidden" name="workerId" value={workerId} />
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Keep apart from</span>
+        <select name="otherId" required defaultValue="" className={input}>
+          <option value="" disabled>Choose a person</option>
+          {others.map((o) => (
+            <option key={o.id} value={o.id}>{o.name}</option>
+          ))}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Private note (optional)</span>
+        <span className="text-sm text-zinc-600 dark:text-zinc-400">A short reminder for managers, such as a case reference. Keep details of any complaint in your HR records, not here.</span>
+        <input name="note" maxLength={200} className={input} />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Review on (optional)</span>
+        <input name="reviewOn" type="date" className={input} />
+      </label>
+      <button type="submit" disabled={pending} className={`self-start ${button}`}>{pending ? "Saving…" : "Keep apart"}</button>
+    </form>
+  );
+}
+
+export function PersonalLicenceForm({ workerId, current }: { workerId: string; current: { number: string; authority: string; issuedOn?: string } | null }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(savePersonalLicence, {});
+  return (
+    <form action={action} className="mt-3 flex max-w-md flex-col gap-3">
+      <Message state={state} />
+      <input type="hidden" name="workerId" value={workerId} />
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Licence number</span>
+        <span className="text-sm text-zinc-600 dark:text-zinc-400">Leave blank if they do not hold one.</span>
+        <input name="number" defaultValue={current?.number ?? ""} maxLength={40} autoComplete="off" className={input} />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Issued by (council)</span>
+        <input name="authority" defaultValue={current?.authority ?? ""} maxLength={120} className={input} />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Issued on (optional)</span>
+        <input name="issuedOn" type="date" defaultValue={current?.issuedOn ?? ""} className={input} />
+      </label>
+      <button type="submit" disabled={pending} className={button}>
+        {pending ? "Saving…" : "Save personal licence"}
+      </button>
+    </form>
+  );
+}
+
+export function AgencyForm({ workerId, current }: { workerId: string; current: { agencyName: string; startedOn: string; role?: string } | null }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(saveAgency, {});
+  const [agency, setAgency] = useState(!!current);
+  return (
+    <form action={action} className="mt-3 flex max-w-md flex-col gap-4">
+      <Message state={state} />
+      <input type="hidden" name="workerId" value={workerId} />
+      <label className="flex items-center gap-2">
+        <input type="checkbox" name="isAgency" checked={agency} onChange={(e) => setAgency(e.target.checked)} className="h-5 w-5" />
+        <span className="font-medium">Supplied by an agency</span>
+      </label>
+      {agency && (
+        <>
+          <label className="flex flex-col gap-1">
+            <span className="font-medium">Agency</span>
+            <input name="agencyName" defaultValue={current?.agencyName ?? ""} maxLength={120} className={input} />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="font-medium">Assignment with you started on</span>
+            <input name="agencyStartedOn" type="date" defaultValue={current?.startedOn ?? ""} className={input} />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="font-medium">Role (optional)</span>
+            <span className="text-sm text-zinc-600 dark:text-zinc-400">If they move to a substantially different role, start a new assignment date.</span>
+            <input name="agencyRole" defaultValue={current?.role ?? ""} maxLength={120} className={input} />
+          </label>
+        </>
+      )}
+      <button type="submit" disabled={pending} className={button}>
+        {pending ? "Saving…" : "Save agency details"}
+      </button>
+    </form>
+  );
+}
+
+export function SundayOptOutForm({ workerId, current, from }: { workerId: string; current: { noticeGivenOn: string; statementGiven: boolean } | null; from: string | null }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(saveSundayOptOut, {});
+  const [optedOut, setOptedOut] = useState(!!current);
+  return (
+    <form action={action} className="mt-3 flex max-w-md flex-col gap-4">
+      <Message state={state} />
+      <input type="hidden" name="workerId" value={workerId} />
+      <label className="flex items-center gap-2">
+        <input type="checkbox" name="optedOut" checked={optedOut} onChange={(e) => setOptedOut(e.target.checked)} className="h-5 w-5" />
+        <span className="font-medium">They have given written notice to opt out of Sunday work</span>
+      </label>
+      {optedOut && (
+        <>
+          <label className="flex flex-col gap-1">
+            <span className="font-medium">Notice given on</span>
+            <input name="noticeGivenOn" type="date" defaultValue={current?.noticeGivenOn ?? ""} className={input} />
+          </label>
+          <fieldset className="flex flex-col gap-1">
+            <legend className="font-medium">Did you give them the written statement of their Sunday working rights within 2 months of starting?</legend>
+            <span className="text-sm text-zinc-600 dark:text-zinc-400">If not, their opt-out takes effect after 1 month instead of 3.</span>
+            <label className="flex items-center gap-2">
+              <input type="radio" name="statementGiven" value="yes" defaultChecked={current?.statementGiven ?? true} /> Yes
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="radio" name="statementGiven" value="no" defaultChecked={current ? !current.statementGiven : false} /> No
+            </label>
+          </fieldset>
+          {from && <p>The rota will warn about Sunday shifts from {new Date(`${from}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" })}.</p>}
+        </>
+      )}
+      <button type="submit" disabled={pending} className={button}>
+        {pending ? "Saving…" : "Save Sunday working"}
+      </button>
+    </form>
+  );
+}
+
+export function ChildPermitForm({ workerId, current }: { workerId: string; current: { council: string; reference?: string; expiresOn?: string } | null }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(saveChildPermit, {});
+  return (
+    <form action={action} className="mt-3 flex max-w-md flex-col gap-3">
+      <Message state={state} />
+      <input type="hidden" name="workerId" value={workerId} />
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Council that issued the permit</span>
+        <span className="text-sm text-zinc-600 dark:text-zinc-400">Leave blank if there is no permit yet.</span>
+        <input name="council" defaultValue={current?.council ?? ""} maxLength={120} className={input} />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Permit reference (optional)</span>
+        <input name="reference" defaultValue={current?.reference ?? ""} maxLength={60} autoComplete="off" className={input} />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Permit ends on (optional)</span>
+        <input name="permitExpiresOn" type="date" defaultValue={current?.expiresOn ?? ""} className={input} />
+      </label>
+      <button type="submit" disabled={pending} className={button}>
+        {pending ? "Saving…" : "Save work permit"}
+      </button>
+    </form>
+  );
+}
+
+export function NightHealthForm({ workerId, today }: { workerId: string; today: string }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(addNightHealth, {});
+  return (
+    <form action={action} className="mt-3 flex max-w-md flex-col gap-3">
+      <Message state={state} />
+      <input type="hidden" name="workerId" value={workerId} />
+      <div className="flex flex-wrap gap-4">
+        <label className="flex flex-col gap-1">
+          <span className="font-medium">Offered on</span>
+          <input name="offeredOn" type="date" defaultValue={today} className={input} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="font-medium">What happened</span>
+          <select name="outcome" defaultValue="offered" className={input}>
+            <option value="offered">Offered, waiting for an answer</option>
+            <option value="taken">They had the assessment</option>
+            <option value="declined">They chose not to have it</option>
+          </select>
+        </label>
+      </div>
+      <button type="submit" disabled={pending} className={button}>
+        {pending ? "Saving…" : "Record offer"}
       </button>
     </form>
   );

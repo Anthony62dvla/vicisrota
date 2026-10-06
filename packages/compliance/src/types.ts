@@ -21,6 +21,12 @@ export interface Worker {
   adjustments?: Adjustments;
   /** Ids of the job roles the person is set up to work, e.g. Chef or Senior carer. */
   roles?: string[] | undefined;
+  /** Shop or betting worker who has given notice to opt out of Sunday work: the date the notice ends. */
+  sundayOptOutFrom?: LocalDate | null | undefined;
+  /** Children of school age: the council work permit, if one is recorded. */
+  childWorkPermit?: { expiresOn?: LocalDate | undefined } | null | undefined;
+  /** Night workers: the last date a free health assessment was offered. */
+  nightHealthOfferedOn?: LocalDate | null | undefined;
 }
 
 /** A weekly time someone cannot work, in UK time. weekday: 1 = Monday to 7 = Sunday. to may be "24:00". */
@@ -79,6 +85,8 @@ export interface Shift {
    * The whole sleep-in is still working time for rest breaks and the 48-hour week.
    */
   sleepIn?: { awakeMinutes: number } | undefined;
+  /** The workplace, when the business has more than one. */
+  locationId?: string | null | undefined;
 }
 
 export interface PayRate {
@@ -105,9 +113,29 @@ export interface Finding {
   /** The numbers behind the decision, kept in the audit log. */
   evidence: Record<string, number | string | boolean>;
   legalRef: string;
+  /**
+   * Shown to managers only. Staff asking to pick up or swap a shift get a general message instead, so a
+   * private arrangement (such as keeping two people apart) is never revealed to them.
+   */
+  confidential?: boolean;
 }
 
-export type LeaveKind = "annual" | "sick" | "family" | "unpaid" | "compassionate" | "other";
+export type LeaveKind =
+  | "annual"
+  | "sick"
+  | "family"
+  | "unpaid"
+  | "compassionate"
+  | "other"
+  | "maternity"
+  | "paternity"
+  | "adoption"
+  | "shared_parental"
+  | "neonatal"
+  | "parental"
+  | "parental_bereavement"
+  | "carers"
+  | "dependants";
 export type LeaveStatus = "requested" | "approved";
 
 /** Time off, whole days from startsOn to endsOn inclusive (UK dates). */
@@ -117,6 +145,8 @@ export interface Leave {
   status: LeaveStatus;
   startsOn: LocalDate;
   endsOn: LocalDate;
+  /** Days agreed to work during the leave, such as keeping in touch days. Shifts on these days are fine. */
+  workDays?: LocalDate[];
 }
 
 export interface Context {
@@ -128,6 +158,10 @@ export interface Context {
   payRates?: PayRate[];
   /** Approved and requested leave. Declined and cancelled leave is left out. */
   leave?: Leave[];
+  /** Pairs of people a manager has decided must not work at the same time and place. */
+  keepApart?: { workerIds: [string, string] }[];
+  /** Places that sell alcohol, and who holds a personal licence. A place with no locationId means shifts with no workplace set. */
+  licensing?: { places: { locationId: string | null; name: string; hours?: { from: string; to: string } | undefined }[]; holderIds: string[] };
   settings?: {
     /** Care providers: every shift is regulated activity needing an enhanced DBS with barred list check. */
     requireEnhancedDbs?: boolean;
