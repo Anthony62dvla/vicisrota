@@ -63,3 +63,13 @@ export const checkSwap = async (tx: Transaction, organisationId: string, a: { sh
     warnings: findings.filter((f) => f.severity === "warn"),
   };
 };
+
+/**
+ * What to tell a member of staff when checks stop them taking a shift. Private arrangements, such as two
+ * people kept apart, are never named: they get a general message and their manager can explain.
+ */
+export const staffBlockMessage = (blocks: Finding[]) => {
+  const open = blocks.filter((f) => !f.confidential).map((f) => f.message);
+  if (blocks.some((f) => f.confidential)) open.push("It can't be arranged for you on the rota. Your manager can explain.");
+  return open.join(" ");
+};

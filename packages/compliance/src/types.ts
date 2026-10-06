@@ -79,6 +79,8 @@ export interface Shift {
    * The whole sleep-in is still working time for rest breaks and the 48-hour week.
    */
   sleepIn?: { awakeMinutes: number } | undefined;
+  /** The workplace, when the business has more than one. */
+  locationId?: string | null | undefined;
 }
 
 export interface PayRate {
@@ -105,6 +107,11 @@ export interface Finding {
   /** The numbers behind the decision, kept in the audit log. */
   evidence: Record<string, number | string | boolean>;
   legalRef: string;
+  /**
+   * Shown to managers only. Staff asking to pick up or swap a shift get a general message instead, so a
+   * private arrangement (such as keeping two people apart) is never revealed to them.
+   */
+  confidential?: boolean;
 }
 
 export type LeaveKind =
@@ -145,6 +152,8 @@ export interface Context {
   payRates?: PayRate[];
   /** Approved and requested leave. Declined and cancelled leave is left out. */
   leave?: Leave[];
+  /** Pairs of people a manager has decided must not work at the same time and place. */
+  keepApart?: { workerIds: [string, string] }[];
   settings?: {
     /** Care providers: every shift is regulated activity needing an enhanced DBS with barred list check. */
     requireEnhancedDbs?: boolean;

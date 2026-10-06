@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { addCheck, addTraining, inviteStaff, markBack, markLeft, saveAdjustments, setMobile, updateHolidaySettings, updatePayrollId, addSupervision, saveSponsorship, type FormState, type InviteState } from "./actions";
+import { addKeepApart, addCheck, addTraining, inviteStaff, markBack, markLeft, saveAdjustments, setMobile, updateHolidaySettings, updatePayrollId, addSupervision, saveSponsorship, type FormState, type InviteState } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 const button = "rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover disabled:opacity-60";
@@ -344,6 +344,36 @@ export function SponsorshipForm({ workerId, current }: { workerId: string; curre
       <button type="submit" disabled={pending} className={button}>
         {pending ? "Saving…" : "Save sponsorship"}
       </button>
+    </form>
+  );
+}
+
+/** Keeps this person off overlapping shifts with someone else. Private to managers. */
+export function KeepApartForm({ workerId, others }: { workerId: string; others: { id: string; name: string }[] }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(addKeepApart, {});
+  return (
+    <form action={action} className="mt-3 flex max-w-md flex-col gap-3">
+      <Message state={state} />
+      <input type="hidden" name="workerId" value={workerId} />
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Keep apart from</span>
+        <select name="otherId" required defaultValue="" className={input}>
+          <option value="" disabled>Choose a person</option>
+          {others.map((o) => (
+            <option key={o.id} value={o.id}>{o.name}</option>
+          ))}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Private note (optional)</span>
+        <span className="text-sm text-zinc-600 dark:text-zinc-400">A short reminder for managers, such as a case reference. Keep details of any complaint in your HR records, not here.</span>
+        <input name="note" maxLength={200} className={input} />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Review on (optional)</span>
+        <input name="reviewOn" type="date" className={input} />
+      </label>
+      <button type="submit" disabled={pending} className={`self-start ${button}`}>{pending ? "Saving…" : "Keep apart"}</button>
     </form>
   );
 }

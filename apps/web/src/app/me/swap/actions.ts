@@ -4,7 +4,7 @@ import { schema, withOrganisation } from "@vicisrota/db";
 import { and, eq, gt, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireStaff } from "@/lib/business";
-import { canWorkRole, checkSwap } from "@/lib/claims";
+import { canWorkRole, checkSwap, staffBlockMessage } from "@/lib/claims";
 import { db } from "@/lib/db";
 import { notifyWorkers, type Notify } from "@/lib/notify";
 import { requestId } from "@/lib/request";
@@ -38,7 +38,7 @@ export async function askToSwap(_: SwapState, form: FormData): Promise<SwapState
     if (!(await canWorkRole(tx, colleagueId, mine.roleId))) return { error: "Your shift is for a job role they are not set up for." };
     const check = await checkSwap(tx, organisationId, { shiftId: mine.id, workerId: worker.id }, { shiftId: theirs.id, workerId: colleagueId });
     if (!check) return { error: "That shift is no longer available to swap." };
-    if (check.blocks.length) return { error: `This swap can't happen: ${check.blocks.map((f) => f.message).join(" ")}` };
+    if (check.blocks.length) return { error: `This swap can't happen: ${staffBlockMessage(check.blocks)}` };
     const rows = await tx
       .insert(schema.shiftSwap)
       .values({ organisationId, fromShiftId: mine.id, fromWorkerId: worker.id, toShiftId: theirs.id, toWorkerId: colleagueId, note, warnings: check.warnings })
@@ -86,7 +86,7 @@ export async function answerSwap(_: SwapState, form: FormData): Promise<SwapStat
       if (!swapStillValid(row)) return { error: "One of the shifts has changed since this was asked, so it can't be swapped now." };
       const check = await checkSwap(tx, organisationId, { shiftId: row.fromShift.id, workerId: row.swap.fromWorkerId }, { shiftId: row.toShift.id, workerId: worker.id });
       if (!check) return { error: "One of the shifts no longer exists." };
-      if (check.blocks.length) return { error: `This swap can't happen now: ${check.blocks.map((f) => f.message).join(" ")}` };
+      if (check.blocks.length) return { error: `This swap can't happen now: ${staffBlockMessage(check.blocks)}` };
       await tx.update(schema.shiftSwap).set({ status: "agreed", respondedAt: new Date(), warnings: check.warnings }).where(eq(schema.shiftSwap.id, id));
       await audit("agree");
       return { ok: "Thank you. Your manager will now look at the swap. You keep your own shift until they approve it." };

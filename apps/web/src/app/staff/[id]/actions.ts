@@ -438,3 +438,47 @@ export async function saveSponsorship(_: FormState, form: FormData): Promise<For
   revalidatePath("/sponsorship");
   return result;
 }
+
+/**
+ * Keeps two people off overlapping shifts at the same workplace. Managers only: neither person is told,
+ * and staff who are blocked by it get a general message.
+ */
+export async function addKeepApart(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  const otherId = String(form.get("otherId") ?? "");
+  const note = String(form.get("note") ?? "").trim().slice(0, 200) || null;
+  const reviewOn = optionalDate(form.get("reviewOn"));
+  if (!otherId || otherId === workerId) return { error: "Choose the other person." };
+  const result = await withOrganisation(db, organisationId, async (tx): Promise<FormState> => {
+    const [worker, other] = [await findWorker(tx, workerId), await findWorker(tx, otherId)];
+    if (!worker || !other) return { error: "That person could not be found." };
+    const [firstWorkerId, secondWorkerId] = [workerId, otherId].sort() as [string, string];
+    const rows = await tx
+      .insert(schema.keepApart)
+      .values({ organisationId, firstWorkerId, secondWorkerId, note, reviewOn, createdByUserId: user.id })
+      .onConflictDoNothing()
+      .returning({ id: schema.keepApart.id });
+    if (!rows.length) return { error: `${worker.name} and ${other.name} are already kept apart.` };
+    // The note may be sensitive, so only the pair goes in the audit trail.
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "create", entity: "keep_apart", entityId: rows[0]!.id, data: { firstWorkerId, secondWorkerId, reviewOn } });
+    return { ok: `${worker.name} and ${other.name} will be kept apart. The rota check now stops them being on overlapping shifts at the same workplace.` };
+  });
+  revalidatePath(`/staff/${workerId}`);
+  revalidatePath(`/staff/${otherId}`);
+  revalidatePath("/rota");
+  return result;
+}
+
+export async function removeKeepApart(form: FormData) {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  const id = String(form.get("id") ?? "");
+  await withOrganisation(db, organisationId, async (tx) => {
+    const rows = await tx.delete(schema.keepApart).where(eq(schema.keepApart.id, id)).returning();
+    if (!rows.length) return;
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "delete", entity: "keep_apart", entityId: id, data: { firstWorkerId: rows[0]!.firstWorkerId, secondWorkerId: rows[0]!.secondWorkerId } });
+  });
+  revalidatePath(`/staff/${workerId}`);
+  revalidatePath("/rota");
+}

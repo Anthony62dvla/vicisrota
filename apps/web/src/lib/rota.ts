@@ -72,6 +72,7 @@ export const loadWeekChecks = async (
     tx.select().from(schema.workerRole),
   ]);
   // Keeping in touch days: agreed days of work during family leave.
+  const apart = await tx.select({ a: schema.keepApart.firstWorkerId, b: schema.keepApart.secondWorkerId }).from(schema.keepApart);
   const kit = leave.length ? await tx.select().from(schema.keepingInTouchDay).where(inArray(schema.keepingInTouchDay.leaveRequestId, leave.map((l) => l.id))) : [];
   const roleById = new Map(roles.map((r) => [r.id, r]));
   const assumed = new Map((Array.isArray(assume) ? assume : assume ? [assume] : []).map((a) => [a.shiftId, a.workerId]));
@@ -94,6 +95,7 @@ export const loadWeekChecks = async (
     breaks: breaks.filter((b) => b.shiftId === s.id).map((b) => ({ start: b.startsAt.toISOString(), end: b.endsAt.toISOString() })),
     travelMinutesBefore: s.travelMinutes,
     sleepIn: s.kind === "sleep_in" ? { awakeMinutes: 0 } : undefined,
+    locationId: s.locationId,
     role: s.roleId ? roleById.get(s.roleId) : undefined,
     requiredQualifications: requirements
       .filter((r) => r.shiftId === s.id)
@@ -136,6 +138,7 @@ export const loadWeekChecks = async (
     })),
     payRates: rates.map((r) => ({ workerId: r.workerId, hourlyPence: r.hourlyPence, effectiveFrom: r.effectiveFrom })),
     shifts: assigned.map((s) => ({ ...toCheck(s), workerId: s.workerId! })),
+    keepApart: apart.map((p) => ({ workerIds: [p.a, p.b] as [string, string] })),
   };
   return { context, open: unassigned.map(toCheck) };
 };

@@ -652,6 +652,35 @@ export const keepingInTouchDay = pgTable(
 );
 
 /**
+ * Two people a manager has decided must not work at the same time and place, for example after a harassment
+ * complaint or a safeguarding concern. Managers only: staff are never shown it. The pair is stored with the
+ * smaller id first, so each pair is recorded once.
+ */
+export const keepApart = pgTable(
+  "keep_apart",
+  {
+    id: id(),
+    organisationId: orgId(),
+    firstWorkerId: uuid("first_worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    secondWorkerId: uuid("second_worker_id")
+      .notNull()
+      .references(() => worker.id, { onDelete: "cascade" }),
+    /** A short private note for managers. Not a place for the details of a complaint. */
+    note: text("note"),
+    /** When to look at it again. It stays in force until removed. */
+    reviewOn: date("review_on"),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("keep_apart_pair_idx").on(t.firstWorkerId, t.secondWorkerId),
+    check("keep_apart_order", sql`${t.firstWorkerId} < ${t.secondWorkerId}`),
+  ],
+);
+
+/**
  * A swap between two named people: one asks, the colleague agrees or says no, then a manager approves.
  * asked: waiting for the colleague. agreed: waiting for a manager. The rest are finished.
  */
