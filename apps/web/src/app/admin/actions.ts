@@ -25,6 +25,7 @@ const issueOwnerLink = async (
   ownerName: string,
   email: string,
   createdByUserId: string,
+  replaceUserId: string | null = null,
 ) => {
   await tx
     .update(schema.ownerInvitation)
@@ -38,6 +39,7 @@ const issueOwnerLink = async (
     tokenHash: hashInviteToken(token),
     expiresAt: new Date(Date.now() + OWNER_INVITE_DAYS * 86_400_000),
     createdByUserId,
+    replaceUserId,
   });
   return appUrl(`/welcome/${token}`) || `/welcome/${token}`;
 };
@@ -92,10 +94,37 @@ export async function newOwnerLink(_: OnboardState, form: FormData): Promise<Onb
     .limit(1);
   if (!last) return { error: "This business was not set up by onboarding, so it has no owner link." };
   if (last.acceptedAt) return { error: "The owner has already joined." };
-  const link = await db.transaction((tx) => issueOwnerLink(tx, organisationId, last.ownerName, last.email, admin.id));
+  const link = await db.transaction((tx) => issueOwnerLink(tx, organisationId, last.ownerName, last.email, admin.id, last.replaceUserId));
   await recordPlatformAction(admin.id, "new_owner_link", organisationId, { ownerEmail: last.email });
   revalidatePath("/admin");
   return { ok: `New link for ${last.ownerName} (${last.email}). The old one no longer works.`, link };
+}
+
+/**
+ * Hands an existing business to a new owner or manager: a link like onboarding's. If asked, the superadmin's own
+ * access to the business ends when the new person takes it over, so the business is theirs alone.
+ */
+export async function handOverBusiness(_: OnboardState, form: FormData): Promise<OnboardState> {
+  const admin = await requireSuperadmin();
+  const organisationId = String(form.get("organisationId") ?? "");
+  const ownerName = String(form.get("ownerName") ?? "").trim();
+  const email = String(form.get("email") ?? "").trim().toLowerCase();
+  const removeMe = form.get("removeMe") === "on";
+  const values = { ownerName, email };
+  if (!ownerName) return { error: "Enter the new manager's name.", values };
+  if (!EMAIL.test(email)) return { error: "Enter the new manager's email address.", values };
+  const [org] = await db.select({ name: schema.organisation.name }).from(schema.organisation).where(eq(schema.organisation.id, organisationId));
+  if (!org) return { error: "That business could not be found.", values };
+  const [mine] = await db
+    .select({ role: schema.membership.role })
+    .from(schema.membership)
+    .where(and(eq(schema.membership.organisationId, organisationId), eq(schema.membership.userId, admin.id)));
+  const replace = removeMe && mine ? admin.id : null;
+  const link = await db.transaction((tx) => issueOwnerLink(tx, organisationId, ownerName, email, admin.id, replace));
+  await recordPlatformAction(admin.id, "hand_over_business", organisationId, { ownerEmail: email, removeOwnAccess: Boolean(replace) });
+  revalidatePath("/admin");
+  const after = replace ? " When they take it over, your own access to it ends." : "";
+  return { ok: `Send this link to ${ownerName} at ${email} so they can take over ${org.name}. It works for ${OWNER_INVITE_DAYS} days.${after}`, link };
 }
 
 /** Turns on the charity price for a business once its charity or CIC number has been checked. */

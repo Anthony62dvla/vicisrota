@@ -37,6 +37,10 @@ export async function acceptOwnerInvitation(_: WelcomeState, form: FormData): Pr
     if (existing) await tx.update(schema.membership).set({ role: "owner" }).where(and(eq(schema.membership.organisationId, invitation.organisationId), eq(schema.membership.userId, user.id)));
     else await tx.insert(schema.membership).values({ organisationId: invitation.organisationId, userId: user.id, role: "owner" });
     await tx.execute(sql`select set_config('app.organisation_id', ${invitation.organisationId}, true)`);
+    // A handover: the person who handed the business over leaves it, so it is the new owner's alone.
+    const handedOver = invitation.replaceUserId && invitation.replaceUserId !== user.id ? invitation.replaceUserId : null;
+    if (handedOver)
+      await tx.delete(schema.membership).where(and(eq(schema.membership.organisationId, invitation.organisationId), eq(schema.membership.userId, handedOver)));
     await tx.insert(schema.auditEvent).values({
       organisationId: invitation.organisationId,
       actorUserId: user.id,
@@ -44,7 +48,7 @@ export async function acceptOwnerInvitation(_: WelcomeState, form: FormData): Pr
       action: "accept_owner_invite",
       entity: "organisation",
       entityId: invitation.organisationId,
-      data: { invitationId: invitation.id },
+      data: { invitationId: invitation.id, ...(handedOver ? { previousOwnerLeft: true } : {}) },
     });
     await tx.insert(schema.platformAudit).values({
       actorUserId: user.id,

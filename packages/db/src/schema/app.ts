@@ -956,6 +956,8 @@ export const ownerInvitation = pgTable("owner_invitation", {
   acceptedByUserId: text("accepted_by_user_id").references(() => user.id, { onDelete: "set null" }),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
   createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  /** On a handover: whose access to the business ends when the new owner takes it over (the superadmin who handed it over). */
+  replaceUserId: text("replace_user_id").references(() => user.id, { onDelete: "set null" }),
   createdAt: createdAt(),
 });
 

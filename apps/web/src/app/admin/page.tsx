@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { loadSetupSteps } from "@/lib/setup";
 import { recordPlatformAction, requireSuperadmin } from "@/lib/superadmin";
 import { planState } from "@vicisrota/compliance";
-import { ApproveCharityButton, NewOwnerLinkButton, OnboardForm } from "./forms";
+import { ApproveCharityButton, HandOverForm, NewOwnerLinkButton, OnboardForm } from "./forms";
 
 const when = (d: Date | null | undefined) =>
   d ? d.toLocaleString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "Never";
@@ -66,6 +66,10 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
           .where(and(inArray(schema.membership.organisationId, ids), eq(schema.membership.role, "owner"))),
       ])
     : [[], [], []];
+  // Businesses the superadmin also belongs to, so a handover can offer to remove their own access.
+  const mine = new Set(
+    (await db.select({ id: schema.membership.organisationId }).from(schema.membership).where(eq(schema.membership.userId, admin.id))).map((m) => m.id),
+  );
   const managers = new Map(owners.map((o) => [o.organisationId, o.n]));
 
   // Each business is read under its own row-level security setting, one at a time.
@@ -176,6 +180,7 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
                 )}
                 {r.link?.acceptedAt && <p className="mt-1 text-sm">Owner joined {when(r.link.acceptedAt)}.</p>}
                 <p className="mt-1 text-sm">Plan: {planLine(r.org, r.staff)}</p>
+                <HandOverForm organisationId={r.org.id} businessName={r.org.name} isMember={mine.has(r.org.id)} />
                 {r.org.charityNumber && !r.org.charityApproved && (
                   <div className="mt-2 text-sm">
                     <p>
