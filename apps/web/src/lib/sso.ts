@@ -16,11 +16,13 @@ export const socialProviders = () => ({
           tenantId: env("MICROSOFT_TENANT_ID") ?? "common",
           authority: env("MICROSOFT_AUTHORITY"),
           disableProfilePhoto: true,
+          // New accounts are only made from the sign-up page, after the terms box is ticked.
+          disableImplicitSignUp: true,
         },
       }
     : {}),
   ...(env("GOOGLE_CLIENT_ID") && env("GOOGLE_CLIENT_SECRET")
-    ? { google: { clientId: env("GOOGLE_CLIENT_ID")!, clientSecret: env("GOOGLE_CLIENT_SECRET")! } }
+    ? { google: { clientId: env("GOOGLE_CLIENT_ID")!, clientSecret: env("GOOGLE_CLIENT_SECRET")!, disableImplicitSignUp: true } }
     : {}),
 });
 
@@ -42,6 +44,8 @@ export const ssoErrorMessage = (code: string | undefined): string | null => {
   if (c === "password_only") return "This account signs in with email and password only.";
   if (c === "account_not_linked")
     return "There is already an account with that email. Sign in with your email and password, then link your Microsoft or Google account from Sign-in security.";
+  if (c === "signup_disabled")
+    return "There is no VicisRota account for that email yet. Please create one on the sign-up page first.";
   if (c === "email_not_found")
     return "Your Microsoft or Google account did not share an email address, so we could not sign you in. Please use your email and password.";
   return "That did not work. Please try again, or sign in with your email and password.";

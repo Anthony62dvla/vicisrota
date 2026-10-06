@@ -8,7 +8,7 @@ import { log } from "@/lib/log";
 import { loadLoneShifts } from "@/lib/lone-working";
 import { sendShiftReminders } from "@/lib/reminders-send";
 import { deleteOldApplications } from "@/lib/hiring";
-import { applyRetention } from "@/lib/retention";
+import { applyPlatformRetention, applyRetention } from "@/lib/retention";
 import { offerCheckIns } from "@/lib/wellbeing";
 import { remindChecksDue } from "@/lib/checks-due";
 import { syncBands } from "@/lib/stripe";
@@ -43,6 +43,7 @@ export async function GET(request: Request) {
   let late = 0;
   let reminders = 0;
   let texts = 0;
+  if (londonParts(now).hour === 3) await applyPlatformRetention(now);
   for (const business of businesses) {
     const shifts = await withOrganisation(db, business.id, (tx) =>
       loadLoneShifts(tx, { from: new Date(now - 12 * 3_600_000), to: new Date(now + 3_600_000), now }),

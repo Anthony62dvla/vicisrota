@@ -13,6 +13,7 @@ export function SignUpForm({ providers, initialError }: { providers: SsoProvider
   const router = useRouter();
   const [error, setError] = useState<string | null>(initialError);
   const [pending, setPending] = useState(false);
+  const [accepted, setAccepted] = useState(false);
 
   async function onSubmit(form: FormData) {
     setPending(true);
@@ -21,7 +22,9 @@ export function SignUpForm({ providers, initialError }: { providers: SsoProvider
       name: String(form.get("name")),
       email: String(form.get("email")),
       password: String(form.get("password")),
-    });
+      // Checked again on the server, which records when the terms were accepted.
+      acceptTerms: form.get("acceptTerms") === "yes",
+    } as Parameters<typeof authClient.signUp.email>[0]);
     setPending(false);
     if (error) return setError(error.message ?? "We could not create your account. Please try again.");
     // After accepting an invitation link, return to it; otherwise the dashboard sends people to the right place.
@@ -33,12 +36,25 @@ export function SignUpForm({ providers, initialError }: { providers: SsoProvider
       <Field label="Your name" name="name" autoComplete="name" />
       <Field label="Email" name="email" type="email" autoComplete="email" />
       <Field label="Password (at least 10 characters)" name="password" type="password" autoComplete="new-password" minLength={10} />
+      <label className="flex items-start gap-3">
+        <input
+          type="checkbox"
+          name="acceptTerms"
+          value="yes"
+          required
+          checked={accepted}
+          onChange={(e) => setAccepted(e.target.checked)}
+          className="mt-0.5 h-5 w-5 shrink-0"
+        />
+        <span>
+          I accept the <Link href="/terms" className="underline" target="_blank">terms of service</Link>.
+        </span>
+      </label>
       <p className="text-sm text-muted">
-        By creating an account you agree to our <Link href="/terms" className="underline">terms of service</Link>. Our{" "}
-        <Link href="/privacy" className="underline">privacy policy</Link> explains how we look after your information.
+        Our <Link href="/privacy" className="underline" target="_blank">privacy policy</Link> explains how we look after your information.
       </p>
       <SubmitButton pending={pending}>Create account</SubmitButton>
-      <SocialButtons providers={providers} from="/sign-up" />
+      <SocialButtons providers={providers} from="/sign-up" termsAccepted={accepted} />
       <p>
         Already have an account? <Link href="/sign-in" className="underline">Sign in</Link>
       </p>

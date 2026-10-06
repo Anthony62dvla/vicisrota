@@ -96,6 +96,14 @@ Any database changes are applied automatically.
 cd /opt/vicisrota/deploy && ./ensure-keys.sh && ./update.sh
 ```
 
+**Database access log.** The privacy policy says that people's direct access to the database is logged. `update.sh` switches this on: everything run with the admin login (`docker compose exec db psql -U postgres ...`) goes into the database log, with the time and the login used. Always use that login, not the app's own, when you look at the database by hand. To read the log:
+
+```
+cd /opt/vicisrota/deploy && docker compose logs db
+```
+
+Sign-ins to the server itself are logged by Ubuntu (`last` shows them).
+
 **Turning on real text messages.** Once you have your Text Global (or other bulk SMS) API details:
 
 1. Run `nano /opt/vicisrota/deploy/app.env`.
