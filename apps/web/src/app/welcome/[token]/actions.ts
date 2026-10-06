@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { hashInviteToken } from "@/lib/invite";
+import { LEGAL } from "@/lib/legal";
 import { log } from "@/lib/log";
 import { findOpenOwnerInvitation } from "@/lib/owner-invite";
 import { requestId } from "@/lib/request";
@@ -18,7 +19,7 @@ export async function acceptOwnerInvitation(_: WelcomeState, form: FormData): Pr
   const user = await requireUser();
   const token = String(form.get("token") ?? "");
   const open = await findOpenOwnerInvitation(token);
-  if (!open) return { error: "This link has expired or has already been used. Ask VicisRota for a new one." };
+  if (!open) return { error: `This link has expired or has already been used. Ask VicisRota for a new one at ${LEGAL.email}.` };
   const { invitation } = open;
   const reference = await requestId();
 
@@ -29,7 +30,7 @@ export async function acceptOwnerInvitation(_: WelcomeState, form: FormData): Pr
       .set({ acceptedAt: new Date(), acceptedByUserId: user.id })
       .where(and(eq(schema.ownerInvitation.tokenHash, hashInviteToken(token)), isNull(schema.ownerInvitation.acceptedAt), isNull(schema.ownerInvitation.revokedAt)))
       .returning({ id: schema.ownerInvitation.id });
-    if (!claimed.length) return "This link has already been used. Ask VicisRota for a new one.";
+    if (!claimed.length) return `This link has already been used. Ask VicisRota for a new one at ${LEGAL.email}.`;
     const [existing] = await tx
       .select({ role: schema.membership.role })
       .from(schema.membership)

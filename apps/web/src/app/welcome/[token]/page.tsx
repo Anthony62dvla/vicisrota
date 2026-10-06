@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
+import { LEGAL } from "@/lib/legal";
 import { findOpenOwnerInvitation } from "@/lib/owner-invite";
 import { WelcomeForm } from "./welcome-form";
 
@@ -11,7 +12,9 @@ export default async function WelcomePage({ params }: PageProps<"/welcome/[token
     return (
       <main className="mx-auto w-full max-w-md px-4 py-12">
         <h1 className="text-2xl font-semibold">This link no longer works</h1>
-        <p className="mt-4">It may have expired, been used already, or been replaced by a newer link. Ask VicisRota to send you a new one.</p>
+        <p className="mt-4">It may have expired, been used already, or been replaced by a newer link. Ask VicisRota to send you a new one at{" "}
+          <a href={`mailto:${LEGAL.email}`} className="underline">{LEGAL.email}</a>.
+        </p>
       </main>
     );
   }
@@ -32,7 +35,8 @@ export default async function WelcomePage({ params }: PageProps<"/welcome/[token
           <p className="mt-4">You are logged in as {session.user.email}.</p>
           {otherEmail && (
             <p className="mt-2 rounded-lg border border-amber-600 p-3">
-              This link was sent to {email}. If that is not you, please do not continue, and let VicisRota know.
+              This link was sent to {email}. If that is not you, please do not continue, and let VicisRota know at{" "}
+              <a href={`mailto:${LEGAL.email}`} className="underline">{LEGAL.email}</a>.
             </p>
           )}
           <WelcomeForm token={token} businessName={open.businessName} />
