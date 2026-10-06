@@ -28,3 +28,4 @@ export * from "./wellbeing";
 export * from "./plan";
 export * from "./checksDue";
 export * from "./courseLink";
+export * from "./staffing";
