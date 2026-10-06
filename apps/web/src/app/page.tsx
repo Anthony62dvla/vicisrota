@@ -157,6 +157,39 @@ export default function Home() {
           </figure>
         </section>
 
+        <section aria-labelledby="video" className="mx-auto max-w-4xl px-4 pb-16 lg:px-8">
+          <h2 id="video" className="text-2xl font-semibold sm:text-3xl">
+            See VicisRota in a minute
+          </h2>
+          <p className="mt-2 text-muted">Real screens from the app, with a made-up café and team. There is no sound, and it only plays when you press play.</p>
+          {/* No autoplay, so nothing moves on the page until someone chooses it. */}
+          <video
+            controls
+            muted
+            playsInline
+            preload="none"
+            poster="/video/vicisrota-advert-poster.jpg"
+            aria-describedby="video-description"
+            className="mt-6 aspect-video w-full rounded-2xl border border-line bg-surface shadow-sm"
+          >
+            <source src="/video/vicisrota-advert.mp4" type="video/mp4" />
+            <source src="/video/vicisrota-advert.webm" type="video/webm" />
+          </video>
+          <details id="video-description" className="mt-3 text-muted">
+            <summary className="cursor-pointer">What the video shows</summary>
+            <ol className="mt-2 list-decimal space-y-1 pl-6">
+              <li>Rotas shouldn’t keep you up at night: no more sticky notes, spreadsheets and late-night worry.</li>
+              <li>
+                A manager’s rota. Two shifts too close together are marked, and the warning explains the rule: 11 hours’ rest is required (Working Time
+                Regulations 1998, reg 10).
+              </li>
+              <li>A staff member’s phone showing their shifts and who they work with, and swapping a shift with a colleague. Every swap is checked first.</li>
+              <li>Someone working alone checks in on their phone, with a help button. Calm mode, Easy Read and larger text let everyone use it their way.</li>
+              <li>VicisRota: rotas made fair, safe and simple. Free for up to 5 people, with a 30-day free trial.</li>
+            </ol>
+          </details>
+        </section>
+
         <section aria-labelledby="features" className="border-y border-line bg-surface py-16">
           <div className="mx-auto max-w-6xl px-4 lg:px-8">
             <h2 id="features" className="text-2xl font-semibold sm:text-3xl">
