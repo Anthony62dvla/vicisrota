@@ -11,14 +11,14 @@ import { AvailabilityEditor } from "../../availability-editor";
 import { addStaffUnavailable, removeKeepApart, removeStaffUnavailable, removeTraining } from "./actions";
 import { formatUkMobile } from "@vicisrota/messaging";
 import { WorkerRolesForm } from "../../roles/forms";
-import { AddCheckForm, AddTrainingForm, AdjustmentsForm, HolidaySettingsForm, InviteForm, KeepApartForm, LeavingForm, MobileForm, PayrollIdForm, SponsorshipForm, SupervisionForm } from "./forms";
+import { AddCheckForm, AddTrainingForm, AdjustmentsForm, HolidaySettingsForm, InviteForm, KeepApartForm, LeavingForm, MobileForm, PayrollIdForm, PersonalLicenceForm, SponsorshipForm, SupervisionForm } from "./forms";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DBS_LABEL = { basic: "Basic", standard: "Standard", enhanced: "Enhanced", enhanced_barred: "Enhanced with barred list" };
 const ukDate = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" });
 
 export default async function StaffRecordPage({ params, searchParams }: PageProps<"/staff/[id]">) {
-  const { organisationId } = await requireManager();
+  const { organisationId, sector } = await requireManager();
   const { id } = await params;
   if (!UUID.test(id)) notFound();
   const welcome = (await searchParams).welcome === "1";
@@ -198,6 +198,17 @@ export default async function StaffRecordPage({ params, searchParams }: PageProp
           ))}
         </ul>
       </section>
+
+      {sector !== "care" && (
+        <section id="personal-licence" className="mt-8 scroll-mt-4" aria-labelledby="personal-licence-heading">
+          <h2 id="personal-licence-heading" className="text-lg font-semibold">Personal licence</h2>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+            A licence to sell alcohol. If a workplace sells alcohol, the rota warns you when nobody with one is on shift. Set this on{" "}
+            <Link href="/workplaces" className="underline">Workplaces</Link>.
+          </p>
+          <PersonalLicenceForm workerId={worker.id} current={worker.personalLicence ?? null} />
+        </section>
+      )}
 
       <section id="sponsorship" className="mt-8 scroll-mt-4" aria-labelledby="sponsorship-heading">
         <h2 id="sponsorship-heading" className="text-lg font-semibold">Visa sponsorship</h2>

@@ -3,7 +3,7 @@ import { schema, withOrganisation } from "@vicisrota/db";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { requireManager } from "@/lib/business";
 import { db } from "@/lib/db";
-import { revokeKiosk, setLocationRule, setUpKiosk } from "./actions";
+import { revokeKiosk, saveLicensing, setLocationRule, setUpKiosk } from "./actions";
 import { AddWorkplaceForm } from "./forms";
 
 const RULES = [
@@ -15,10 +15,10 @@ const RULES = [
 const dateFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 export default async function WorkplacesPage() {
-  const { organisationId } = await requireManager();
+  const { organisationId, sector } = await requireManager();
   const { places, org, kiosks } = await withOrganisation(db, organisationId, async (tx) => ({
     places: await tx.select().from(schema.location).orderBy(asc(schema.location.name)),
-    org: (await tx.select({ rule: schema.organisation.clockLocationRule }).from(schema.organisation).where(eq(schema.organisation.id, organisationId)))[0],
+    org: (await tx.select({ rule: schema.organisation.clockLocationRule, licensing: schema.organisation.licensing }).from(schema.organisation).where(eq(schema.organisation.id, organisationId)))[0],
     kiosks: await tx
       .select({ device: schema.kioskDevice, place: schema.location.name })
       .from(schema.kioskDevice)
@@ -63,6 +63,38 @@ export default async function WorkplacesPage() {
         )}
         <AddWorkplaceForm />
       </section>
+
+      {sector !== "care" && (
+        <section className="mt-10" aria-labelledby="alcohol-heading">
+          <h2 id="alcohol-heading" className="text-lg font-semibold">Selling alcohol</h2>
+          <p className="mt-1">
+            Tick each place that sells alcohol. The rota then warns you when nobody with a personal licence is on shift there. Add licensed hours to
+            only check those times. Record personal licences on each person&apos;s staff record.
+          </p>
+          <form action={saveLicensing} className="mt-3 flex flex-col gap-3">
+            {[{ key: "org", name: places.length ? "Shifts with no workplace set" : "Your business", licensing: org?.licensing ?? null }, ...places.map((p) => ({ key: p.id, name: p.name, licensing: p.licensing }))].map((p) => (
+              <fieldset key={p.key} className="rounded-lg border border-zinc-300 p-3 dark:border-zinc-700">
+                <legend className="px-1 font-medium">{p.name}</legend>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" name={`sells-${p.key}`} defaultChecked={!!p.licensing} />
+                  Sells alcohol
+                </label>
+                <div className="mt-2 flex flex-wrap gap-3">
+                  <label className="flex flex-col gap-1 text-sm">
+                    Licensed from (optional)
+                    <input type="time" name={`from-${p.key}`} defaultValue={p.licensing?.from ?? ""} className="rounded-lg border border-zinc-400 px-3 py-2 text-base" />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm">
+                    Licensed until (optional)
+                    <input type="time" name={`to-${p.key}`} defaultValue={p.licensing?.to ?? ""} className="rounded-lg border border-zinc-400 px-3 py-2 text-base" />
+                  </label>
+                </div>
+              </fieldset>
+            ))}
+            <button type="submit" className="self-start rounded-lg border border-zinc-400 px-4 py-2">Save</button>
+          </form>
+        </section>
+      )}
 
       <section className="mt-10" aria-labelledby="rule-heading">
         <h2 id="rule-heading" className="text-lg font-semibold">Location checks for phone clock-ins</h2>

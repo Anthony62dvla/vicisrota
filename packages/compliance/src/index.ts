@@ -37,3 +37,4 @@ export * from "./rules/keepApart";
 export * from "./fairness";
 export * from "./statement";
 export * from "./labourCost";
+export * from "./rules/licenceHolder";

@@ -97,3 +97,25 @@ export async function revokeKiosk(form: FormData) {
   });
   revalidatePath("/workplaces");
 }
+
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** Which places sell alcohol, and their licensed hours. "org" stands for shifts with no workplace set. */
+export async function saveLicensing(form: FormData) {
+  const { user, organisationId } = await requireManager();
+  const read = (key: string) => {
+    if (form.get(`sells-${key}`) !== "on") return null;
+    const from = String(form.get(`from-${key}`) ?? "");
+    const to = String(form.get(`to-${key}`) ?? "");
+    // Hours only count when both are given and differ; otherwise the whole time staff are working is checked.
+    return HHMM.test(from) && HHMM.test(to) && from !== to ? { from, to } : {};
+  };
+  await withOrganisation(db, organisationId, async (tx) => {
+    const places = await tx.select({ id: schema.location.id }).from(schema.location);
+    await tx.update(schema.organisation).set({ licensing: read("org") }).where(eq(schema.organisation.id, organisationId));
+    for (const p of places) await tx.update(schema.location).set({ licensing: read(p.id) }).where(eq(schema.location.id, p.id));
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "update", entity: "licensing", entityId: organisationId });
+  });
+  revalidatePath("/workplaces");
+  revalidatePath("/rota");
+}

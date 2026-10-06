@@ -134,6 +134,8 @@ export const organisation = pgTable("organisation", {
   /** Written tipping policy that staff can read (Employment (Allocation of Tips) Act 2023). */
   tippingPolicy: text("tipping_policy"),
   /** The business's own terms for written statements (pay day, sick pay, notice and so on). Blank ones use VicisRota's defaults. */
+  /** Sells alcohol at shifts with no workplace set. Null: does not. See location.licensing. */
+  licensing: jsonb("licensing").$type<Licensing>(),
   /** Hospitality: the most wages should be as a share of sales, as a percentage. Null: no target. */
   labourTargetPercent: smallint("labour_target_percent"),
   statementTerms: jsonb("statement_terms").$type<Partial<Record<string, string>>>().notNull().default({}),
@@ -183,6 +185,9 @@ export const membership = pgTable(
   (t) => [primaryKey({ columns: [t.organisationId, t.userId] }), index("membership_user_idx").on(t.userId)],
 );
 
+/** Licensed hours for selling alcohol, "HH:MM". Both blank means whenever staff are working. */
+export type Licensing = { from?: string; to?: string };
+
 export const location = pgTable("location", {
   id: id(),
   organisationId: orgId(),
@@ -192,6 +197,8 @@ export const location = pgTable("location", {
   latitude: doublePrecision("latitude"),
   longitude: doublePrecision("longitude"),
   radiusMetres: integer("radius_metres").notNull().default(150),
+  /** Sells alcohol: a personal licence holder should be on shift, during these hours if set. Null: does not sell alcohol. */
+  licensing: jsonb("licensing").$type<Licensing>(),
   createdAt: createdAt(),
 });
 
@@ -206,6 +213,8 @@ export const worker = pgTable(
     employmentStart: date("employment_start"),
     optedOutOf48HourLimit: boolean("opted_out_of_48_hour_limit").notNull().default(false),
     apprenticeRateApplies: boolean("apprentice_rate_applies").notNull().default(false),
+    /** A personal licence to sell alcohol (Licensing Act 2003). Null: none recorded. */
+    personalLicence: jsonb("personal_licence").$type<{ number: string; authority: string; issuedOn?: string }>(),
     /** Usual working days a week, for statutory leave (5.6 weeks, capped at 28 days). */
     daysPerWeek: numeric("days_per_week", { precision: 3, scale: 1, mode: "number" }).notNull().default(5),
     /** Irregular hours or part-year: leave accrues at 12.07% of hours worked instead. */

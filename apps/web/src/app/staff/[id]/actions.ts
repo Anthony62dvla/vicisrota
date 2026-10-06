@@ -482,3 +482,23 @@ export async function removeKeepApart(form: FormData) {
   revalidatePath(`/staff/${workerId}`);
   revalidatePath("/rota");
 }
+
+/** Records or removes someone's personal licence to sell alcohol. A blank number removes it. */
+export async function savePersonalLicence(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const workerId = String(form.get("workerId") ?? "");
+  const number = String(form.get("number") ?? "").trim().slice(0, 40);
+  const authority = String(form.get("authority") ?? "").trim().slice(0, 120);
+  const issuedOn = String(form.get("issuedOn") ?? "");
+  if (number && !authority) return { error: "Enter the council that issued the licence." };
+  const licence = number ? { number, authority, ...(/^\d{4}-\d{2}-\d{2}$/.test(issuedOn) ? { issuedOn } : {}) } : null;
+  const result = await withOrganisation(db, organisationId, async (tx) => {
+    const rows = await tx.update(schema.worker).set({ personalLicence: licence }).where(eq(schema.worker.id, workerId)).returning({ name: schema.worker.fullName });
+    if (!rows.length) return { error: "That person could not be found." };
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "update", entity: "personal_licence", entityId: workerId, data: { held: !!licence } });
+    return { ok: licence ? `Personal licence saved for ${rows[0]!.name}.` : `Personal licence removed for ${rows[0]!.name}.` };
+  });
+  revalidatePath(`/staff/${workerId}`);
+  revalidatePath("/rota");
+  return result;
+}

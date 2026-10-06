@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { addKeepApart, addCheck, addTraining, inviteStaff, markBack, markLeft, saveAdjustments, setMobile, updateHolidaySettings, updatePayrollId, addSupervision, saveSponsorship, type FormState, type InviteState } from "./actions";
+import { addKeepApart, addCheck, addTraining, inviteStaff, markBack, markLeft, saveAdjustments, setMobile, updateHolidaySettings, updatePayrollId, addSupervision, saveSponsorship, type FormState, type InviteState, savePersonalLicence } from "./actions";
 
 const input = "rounded-lg border border-zinc-400 px-3 py-2 text-base";
 const button = "rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover disabled:opacity-60";
@@ -374,6 +374,32 @@ export function KeepApartForm({ workerId, others }: { workerId: string; others: 
         <input name="reviewOn" type="date" className={input} />
       </label>
       <button type="submit" disabled={pending} className={`self-start ${button}`}>{pending ? "Saving…" : "Keep apart"}</button>
+    </form>
+  );
+}
+
+export function PersonalLicenceForm({ workerId, current }: { workerId: string; current: { number: string; authority: string; issuedOn?: string } | null }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(savePersonalLicence, {});
+  return (
+    <form action={action} className="mt-3 flex max-w-md flex-col gap-3">
+      <Message state={state} />
+      <input type="hidden" name="workerId" value={workerId} />
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Licence number</span>
+        <span className="text-sm text-zinc-600 dark:text-zinc-400">Leave blank if they do not hold one.</span>
+        <input name="number" defaultValue={current?.number ?? ""} maxLength={40} autoComplete="off" className={input} />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Issued by (council)</span>
+        <input name="authority" defaultValue={current?.authority ?? ""} maxLength={120} className={input} />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Issued on (optional)</span>
+        <input name="issuedOn" type="date" defaultValue={current?.issuedOn ?? ""} className={input} />
+      </label>
+      <button type="submit" disabled={pending} className={button}>
+        {pending ? "Saving…" : "Save personal licence"}
+      </button>
     </form>
   );
 }

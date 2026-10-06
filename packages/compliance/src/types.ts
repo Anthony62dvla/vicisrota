@@ -154,6 +154,8 @@ export interface Context {
   leave?: Leave[];
   /** Pairs of people a manager has decided must not work at the same time and place. */
   keepApart?: { workerIds: [string, string] }[];
+  /** Places that sell alcohol, and who holds a personal licence. A place with no locationId means shifts with no workplace set. */
+  licensing?: { places: { locationId: string | null; name: string; hours?: { from: string; to: string } | undefined }[]; holderIds: string[] };
   settings?: {
     /** Care providers: every shift is regulated activity needing an enhanced DBS with barred list check. */
     requireEnhancedDbs?: boolean;

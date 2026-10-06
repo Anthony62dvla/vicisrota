@@ -45,7 +45,7 @@ export const loadWeekChecks = async (
 
   const [[organisation], workers, rates, shifts, checks, qualifications, held, leave, unavailable, roles, workerRoles] = await Promise.all([
     tx
-      .select({ requiresEnhancedDbs: schema.organisation.requiresEnhancedDbs, paysTravelTime: schema.organisation.paysTravelTime })
+      .select({ requiresEnhancedDbs: schema.organisation.requiresEnhancedDbs, paysTravelTime: schema.organisation.paysTravelTime, licensing: schema.organisation.licensing })
       .from(schema.organisation)
       .where(eq(schema.organisation.id, organisationId)),
     tx.select().from(schema.worker),
@@ -72,6 +72,7 @@ export const loadWeekChecks = async (
     tx.select().from(schema.workerRole),
   ]);
   // Keeping in touch days: agreed days of work during family leave.
+  const places = await tx.select({ id: schema.location.id, name: schema.location.name, licensing: schema.location.licensing }).from(schema.location);
   const apart = await tx.select({ a: schema.keepApart.firstWorkerId, b: schema.keepApart.secondWorkerId }).from(schema.keepApart);
   const kit = leave.length ? await tx.select().from(schema.keepingInTouchDay).where(inArray(schema.keepingInTouchDay.leaveRequestId, leave.map((l) => l.id))) : [];
   const roleById = new Map(roles.map((r) => [r.id, r]));
@@ -139,6 +140,13 @@ export const loadWeekChecks = async (
     payRates: rates.map((r) => ({ workerId: r.workerId, hourlyPence: r.hourlyPence, effectiveFrom: r.effectiveFrom })),
     shifts: assigned.map((s) => ({ ...toCheck(s), workerId: s.workerId! })),
     keepApart: apart.map((p) => ({ workerIds: [p.a, p.b] as [string, string] })),
+    licensing: {
+      places: [
+        ...(organisation?.licensing ? [{ locationId: null, name: "", licensing: organisation.licensing }] : []),
+        ...places.filter((p) => p.licensing).map((p) => ({ locationId: p.id, name: p.name, licensing: p.licensing! })),
+      ].map(({ licensing, ...p }) => ({ ...p, hours: licensing.from && licensing.to ? { from: licensing.from, to: licensing.to } : undefined })),
+      holderIds: workers.filter((w) => w.personalLicence).map((w) => w.id),
+    },
   };
   return { context, open: unassigned.map(toCheck) };
 };
