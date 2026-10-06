@@ -697,3 +697,39 @@ export async function decideSwap(_: FormState, form: FormData): Promise<FormStat
   revalidatePath("/rota");
   return state;
 }
+
+/** Expected sales for each day of a week, and the target for wages as a share of sales. A blank day removes its figure. */
+export async function saveSalesTargets(_: FormState, form: FormData): Promise<FormState> {
+  const { user, organisationId } = await requireManager();
+  const week = String(form.get("weekStart") ?? "");
+  if (!DATE.test(week)) return { error: "Choose a week first." };
+  const target = String(form.get("targetPercent") ?? "").trim();
+  const percent = target === "" ? null : Number(target);
+  if (percent !== null && !(Number.isInteger(percent) && percent >= 1 && percent <= 100)) return { error: "The target must be a whole number from 1 to 100, or blank." };
+  const days: { on: string; pence: number | null }[] = [];
+  for (let i = 0; i < 7; i++) {
+    const on = addDays(week, i);
+    const raw = String(form.get(`sales-${on}`) ?? "").replace(/[£,\s]/g, "");
+    if (raw === "") {
+      days.push({ on, pence: null });
+      continue;
+    }
+    const pounds = Number(raw);
+    if (!Number.isFinite(pounds) || pounds < 0 || pounds > 10_000_000) return { error: `Check the sales figure for ${new Date(`${on}T12:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" })}.` };
+    days.push({ on, pence: Math.round(pounds * 100) });
+  }
+  await withOrganisation(db, organisationId, async (tx) => {
+    await tx.update(schema.organisation).set({ labourTargetPercent: percent }).where(eq(schema.organisation.id, organisationId));
+    for (const d of days) {
+      if (d.pence === null) await tx.delete(schema.salesForecast).where(eq(schema.salesForecast.on, d.on));
+      else
+        await tx
+          .insert(schema.salesForecast)
+          .values({ organisationId, on: d.on, pence: d.pence })
+          .onConflictDoUpdate({ target: [schema.salesForecast.organisationId, schema.salesForecast.on], set: { pence: d.pence } });
+    }
+    await tx.insert(schema.auditEvent).values({ organisationId, actorUserId: user.id, requestId: await requestId(), action: "update", entity: "sales_forecast", entityId: week });
+  });
+  revalidatePath("/rota");
+  return { ok: "Sales targets saved." };
+}

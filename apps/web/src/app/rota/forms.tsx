@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { checkAndPublish, copyPreviousWeek, decideClaim, decideSwap, fillOpenShifts, type FormState } from "./actions";
+import { checkAndPublish, copyPreviousWeek, decideClaim, decideSwap, fillOpenShifts, saveSalesTargets, type FormState } from "./actions";
 
 const button = "rounded-lg bg-brand px-4 py-2 text-on-brand hover:bg-brand-hover disabled:opacity-60";
 
@@ -115,6 +115,33 @@ export function CopyWeekForm({ weekStart, count }: { weekStart: string; count: n
       <Message state={state} />
       <button type="submit" disabled={pending} className="rounded-lg border border-zinc-400 px-4 py-2 disabled:opacity-60">
         {pending ? "Copying…" : `Copy last week's ${count} shift${count === 1 ? "" : "s"} as drafts`}
+      </button>
+    </form>
+  );
+}
+
+/** Expected sales for each day, and the most wages should be as a share of them. */
+export function SalesTargetsForm({ weekStart, days, targetPercent }: { weekStart: string; days: { date: string; label: string; pounds: string }[]; targetPercent: number | null }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(saveSalesTargets, {});
+  return (
+    <form action={action} className="mt-3 flex flex-col items-start gap-3">
+      <input type="hidden" name="weekStart" value={weekStart} />
+      <Message state={state} />
+      <fieldset className="flex flex-wrap gap-3">
+        <legend className="mb-1 font-medium">Expected sales (£)</legend>
+        {days.map((d) => (
+          <label key={d.date} className="flex flex-col gap-1">
+            <span className="text-sm">{d.label}</span>
+            <input name={`sales-${d.date}`} defaultValue={d.pounds} inputMode="decimal" className="w-28 rounded-lg border border-zinc-400 px-3 py-2" />
+          </label>
+        ))}
+      </fieldset>
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Target: wages as a share of sales (%)</span>
+        <input name="targetPercent" defaultValue={targetPercent ?? ""} inputMode="numeric" className="w-28 rounded-lg border border-zinc-400 px-3 py-2" />
+      </label>
+      <button type="submit" disabled={pending} className={button}>
+        {pending ? "Saving…" : "Save sales targets"}
       </button>
     </form>
   );

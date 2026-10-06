@@ -134,6 +134,8 @@ export const organisation = pgTable("organisation", {
   /** Written tipping policy that staff can read (Employment (Allocation of Tips) Act 2023). */
   tippingPolicy: text("tipping_policy"),
   /** The business's own terms for written statements (pay day, sick pay, notice and so on). Blank ones use VicisRota's defaults. */
+  /** Hospitality: the most wages should be as a share of sales, as a percentage. Null: no target. */
+  labourTargetPercent: smallint("labour_target_percent"),
   statementTerms: jsonb("statement_terms").$type<Partial<Record<string, string>>>().notNull().default({}),
   /** Whether phone clock-ins check the person is at a workplace: not at all, noted for the manager, or required. */
   clockLocationRule: clockLocationRule("clock_location_rule").notNull().default("off"),
@@ -671,6 +673,18 @@ export const writtenStatement = pgTable(
     readAt: timestamp("read_at", { withTimezone: true }),
   },
   (t) => [index("written_statement_worker_idx").on(t.workerId, t.issuedAt)],
+);
+
+/** Expected sales for one day, entered by a manager, to compare wages against (hospitality). */
+export const salesForecast = pgTable(
+  "sales_forecast",
+  {
+    id: id(),
+    organisationId: orgId(),
+    on: date("sales_on").notNull(),
+    pence: integer("pence").notNull(),
+  },
+  (t) => [uniqueIndex("sales_forecast_day_idx").on(t.organisationId, t.on)],
 );
 
 /**

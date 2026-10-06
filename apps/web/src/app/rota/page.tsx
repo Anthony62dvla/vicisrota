@@ -1,4 +1,4 @@
-import { addDays, evaluate, londonParts, weekCost, weekStart as mondayOf, type Finding } from "@vicisrota/compliance";
+import { addDays, evaluate, labourPercent, LABOUR_COST_LEGAL_REF, londonParts, onCostsFor, weekCost, weekStart as mondayOf, type Finding } from "@vicisrota/compliance";
 import { schema, withOrganisation } from "@vicisrota/db";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, ne, or } from "drizzle-orm";
 import Link from "next/link";
@@ -9,7 +9,7 @@ import { candidatesFor, usualTimes } from "@/lib/board";
 import { loadWeekChecks, todayInUk, weekBounds } from "@/lib/rota";
 import { loadStaffingGaps } from "@/lib/staffing";
 import { RotaBoard, type BoardShift } from "./board";
-import { ClaimList, CopyWeekForm, FillOpenShiftsForm, PublishForm, SwapList } from "./forms";
+import { ClaimList, CopyWeekForm, FillOpenShiftsForm, PublishForm, SalesTargetsForm, SwapList } from "./forms";
 import { loadOpenSwaps, shiftWhen } from "@/lib/swaps";
 
 const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" });
@@ -28,7 +28,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
 
   const previous = weekBounds(addDays(week, -7));
 
-  const { swaps, workers, training, clients, shifts, claims, leave, decision, rates, breaks, paysTravelTime, shortNoticeHours, lastWeek, roles, requirements, unavailable, workerRoles, recent, checks, gaps, sleepInPence } = await withOrganisation(db, organisationId, async (tx) => ({
+  const { swaps, workers, training, clients, shifts, claims, leave, decision, rates, breaks, paysTravelTime, shortNoticeHours, lastWeek, roles, requirements, unavailable, workerRoles, recent, checks, gaps, sleepInPence, labourTargetPercent, sales } = await withOrganisation(db, organisationId, async (tx) => ({
     workers: await tx.select().from(schema.worker).where(or(isNull(schema.worker.leftOn), gte(schema.worker.leftOn, week))).orderBy(asc(schema.worker.fullName)),
     clients:
       sector === "care"
@@ -62,6 +62,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
         ),
       ),
     rates: await tx.select().from(schema.payRate),
+    sales: sector === "care" ? [] : await tx.select().from(schema.salesForecast).where(and(gte(schema.salesForecast.on, days[0]!), lte(schema.salesForecast.on, days[6]!))),
     requirements: await tx
       .select({ shiftId: schema.shiftRequirement.shiftId, qualificationId: schema.shiftRequirement.qualificationId })
       .from(schema.shiftRequirement)
@@ -83,7 +84,12 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
       .innerJoin(schema.shift, eq(schema.shiftBreak.shiftId, schema.shift.id))
       .where(and(gte(schema.shift.startsAt, from), lt(schema.shift.startsAt, to))),
     ...(await tx
-      .select({ paysTravelTime: schema.organisation.paysTravelTime, shortNoticeHours: schema.organisation.shortNoticeHours, sleepInPence: schema.organisation.sleepInPence })
+      .select({
+        paysTravelTime: schema.organisation.paysTravelTime,
+        shortNoticeHours: schema.organisation.shortNoticeHours,
+        sleepInPence: schema.organisation.sleepInPence,
+        labourTargetPercent: schema.organisation.labourTargetPercent,
+      })
       .from(schema.organisation)
       .where(eq(schema.organisation.id, organisationId)))[0]!,
     lastWeek: (
@@ -114,8 +120,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
   const drafts = shifts.filter((s) => s.status === "draft").length;
   // Open drafts the rota builder can fill. Split shift parts are left for the manager.
   const openDrafts = shifts.filter((s) => !s.workerId && s.status === "draft" && !s.splitGroupId).length;
-  const cost = weekCost(
-    shifts.map((s) => ({
+  const planned = shifts.map((s) => ({
       id: s.id,
       workerId: s.workerId,
       start: s.startsAt.toISOString(),
@@ -123,10 +128,23 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
       travelMinutesBefore: s.travelMinutes,
       sleepIn: s.kind === "sleep_in" ? { awakeMinutes: 0 } : undefined,
       breaks: breaks.filter((b) => b.shiftId === s.id).map((b) => ({ start: b.startsAt.toISOString(), end: b.endsAt.toISOString() })),
-    })),
-    rates.map((r) => ({ workerId: r.workerId, hourlyPence: r.hourlyPence, effectiveFrom: r.effectiveFrom })),
-    { paysTravelTime, sleepInPence },
+  }));
+  const payRates = rates.map((r) => ({ workerId: r.workerId, hourlyPence: r.hourlyPence, effectiveFrom: r.effectiveFrom }));
+  const cost = weekCost(planned, payRates, { paysTravelTime, sleepInPence });
+  const onCosts = onCostsFor(
+    workers.filter((w) => cost.byWorker.has(w.id)).map((w) => ({ wagesPence: cost.byWorker.get(w.id)!.pence, dateOfBirth: w.dateOfBirth, apprentice: w.apprenticeRateApplies })),
+    week,
   );
+  // Wages against expected sales, day by day (not care).
+  const salesOn = new Map(sales.map((d) => [d.on, d.pence]));
+  const byDay = days.map((d) => {
+    const wages = weekCost(planned.filter((p) => londonParts(new Date(p.start).getTime()).date === d), payRates, { paysTravelTime, sleepInPence }).pence;
+    const salesPence = salesOn.get(d) ?? null;
+    return { date: d, wages, salesPence, percent: labourPercent(wages, salesPence) };
+  });
+  const salesTotal = sales.reduce((t, d) => t + d.pence, 0);
+  const weekPercent = labourPercent(byDay.filter((d) => d.salesPence !== null).reduce((t, d) => t + d.wages, 0), salesTotal);
+  const over = (p: number | null) => p !== null && labourTargetPercent !== null && p > labourTargetPercent;
   const money = (pence: number) => (pence / 100).toLocaleString("en-GB", { style: "currency", currency: "GBP" });
   const hrs = (h: number) => `${+h.toFixed(2)} hour${h === 1 ? "" : "s"}`;
   const missingNames = workers.filter((w) => cost.missingRate.includes(w.id)).map((w) => w.fullName);
@@ -190,8 +208,20 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
           <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
             Hourly pay for scheduled time after unpaid breaks{paysTravelTime ? ", including paid travel between visits" : ""}
             {shifts.some((s) => s.kind === "sleep_in") && (sleepInPence === null ? ". Sleep-ins are not costed because no sleep-in payment is set" : ". Sleep-ins are costed at the sleep-in payment")}. Holiday pay, employer National Insurance and
-            pension are not included.
+            pension are shown below as an estimate.
           </p>
+          {cost.pence > 0 && (
+            <p className="mt-2">
+              With an estimated <span className="font-semibold">{money(onCosts.totalPence)}</span> for holiday built up ({money(onCosts.holidayPence)}), employer National
+              Insurance ({money(onCosts.nationalInsurancePence)}) and workplace pension ({money(onCosts.pensionPence)}), this week costs about{" "}
+              <span className="font-semibold">{money(cost.pence + onCosts.totalPence)}</span>.
+            </p>
+          )}
+          {cost.pence > 0 && (
+            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+              The estimate uses 2026/27 rates and does not take off the Employment Allowance, so your real cost may be lower. Based on: {LABOUR_COST_LEGAL_REF}.
+            </p>
+          )}
           {missingNames.length > 0 && <p className="mt-2" role="alert">No pay rate for {missingNames.join(", ")} on some of these days, so their wages are missing from the total.</p>}
         </section>
       )}
@@ -230,12 +260,73 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
         />
       )}
 
+      {sector !== "care" && workers.length > 0 && (
+        <section className="mt-8" aria-labelledby="sales-heading">
+          <h2 id="sales-heading" className="text-lg font-semibold">Wages against sales</h2>
+          <p className="mt-1">
+            Put in the sales you expect each day to see wages as a share of them.
+            {labourTargetPercent !== null ? ` Days above your target of ${labourTargetPercent}% are marked.` : " Add a target to have busy-cost days marked."}
+          </p>
+          {salesTotal > 0 && (
+            <div className="mt-3 overflow-x-auto">
+              <table className="min-w-full text-left">
+                <caption className="sr-only">Wages and expected sales by day</caption>
+                <thead>
+                  <tr className="border-b border-zinc-300 dark:border-zinc-700">
+                    <th scope="col" className="py-2 pr-4">Day</th>
+                    <th scope="col" className="py-2 pr-4">Wages</th>
+                    <th scope="col" className="py-2 pr-4">Expected sales</th>
+                    <th scope="col" className="py-2 pr-4">Wages as a share</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {byDay.map((d) => (
+                    <tr key={d.date} className="border-b border-zinc-200 dark:border-zinc-800">
+                      <th scope="row" className="py-2 pr-4 font-normal">{dayFmt.format(new Date(`${d.date}T12:00:00Z`))}</th>
+                      <td className="py-2 pr-4">{money(d.wages)}</td>
+                      <td className="py-2 pr-4">{d.salesPence === null ? "Not set" : money(d.salesPence)}</td>
+                      <td className={`py-2 pr-4 ${over(d.percent) ? "font-semibold text-amber-800 dark:text-amber-300" : ""}`}>
+                        {d.percent === null ? "" : `${d.percent}%`}
+                        {over(d.percent) && " (above target)"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <th scope="row" className="py-2 pr-4">Week</th>
+                    <td className="py-2 pr-4 font-semibold">{money(cost.pence)}</td>
+                    <td className="py-2 pr-4 font-semibold">{money(salesTotal)}</td>
+                    <td className={`py-2 pr-4 font-semibold ${over(weekPercent) ? "text-amber-800 dark:text-amber-300" : ""}`}>
+                      {weekPercent === null ? "" : `${weekPercent}%`}
+                      {over(weekPercent) && " (above target)"}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+              <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">Shares compare wages with sales on days that have a sales figure. Open shifts are not costed.</p>
+            </div>
+          )}
+          <SalesTargetsForm
+            weekStart={week}
+            targetPercent={labourTargetPercent}
+            days={days.map((d) => ({ date: d, label: dayFmt.format(new Date(`${d}T12:00:00Z`)), pounds: salesOn.has(d) ? (salesOn.get(d)! / 100).toFixed(2) : "" }))}
+          />
+        </section>
+      )}
+
       <section className="mt-8" aria-labelledby="check-heading">
         <h2 id="check-heading" className="text-lg font-semibold">Check and publish</h2>
         <p className="mt-1">
           {drafts === 0 ? "No draft shifts this week." : `${drafts} draft shift${drafts === 1 ? "" : "s"} waiting to be published.`} Before you publish, every shift is checked against the law and your records. That includes working time, under-18 rules, minimum wage, right to work, DBS, training, booked leave and your{" "}
           <Link href="/staffing" className="underline">safe staffing levels</Link>.
         </p>
+        {cost.pence > 0 && (
+          <p className="mt-2">
+            This week&apos;s wages: <span className="font-semibold">{money(cost.pence)}</span>, or about {money(cost.pence + onCosts.totalPence)} with holiday, National Insurance and
+            pension{weekPercent !== null ? `, ${weekPercent}% of expected sales` : ""}.
+          </p>
+        )}
         <PublishForm weekStart={week} />
         {shifts.length > 0 && (
           <div className="mt-4">
