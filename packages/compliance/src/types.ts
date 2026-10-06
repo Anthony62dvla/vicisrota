@@ -73,6 +73,12 @@ export interface Shift {
   role?: { id: string; name: string } | undefined;
   /** Care visits: minutes travelling from the previous visit. Travel between visits is working time for the minimum wage. */
   travelMinutesBefore?: number;
+  /**
+   * Care: a sleep-in, where the person sleeps at work and is woken only if needed. Only the time awake working
+   * is paid by the hour and counts for the minimum wage; the rest is paid as the business's sleep-in payment.
+   * The whole sleep-in is still working time for rest breaks and the 48-hour week.
+   */
+  sleepIn?: { awakeMinutes: number } | undefined;
 }
 
 export interface PayRate {

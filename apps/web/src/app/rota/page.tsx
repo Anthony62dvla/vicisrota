@@ -27,7 +27,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
 
   const previous = weekBounds(addDays(week, -7));
 
-  const { workers, training, clients, shifts, claims, leave, decision, rates, breaks, paysTravelTime, shortNoticeHours, lastWeek, roles, requirements, unavailable, workerRoles, recent, checks, gaps } = await withOrganisation(db, organisationId, async (tx) => ({
+  const { workers, training, clients, shifts, claims, leave, decision, rates, breaks, paysTravelTime, shortNoticeHours, lastWeek, roles, requirements, unavailable, workerRoles, recent, checks, gaps, sleepInPence } = await withOrganisation(db, organisationId, async (tx) => ({
     workers: await tx.select().from(schema.worker).where(or(isNull(schema.worker.leftOn), gte(schema.worker.leftOn, week))).orderBy(asc(schema.worker.fullName)),
     clients:
       sector === "care"
@@ -81,7 +81,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
       .innerJoin(schema.shift, eq(schema.shiftBreak.shiftId, schema.shift.id))
       .where(and(gte(schema.shift.startsAt, from), lt(schema.shift.startsAt, to))),
     ...(await tx
-      .select({ paysTravelTime: schema.organisation.paysTravelTime, shortNoticeHours: schema.organisation.shortNoticeHours })
+      .select({ paysTravelTime: schema.organisation.paysTravelTime, shortNoticeHours: schema.organisation.shortNoticeHours, sleepInPence: schema.organisation.sleepInPence })
       .from(schema.organisation)
       .where(eq(schema.organisation.id, organisationId)))[0]!,
     lastWeek: (
@@ -119,10 +119,11 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
       start: s.startsAt.toISOString(),
       end: s.endsAt.toISOString(),
       travelMinutesBefore: s.travelMinutes,
+      sleepIn: s.kind === "sleep_in" ? { awakeMinutes: 0 } : undefined,
       breaks: breaks.filter((b) => b.shiftId === s.id).map((b) => ({ start: b.startsAt.toISOString(), end: b.endsAt.toISOString() })),
     })),
     rates.map((r) => ({ workerId: r.workerId, hourlyPence: r.hourlyPence, effectiveFrom: r.effectiveFrom })),
-    { paysTravelTime },
+    { paysTravelTime, sleepInPence },
   );
   const money = (pence: number) => (pence / 100).toLocaleString("en-GB", { style: "currency", currency: "GBP" });
   const hrs = (h: number) => `${+h.toFixed(2)} hour${h === 1 ? "" : "s"}`;
@@ -149,6 +150,7 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
       note: s.note,
       loneWorking: s.loneWorking,
       checkInMinutes: s.checkInMinutes,
+      kind: s.kind,
       requires: requirements.filter((r) => r.shiftId === s.id).map((r) => r.qualificationId),
       status: s.status === "published" ? "published" : "draft",
       coverRequested: !!s.coverRequestedAt,
@@ -184,7 +186,8 @@ export default async function RotaPage({ searchParams }: PageProps<"/rota">) {
             {cost.openHours > 0 && <>, plus {hrs(cost.openHours)} of open shifts not yet costed</>}.
           </p>
           <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-            Hourly pay for scheduled time after unpaid breaks{paysTravelTime ? ", including paid travel between visits" : ""}. Holiday pay, employer National Insurance and
+            Hourly pay for scheduled time after unpaid breaks{paysTravelTime ? ", including paid travel between visits" : ""}
+            {shifts.some((s) => s.kind === "sleep_in") && (sleepInPence === null ? ". Sleep-ins are not costed because no sleep-in payment is set" : ". Sleep-ins are costed at the sleep-in payment")}. Holiday pay, employer National Insurance and
             pension are not included.
           </p>
           {missingNames.length > 0 && <p className="mt-2" role="alert">No pay rate for {missingNames.join(", ")} on some of these days, so their wages are missing from the total.</p>}

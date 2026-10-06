@@ -1,4 +1,4 @@
-import { addDays, HOUR, londonParts, ms, shiftsByWorker, weekStart, workedMillis } from "../time";
+import { addDays, HOUR, londonParts, ms, paidMillis, shiftsByWorker, weekStart } from "../time";
 import type { Finding, PayRate, Rule } from "../types";
 import { minimumRatePence } from "./minimumWage";
 
@@ -40,7 +40,7 @@ export const travelTimeMinimumWage: Rule = {
         let worked = 0;
         for (const s of week) {
           const date = londonParts(ms(s.start)).date;
-          const visitHours = workedMillis(s) / HOUR;
+          const visitHours = paidMillis(s) / HOUR;
           const travelHours = (s.travelMinutesBefore ?? 0) / 60;
           const minimum = minimumRatePence(worker, date).pence;
           paid += visitHours * rateOn(rates, date);

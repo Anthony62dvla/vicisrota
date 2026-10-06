@@ -15,11 +15,11 @@ export const periodBounds = (from: string, to: string) => ({
 export const loadPayroll = async (tx: Transaction, organisationId: string, from: string, to: string) => {
   const { start, end } = periodBounds(from, to);
   const [[organisation], workers, rates, entries, leave, unconfirmed] = await Promise.all([
-    tx.select({ paysTravelTime: schema.organisation.paysTravelTime }).from(schema.organisation).where(eq(schema.organisation.id, organisationId)),
+    tx.select({ paysTravelTime: schema.organisation.paysTravelTime, sleepInPence: schema.organisation.sleepInPence }).from(schema.organisation).where(eq(schema.organisation.id, organisationId)),
     tx.select().from(schema.worker),
     tx.select().from(schema.payRate),
     tx
-      .select({ entry: schema.timeEntry, travelMinutes: schema.shift.travelMinutes })
+      .select({ entry: schema.timeEntry, travelMinutes: schema.shift.travelMinutes, kind: schema.shift.kind })
       .from(schema.timeEntry)
       .leftJoin(schema.shift, eq(schema.timeEntry.shiftId, schema.shift.id))
       .where(and(gte(schema.timeEntry.startsAt, start), lt(schema.timeEntry.startsAt, end))),
@@ -63,8 +63,9 @@ export const loadPayroll = async (tx: Transaction, organisationId: string, from:
       apprenticeRateApplies: w.apprenticeRateApplies,
       irregularHours: w.irregularHours,
     })),
-    entries: entries.map(({ entry: e, travelMinutes }) => ({
+    entries: entries.map(({ entry: e, travelMinutes, kind }) => ({
       travelMinutesBefore: travelMinutes ?? 0,
+      sleepIn: kind === "sleep_in" ? { awakeMinutes: e.awakeMinutes } : undefined,
       id: e.id,
       workerId: e.workerId,
       start: e.startsAt.toISOString(),
@@ -76,7 +77,8 @@ export const loadPayroll = async (tx: Transaction, organisationId: string, from:
     payRates: rates.map((r) => ({ workerId: r.workerId, hourlyPence: r.hourlyPence, effectiveFrom: r.effectiveFrom })),
     leave: leave.map((l) => ({ ...l, status: "approved" as const })),
     paysTravelTime: organisation?.paysTravelTime ?? false,
-  }).filter((l) => l.hours > 0 || l.travelHours > 0 || l.holidayDays > 0 || l.holidayHours > 0 || l.sickDays > 0 || l.otherLeaveDays > 0 || shortNoticePence.has(l.workerId));
+    sleepInPence: organisation?.sleepInPence ?? null,
+  }).filter((l) => l.sleepIns > 0 || l.hours > 0 || l.travelHours > 0 || l.holidayDays > 0 || l.holidayHours > 0 || l.sickDays > 0 || l.otherLeaveDays > 0 || shortNoticePence.has(l.workerId));
 
   // Tips shared for periods ending in this pay period are paid with it.
   const shares = await tx
@@ -101,6 +103,7 @@ export const loadPayroll = async (tx: Transaction, organisationId: string, from:
     sspPence,
     shortNoticePence,
     paysTravelTime: organisation?.paysTravelTime ?? false,
+    sleepInPence: organisation?.sleepInPence ?? null,
     payrollIds: new Map(workers.map((w) => [w.id, w.payrollId])),
     irregularHours: new Set(workers.filter((w) => w.irregularHours).map((w) => w.id)),
   };

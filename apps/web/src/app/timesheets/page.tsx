@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import { clockSummaries } from "@/lib/clock";
 import { loadPayroll, periodBounds } from "@/lib/payroll";
 import { todayInUk } from "@/lib/rota";
-import { PayItemNamesForm, TimesheetList, type Row } from "./forms";
+import { PayItemNamesForm, SleepInPayForm, TimesheetList, type Row } from "./forms";
 import { parsePeriod } from "./period";
 
 const MINUTE = 60_000;
@@ -17,7 +17,7 @@ const pounds = (pence: number) => `£${(pence / 100).toFixed(2)}`;
 const hoursText = (h: number) => `${Number.isInteger(h) ? h : h.toFixed(2).replace(/0$/, "")} hours`;
 
 export default async function TimesheetsPage({ searchParams }: PageProps<"/timesheets">) {
-  const { organisationId } = await requireManager();
+  const { organisationId, sector } = await requireManager();
   const query = await searchParams;
   const today = todayInUk();
   const asked = parsePeriod(typeof query.from === "string" ? query.from : null, typeof query.to === "string" ? query.to : null, today);
@@ -71,6 +71,7 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
       day: ukDate(londonParts(shift.startsAt.getTime()).date),
       rostered: `${timeFmt.format(shift.startsAt)}–${timeFmt.format(shift.endsAt)}`,
       rosteredBreak,
+      sleepIn: shift.kind === "sleep_in",
       defaults: { start: timeFmt.format(shift.startsAt), end: timeFmt.format(shift.endsAt), breakMinutes: rosteredBreak },
       clocked:
         clock.clockedIn === null
@@ -95,6 +96,7 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
         start: timeFmt.format(entry.startsAt),
         end: timeFmt.format(entry.endsAt),
         breakMinutes: entry.breakMinutes,
+        awakeMinutes: entry.awakeMinutes,
         hours: hoursText(Math.round(worked * 100) / 100),
         differs:
           entry.startsAt.getTime() !== shift.startsAt.getTime() || entry.endsAt.getTime() !== shift.endsAt.getTime() || entry.breakMinutes !== rosteredBreak,
@@ -102,7 +104,8 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
       },
     };
   });
-  const { lines, unconfirmed, sspPence, shortNoticePence } = data.payroll;
+  const { lines, unconfirmed, sspPence, shortNoticePence, sleepInPence } = data.payroll;
+  const care = sector === "care";
   const missingIds = lines.filter((l) => !data.payroll.payrollIds.get(l.workerId));
   const total = lines.reduce((s, l) => s + l.grossPence + (shortNoticePence.get(l.workerId) ?? 0), 0);
   const hasTravel = lines.some((l) => l.travelHours > 0);
@@ -177,6 +180,13 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
                       <td className="py-2">{l.ratesPence.map(pounds).join(" / ") || "None"}</td>
                       <td className="py-2">
                         {pounds(l.grossPence)}
+                        {l.sleepIns > 0 && (
+                          <p className="mt-1">
+                            including {l.sleepIns} sleep-in{l.sleepIns === 1 ? "" : "s"}
+                            {l.sleepInPence ? ` (${pounds(l.sleepInPence)})` : ""}
+                            {l.sleepInAwakeHours > 0 && ` and ${l.sleepInAwakeHours} hours woken to work`}
+                          </p>
+                        )}
                         {shortNoticePence.has(l.workerId) && (
                           <p className="mt-1">
                             plus <Link href="/short-notice" className="underline">{pounds(shortNoticePence.get(l.workerId)!)} short-notice pay</Link>
@@ -245,6 +255,17 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/times
               </p>
               <PayItemNamesForm items={PAY_ITEMS.map((item) => ({ item, standard: DEFAULT_PAY_ITEM_NAMES[item], name: data.payItemNames[item] ?? "" }))} />
             </details>
+          </div>
+        )}
+        {care && (
+          <div className="mt-8">
+            <h3 className="font-semibold">Sleep-ins</h3>
+            <p className="mt-1">
+              On a sleep-in, the person sleeps at work and is woken only if needed. The law says sleeping time does not count for the minimum wage, but
+              any time woken to work does, so that time is paid at their hourly rate on top of your sleep-in payment. Waking nights are paid by the
+              hour like any other shift. The whole sleep-in still counts as working time for rest breaks and the 48-hour week.
+            </p>
+            <SleepInPayForm pence={sleepInPence} />
           </div>
         )}
         {data.exports.length > 0 && (

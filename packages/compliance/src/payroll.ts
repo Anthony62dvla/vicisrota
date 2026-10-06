@@ -1,7 +1,8 @@
 import { irregularHoursAccrual } from "./holiday";
 import { minimumWage } from "./rules/minimumWage";
 import { travelTimeMinimumWage } from "./rules/travelTime";
-import { addDays, HOUR, londonParts, ms, workedMillis } from "./time";
+import { SLEEP_IN_LEGAL_REF } from "./sleepIn";
+import { addDays, HOUR, londonParts, MINUTE, ms, paidMillis, workedMillis } from "./time";
 import type { Finding, Leave, LocalDate, PayRate, Shift, Worker } from "./types";
 
 export interface PayrollWorker extends Worker {
@@ -22,6 +23,12 @@ export interface PayrollLine {
   hours: number;
   /** Care: hours travelling between visits. Paid at the hourly rate when the business pays travel time. */
   travelHours: number;
+  /** Care: sleep-ins in the period. Time woken to work is already in hours; the rest is paid as sleep-in pay. */
+  sleepIns: number;
+  /** Hours woken to work during sleep-ins, paid at the hourly rate. Included in hours. */
+  sleepInAwakeHours: number;
+  /** The business's sleep-in payment for each sleep-in. Included in gross pay. */
+  sleepInPence: number;
   grossPence: number;
   /** Hourly rates used in the period, in pence. More than one if pay changed mid-period. */
   ratesPence: number[];
@@ -32,7 +39,7 @@ export interface PayrollLine {
   /** Calendar days of each kind of leave that fall inside the period. */
   sickDays: number;
   otherLeaveDays: number;
-  /** Minimum wage problems; the export flags these so payroll is not run on them unchecked. */
+  /** Minimum wage and sleep-in problems; the export flags these so payroll is not run on them unchecked. */
   findings: Finding[];
 }
 
@@ -64,6 +71,8 @@ export const payrollSummary = (input: {
   payRates: PayRate[];
   leave?: PayrollLeave[];
   paysTravelTime?: boolean;
+  /** Care: the flat payment for each sleep-in, in pence. Null when the business has not set one. */
+  sleepInPence?: number | null;
 }): PayrollLine[] => {
   const { from, to } = input;
   const ctx = { asOf: to, workers: input.workers, shifts: input.entries, payRates: input.payRates, settings: { paysTravelTime: input.paysTravelTime ?? false } };
@@ -75,8 +84,16 @@ export const payrollSummary = (input: {
     let travelMinutes = 0;
     let pence = 0;
     const used = new Set<number>();
+    const sleepIns: Shift[] = [];
+    let awakeMillis = 0;
     for (const e of entries) {
-      const worked = workedMillis(e);
+      // Sleeping time on a sleep-in is not paid by the hour (Royal Mencap Society v Tomlinson-Blake [2021] UKSC 8): only time awake working is.
+      const worked = paidMillis(e);
+      if (e.sleepIn) {
+        sleepIns.push(e);
+        awakeMillis += worked;
+        pence += input.sleepInPence ?? 0;
+      }
       millis += worked;
       const rate = latestOnOrBefore(rates, londonParts(ms(e.start)).date);
       travelMinutes += e.travelMinutesBefore ?? 0;
@@ -87,6 +104,19 @@ export const payrollSummary = (input: {
       }
     }
     const hours = round2(millis / HOUR);
+    const sleepInFindings: Finding[] = [];
+    if (sleepIns.length && input.sleepInPence == null)
+      sleepInFindings.push(sleepInFinding(worker, sleepIns, `${worker.name} did ${sleepIns.length === 1 ? "a sleep-in" : `${sleepIns.length} sleep-ins`} but no sleep-in payment is set, so only time awake working is paid.`));
+    // Woken for most of the night: if this keeps happening, the shift is really a waking night and every hour is paid.
+    const mostlyAwake = sleepIns.filter((e) => (e.sleepIn!.awakeMinutes * MINUTE) / workedMillis(e) > 0.5);
+    if (mostlyAwake.length)
+      sleepInFindings.push(
+        sleepInFinding(
+          worker,
+          mostlyAwake,
+          `${worker.name} was awake working for more than half of ${mostlyAwake.length === 1 ? "a sleep-in" : `${mostlyAwake.length} sleep-ins`}. If this happens often, it is likely a waking night, where every hour must be paid at least the minimum wage.`,
+        ),
+      );
     const travelHours = round2(travelMinutes / 60);
     const leave = (input.leave ?? []).filter((l) => l.workerId === worker.id && l.status === "approved");
     const annual = leave.filter((l) => l.kind === "annual" && l.startsOn >= from && l.startsOn <= to);
@@ -95,6 +125,9 @@ export const payrollSummary = (input: {
       name: worker.name,
       hours,
       travelHours,
+      sleepIns: sleepIns.length,
+      sleepInAwakeHours: round2(awakeMillis / HOUR),
+      sleepInPence: sleepIns.length * (input.sleepInPence ?? 0),
       grossPence: Math.round(pence),
       ratesPence: [...used].sort((a, b) => a - b),
       // Travel between visits is working time, so it counts towards holiday built up.
@@ -105,10 +138,21 @@ export const payrollSummary = (input: {
       otherLeaveDays: leave
         .filter((l) => l.kind !== "sick" && l.kind !== "annual")
         .reduce((s, l) => s + daysInside(l.startsOn, l.endsOn, from, to), 0),
-      findings: nmw.filter((f) => f.workerId === worker.id),
+      findings: [...nmw.filter((f) => f.workerId === worker.id), ...sleepInFindings],
     };
   });
 };
+
+const sleepInFinding = (worker: Worker, shifts: Shift[], message: string): Finding => ({
+  ruleId: "care.sleep-in",
+  ruleVersion: 1,
+  severity: "warn",
+  workerId: worker.id,
+  shiftIds: shifts.map((s) => s.id),
+  message,
+  evidence: { sleepIns: shifts.length },
+  legalRef: SLEEP_IN_LEGAL_REF,
+});
 
 /** Cells starting with these could run as formulas in a spreadsheet, so they are made plain text. */
 const FORMULA_START = /^[=+\-@\t\r]/;

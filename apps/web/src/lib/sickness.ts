@@ -55,7 +55,7 @@ export const loadSickness = async (tx: Transaction, until: string, workerIds?: s
   const latest = spells.reduce((m, s) => (s.startsOn > m ? s.startsOn : m), spells[0]!.startsOn);
   const window = periodBounds(addDays(earliest, -7 * EARNINGS_WEEKS), latest);
 
-  const [workers, rates, entries, shifts] = await Promise.all([
+  const [workers, rates, entries, shifts, [organisation]] = await Promise.all([
     tx.select().from(schema.worker).where(inArray(schema.worker.id, people)),
     tx.select().from(schema.payRate).where(inArray(schema.payRate.workerId, people)),
     tx
@@ -63,7 +63,7 @@ export const loadSickness = async (tx: Transaction, until: string, workerIds?: s
       .from(schema.timeEntry)
       .where(and(inArray(schema.timeEntry.workerId, people), gte(schema.timeEntry.startsAt, window.start), lt(schema.timeEntry.startsAt, window.end))),
     tx
-      .select({ workerId: schema.shift.workerId, startsAt: schema.shift.startsAt })
+      .select({ id: schema.shift.id, workerId: schema.shift.workerId, startsAt: schema.shift.startsAt, kind: schema.shift.kind })
       .from(schema.shift)
       .where(
         and(
@@ -73,7 +73,10 @@ export const loadSickness = async (tx: Transaction, until: string, workerIds?: s
           lt(schema.shift.startsAt, window.end),
         ),
       ),
+    tx.select({ sleepInPence: schema.organisation.sleepInPence }).from(schema.organisation),
   ]);
+  // Sleep-in payments are earnings too.
+  const sleepIns = new Set(shifts.filter((s) => s.kind === "sleep_in").map((s) => s.id));
 
   for (const w of workers) {
     const mine = spells.filter((s) => s.workerId === w.id);
@@ -99,9 +102,17 @@ export const loadSickness = async (tx: Transaction, until: string, workerIds?: s
         workers: [{ id: w.id, name: w.fullName, dateOfBirth: w.dateOfBirth, apprenticeRateApplies: w.apprenticeRateApplies, irregularHours: w.irregularHours }],
         entries: entries
           .filter((e) => e.workerId === w.id && e.startsAt >= start && e.startsAt < end)
-          .map((e) => ({ id: e.id, workerId: e.workerId, start: e.startsAt.toISOString(), end: e.endsAt.toISOString(), breaks: breaksOf(e) })),
+          .map((e) => ({
+            id: e.id,
+            workerId: e.workerId,
+            start: e.startsAt.toISOString(),
+            end: e.endsAt.toISOString(),
+            breaks: breaksOf(e),
+            sleepIn: e.shiftId && sleepIns.has(e.shiftId) ? { awakeMinutes: e.awakeMinutes } : undefined,
+          })),
         payRates: rates.filter((r) => r.workerId === w.id),
         leave: [],
+        sleepInPence: organisation?.sleepInPence ?? null,
       });
       const weekly = Math.round((line?.grossPence ?? 0) / EARNINGS_WEEKS);
       estimates.set(startsOn, weekly);
