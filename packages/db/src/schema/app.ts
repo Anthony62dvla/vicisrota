@@ -1097,6 +1097,26 @@ export const kioskDevice = pgTable("kiosk_device", {
 });
 
 /**
+ * A key a business gives to other software (its own systems, or tools such as Zapier) to read its rota and hours
+ * through the public API. Only a hash is kept; the key is shown once. Not tenant-scoped, because the key is how the
+ * business is found, so every query filters by business explicitly.
+ */
+export const apiKey = pgTable("api_key", {
+  id: id(),
+  organisationId: uuid("organisation_id")
+    .notNull()
+    .references(() => organisation.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  /** The first characters of the key, so the manager can tell keys apart. */
+  prefix: text("prefix").notNull(),
+  keyHash: text("key_hash").notNull().unique(),
+  createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdAt: createdAt(),
+});
+
+/**
  * A message from managers to all staff, such as a policy change. The wording cannot be changed once
  * posted (enforced in the database), so a confirmation always refers to what the person actually read.
  */

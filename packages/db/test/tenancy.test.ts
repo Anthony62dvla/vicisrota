@@ -177,7 +177,7 @@ describe.skipIf(!url)("database", () => {
 
   it("protects every business table with row-level security, except the few filtered by hand", async () => {
     // These have no policy on purpose and every query on them filters by business in code.
-    const filteredInCode = ["membership", "invitation", "kiosk_device", "owner_invitation", "platform_audit", "support_report"];
+    const filteredInCode = ["membership", "invitation", "kiosk_device", "api_key", "owner_invitation", "platform_audit", "support_report"];
     const rows = (await db.execute(sql`
       select c.relname as name, c.relrowsecurity as enabled, c.relforcerowsecurity as forced
       from pg_class c join pg_namespace n on n.oid = c.relnamespace
