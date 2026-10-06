@@ -109,7 +109,7 @@ Until then, texts are written to the log and not sent. Send me the provider's AP
 
 **Turning on the support assistant.** Customers report problems from **Report a problem**, and you answer them from **Open support inbox** in the superadmin area. To have the assistant suggest a triage and a reply for each report, create an API key at https://platform.claude.com, paste it into `ANTHROPIC_API_KEY` in `app.env`, then run `./update.sh`. Nothing is sent to a customer until you send it.
 
-**Turning on Xero Payroll.** Managers can send confirmed hours to Xero Payroll as draft timesheets. Go to https://developer.xero.com, choose **New app**, pick **Web app**, and use `https://www.vicisrota.app/api/xero/callback` as the redirect URI. Copy the client ID and generate a client secret. On the server, add them to `app.env` without showing them on screen: `read -rsp "Client ID: " v && echo "XERO_CLIENT_ID=$v" >> app.env`, then the same for `XERO_CLIENT_SECRET`, then run `./update.sh`. Each business then presses **Connect Xero** on its Timesheets page.
+**Turning on Xero Payroll.** Managers can send confirmed hours to Xero Payroll as draft timesheets. Go to https://developer.xero.com, choose **New app**, pick **Web app**, and use `https://vicisrota.app/api/xero/callback` as the redirect URI. Copy the client ID and generate a client secret. On the server, add them to `app.env` without showing them on screen: `read -rsp "Client ID: " v && echo "XERO_CLIENT_ID=$v" >> app.env`, then the same for `XERO_CLIENT_SECRET`, then run `./update.sh`. Each business then presses **Connect Xero** on its Timesheets page.
 
 **Switching on payments.** Until this is done, nothing is ever paused or charged. Do it in Stripe's test mode first, so no real money moves:
 
