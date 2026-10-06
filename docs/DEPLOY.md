@@ -111,6 +111,13 @@ Until then, texts are written to the log and not sent. Send me the provider's AP
 
 **Turning on Xero Payroll.** Managers can send confirmed hours to Xero Payroll as draft timesheets. Go to https://developer.xero.com, choose **New app**, pick **Web app**, and use `https://vicisrota.app/api/xero/callback` as the redirect URI. Copy the client ID and generate a client secret. On the server, add them to `app.env` without showing them on screen: `read -rsp "Client ID: " v && echo "XERO_CLIENT_ID=$v" >> app.env`, then the same for `XERO_CLIENT_SECRET`, then run `./update.sh`. Each business then presses **Connect Xero** on its Timesheets page.
 
+**Turning on sign-in with Microsoft or Google.** Either or both can be added; each button only shows once its keys are in `app.env`.
+
+- Microsoft: in https://entra.microsoft.com go to **App registrations → New registration**. Choose "Accounts in any organizational directory and personal Microsoft accounts", and add the Web redirect URI `https://vicisrota.app/api/auth/callback/microsoft`. Copy the Application (client) ID, then create a client secret under **Certificates & secrets**.
+- Google: in https://console.cloud.google.com go to **APIs & Services → Credentials → Create credentials → OAuth client ID**, choose **Web application**, and add the redirect URI `https://vicisrota.app/api/auth/callback/google`. Fill in the consent screen with the app name, hello@vicisrota.app, and the terms and privacy links.
+
+Add the IDs and secrets to `app.env` the same hidden way as above (`MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`), then run `./update.sh`. Accounts are never joined up by email on their own: people who already have a password link Microsoft or Google from **Sign-in security**. People with two-step sign-in on, and the superadmin, always sign in with their password and code.
+
 **Switching on payments.** Until this is done, nothing is ever paused or charged. Do it in Stripe's test mode first, so no real money moves:
 
 1. In Stripe, switch to **Test mode**, then go to **Developers → API keys** and copy the secret key (it starts `sk_test_`).

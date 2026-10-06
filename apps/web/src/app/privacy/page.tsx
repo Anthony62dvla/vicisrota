@@ -120,6 +120,10 @@ export default function PrivacyPage() {
                   so their pay can be worked out in Xero Payroll.
                 </li>
                 <li>
+                  <strong>Microsoft and Google</strong>, only for people who choose to sign in with one of those accounts, confirm who you are and give us your
+                  name and email address. We do not receive your Microsoft or Google password.
+                </li>
+                <li>
                   <strong>Vonage</strong> sends text messages. It receives the mobile number and the text, such as a shift reminder or an alert.
                 </li>
                 <li>
